@@ -2,6 +2,7 @@ import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
@@ -24,9 +25,10 @@ class HomeScreenMultipleOrderController extends GetxController {
   }
 
   getDriver() async {
+    String? userId = await LoginController.getFirebaseId();
     FireStoreUtils.fireStore
         .collection(CollectionName.users)
-        .doc(FireStoreUtils.getCurrentUid())
+        .doc(userId)
         .snapshots()
         .listen(
           (event) async {

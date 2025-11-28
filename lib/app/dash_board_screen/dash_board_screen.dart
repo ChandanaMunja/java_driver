@@ -12,6 +12,7 @@ import 'package:jippydriver_driver/app/withdraw_method_setup_screens/withdraw_me
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/controllers/dash_board_controller.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
@@ -20,7 +21,6 @@ import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/network_image_widget.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -747,8 +747,9 @@ class DrawerView extends StatelessWidget {
                                   Constant.userModel!.fcmToken = "";
                                   await FireStoreUtils.updateUser(
                                       Constant.userModel!);
-                                  await FirebaseAuth.instance.signOut();
-                                  Get.offAll(const LoginScreen());
+                                  LoginController.logout();
+                                  // await FirebaseAuth.instance.signOut();
+                                  // Get.offAll(const LoginScreen());
                                 },
                                 negativeClick: () {
                                   Get.back();

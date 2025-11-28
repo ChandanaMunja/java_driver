@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/app/chat_screens/ChatVideoContainer.dart';
 import 'package:jippydriver_driver/app/wallet_screen/screens/model/delivery_amount_model.dart';
 import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/conversation_model.dart';
 import 'package:jippydriver_driver/models/document_model.dart';
 import 'package:jippydriver_driver/models/driver_document_model.dart';
@@ -45,7 +48,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import 'package:video_compress/video_compress.dart';
@@ -53,92 +55,130 @@ import 'package:video_compress/video_compress.dart';
 class FireStoreUtils {
   static FirebaseFirestore fireStore = FirebaseFirestore.instance;
 
-  static String getCurrentUid() {
-    return FirebaseAuth.instance.currentUser!.uid;
+  static Future<String> getCurrentUid() async{
+    return await LoginController.getFirebaseId();
   }
-
   static Future<bool> isLogin() async {
     bool isLogin = false;
-    if (FirebaseAuth.instance.currentUser != null) {
-      try {
-        isLogin = await userExistOrNot(FirebaseAuth.instance.currentUser!.uid)
-            .timeout(const Duration(seconds: 10), onTimeout: () {
-          log("isLogin timeout - returning false");
-          return false;
-        });
-      } catch (e) {
-        log("isLogin error: $e - returning false");
-        isLogin = false;
-      }
-    } else {
-      isLogin = false;
-    }
-    return isLogin;
-  }
-
-  static Future<bool> userExistOrNot(String uid) async {
-    bool isExist = false;
-
+    String? userId =await  LoginController.getFirebaseId();
     try {
-      await fireStore.collection(CollectionName.users).doc(uid).get().then(
-        (value) {
-          if (value.exists) {
-            isExist = true;
-          } else {
-            isExist = false;
-          }
-        },
-      ).catchError((error) {
-        log("Failed to check user exist: $error");
-        isExist = false;
+      isLogin = await userExistOrNot(userId)
+          .timeout(const Duration(seconds: 10), onTimeout: () {
+        log("isLogin timeout - returning false");
+        return false;
       });
     } catch (e) {
-      log("userExistOrNot error: $e");
-      isExist = false;
+      log("isLogin error: $e - returning false");
+      isLogin = false;
     }
-    return isExist;
+      return isLogin;
   }
-
+  static Future<bool> userExistOrNot(String uid) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/users/$uid/exists'),
+      ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['data'] == true;
+        } else {
+          log("API returned success: false");
+          return false;
+        }
+      } else {
+        log("Failed to check user exist: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } on TimeoutException catch (e) {
+      log("userExistOrNot timeout: $e");
+      return false;
+    } catch (e) {
+      log("userExistOrNot error: $e");
+      return false;
+    }
+  }
   static Future<UserModel?> getUserProfile(String uuid) async {
     UserModel? userModel;
     try {
-      await fireStore
-          .collection(CollectionName.users)
-          .doc(uuid)
-          .get()
-          .timeout(const Duration(seconds: 10), onTimeout: () {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}users/$uuid'),
+      ).timeout(const Duration(seconds: 10), onTimeout: () {
         log("getUserProfile timeout");
         throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
-      }).then((value) {
-        if (value.exists) {
-          userModel = UserModel.fromJson(value.data()!);
-        }
-      }).catchError((error) {
-        log("Failed to get user profile: $error");
-        userModel = null;
       });
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        userModel = UserModel.fromJson(data);
+      } else if (response.statusCode == 404) {
+        // User not found
+        userModel = null;
+      } else {
+        log("Failed to get user profile: ${response.statusCode} - ${response.body}");
+        userModel = null;
+      }
+    } on TimeoutException catch (e) {
+      log("getUserProfile timeout: $e");
+      userModel = null;
     } catch (e) {
       log("getUserProfile error: $e");
       userModel = null;
     }
     return userModel;
   }
-
-  static Future<bool?> updateUserWallet(
-      {required String amount, required String userId}) async {
-    bool isAdded = false;
-    await getUserProfile(userId).then((value) async {
-      if (value != null) {
-        UserModel userModel = value;
-        userModel.walletAmount =
-            double.parse(userModel.walletAmount.toString()) +
-                double.parse(amount);
-        await FireStoreUtils.updateUser(userModel).then((value) {
-          isAdded = value;
-        });
+  // static Future<UserModel?> getUserProfile(String uuid) async {
+  //   UserModel? userModel;
+  //   try {
+  //     await fireStore
+  //         .collection(CollectionName.users)
+  //         .doc(uuid)
+  //         .get()
+  //         .timeout(const Duration(seconds: 10), onTimeout: () {
+  //       log("getUserProfile timeout");
+  //       throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
+  //     }).then((value) {
+  //       if (value.exists) {
+  //         userModel = UserModel.fromJson(value.data()!);
+  //       }
+  //     }).catchError((error) {
+  //       log("Failed to get user profile: $error");
+  //       userModel = null;
+  //     });
+  //   } catch (e) {
+  //     log("getUserProfile error: $e");
+  //     userModel = null;
+  //   }
+  //   return userModel;
+  // }
+  static Future<bool?> updateUserWallet({
+    required String amount,
+    required String userId
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/update'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'amount': double.parse(amount),
+        }),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        // Assuming API returns success status
+        return responseData['success'] ?? true;
+      } else {
+        // Handle error response
+        print('API Error: ${response.statusCode}');
+        return false;
       }
-    });
-    return isAdded;
+    } catch (e) {
+      // Handle network or parsing errors
+      print('Error updating wallet: $e');
+      return false;
+    }
   }
   static Future<bool?> updateUserDeliveryAmount(
       {required String amount, required String userId}) async {
@@ -172,41 +212,78 @@ class FireStoreUtils {
     });
     return isUpdate;
   }
-
   static Future<List<OnBoardingModel>> getOnBoardingList() async {
-    List<OnBoardingModel> onBoardingModel = [];
-    await fireStore
-        .collection(CollectionName.onBoarding)
-        .where("type", isEqualTo: "driverApp")
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        OnBoardingModel documentModel =
-            OnBoardingModel.fromJson(element.data());
-        onBoardingModel.add(documentModel);
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/onboarding'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        if (responseData['success'] == true) {
+          final List<dynamic> data = responseData['data'];
+          // Filter by type "driverApp" as in the original Firebase query
+          final filteredData = data.where((item) => item['type'] == 'driverApp').toList();
+          List<OnBoardingModel> onBoardingModel = filteredData
+              .map((item) => OnBoardingModel.fromJson(item))
+              .toList();
+          return onBoardingModel;
+        } else {
+          throw Exception('API returned success: false');
+        }
+      } else {
+        throw HttpException('Failed to load onboarding data. Status code: ${response.statusCode}');
       }
-    }).catchError((error) {
-      log(error.toString());
-    });
-    return onBoardingModel;
+    } catch (e) {
+      log('Error fetching onboarding list: $e');
+      return []; // Return empty list on error to maintain compatibility
+    }
   }
-
   static Future<List<VendorModel>> getVendors() async {
-    List<VendorModel> giftCardModelList = [];
-    QuerySnapshot<Map<String, dynamic>> currencyQuery = await fireStore
-        .collection(CollectionName.vendors)
-        .where("zoneId", isEqualTo: Constant.selectedZone!.id.toString())
-        .get();
-    await Future.forEach(currencyQuery.docs,
-        (QueryDocumentSnapshot<Map<String, dynamic>> document) {
-      try {
-        log(document.data().toString());
-        giftCardModelList.add(VendorModel.fromJson(document.data()));
-      } catch (e) {
-        debugPrint('FireStoreUtils.get Currency Parse error $e');
+    List<VendorModel> vendorList = [];
+
+    try {
+      // Check if zone is selected
+      if (Constant.selectedZone == null) {
+
+        debugPrint('No zone selected');
+        return vendorList;
       }
-    });
-    return giftCardModelList;
+
+      final String zoneId = Constant.selectedZone!.id.toString();
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/vendors?zone_id=$zoneId'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (responseData['success'] == true) {
+          final List<dynamic> data = responseData['data'];
+
+          for (var element in data) {
+            try {
+              debugPrint(element.toString());
+              vendorList.add(VendorModel.fromJson(element));
+            } catch (e) {
+              debugPrint('VendorModel Parse error: $e');
+            }
+          }
+          return vendorList;
+        } else {
+          throw Exception('API returned success: false');
+        }
+      } else {
+        throw HttpException('Failed to load vendors. Status code: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error in getVendors: $e');
+      return vendorList; // Return empty list on error
+    }
   }
 
   static Future<bool?> setWalletTransaction(
@@ -246,7 +323,6 @@ class FireStoreUtils {
           .collection(CollectionName.settings)
           .doc("driver_total_charges")
           .get();
-
       if (doc.exists) {
         final data = doc.data();
         return {
@@ -919,12 +995,11 @@ class FireStoreUtils {
   static Future<bool?> deleteUser() async {
     bool? isDelete;
     try {
+      String? userId = await LoginController.getFirebaseId();
       await fireStore
           .collection(CollectionName.users)
-          .doc(FireStoreUtils.getCurrentUid())
+          .doc(userId)
           .delete();
-
-      // delete user  from firebase auth
       await FirebaseAuth.instance.currentUser?.delete().then((value) {
         isDelete = true;
       });
@@ -954,10 +1029,11 @@ class FireStoreUtils {
   }
 
   static Future<DriverDocumentModel?> getDocumentOfDriver() async {
+    String? userId = await LoginController.getFirebaseId();
     DriverDocumentModel? driverDocumentModel;
     await fireStore
         .collection(CollectionName.documentsVerify)
-        .doc(getCurrentUid())
+        .doc(userId)
         .get()
         .then((value) async {
       if (value.exists) {
@@ -1088,12 +1164,14 @@ class FireStoreUtils {
   }
 
   static Future<bool> uploadDriverDocument(Documents documents) async {
+
+    String? userId = await LoginController.getFirebaseId();
     bool isAdded = false;
     DriverDocumentModel driverDocumentModel = DriverDocumentModel();
     List<Documents> documentsList = [];
     await fireStore
         .collection(CollectionName.documentsVerify)
-        .doc(getCurrentUid())
+        .doc(userId)
         .get()
         .then((value) async {
       if (value.exists) {
@@ -1105,14 +1183,14 @@ class FireStoreUtils {
         if (contain.isEmpty) {
           documentsList.add(documents);
 
-          driverDocumentModel.id = getCurrentUid();
+          driverDocumentModel.id = userId;
           driverDocumentModel.type = "driver";
           driverDocumentModel.documents = documentsList;
         } else {
           var index = newDriverDocumentModel.documents!.indexWhere(
               (element) => element.documentId == documents.documentId);
 
-          driverDocumentModel.id = getCurrentUid();
+          driverDocumentModel.id = userId;
           driverDocumentModel.type = "driver";
           documentsList.removeAt(index);
           documentsList.insert(index, documents);
@@ -1121,7 +1199,7 @@ class FireStoreUtils {
         }
       } else {
         documentsList.add(documents);
-        driverDocumentModel.id = getCurrentUid();
+        driverDocumentModel.id = userId;
         driverDocumentModel.type = "driver";
         driverDocumentModel.documents = documentsList;
       }
@@ -1129,7 +1207,7 @@ class FireStoreUtils {
 
     await fireStore
         .collection(CollectionName.documentsVerify)
-        .doc(getCurrentUid())
+        .doc(userId)
         .set(driverDocumentModel.toJson())
         .then((value) {
       isAdded = true;
@@ -1158,9 +1236,10 @@ class FireStoreUtils {
 
   static Future<WithdrawMethodModel?> setWithdrawMethod(
       WithdrawMethodModel withdrawMethodModel) async {
+    String? userId = await LoginController.getFirebaseId();
     if (withdrawMethodModel.id == null) {
       withdrawMethodModel.id = const Uuid().v4();
-      withdrawMethodModel.userId = getCurrentUid();
+      withdrawMethodModel.userId = userId;
     }
     await fireStore
         .collection(CollectionName.withdrawMethod)

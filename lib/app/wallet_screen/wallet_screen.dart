@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/app/wallet_screen/payment_list_screen.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/app/wallet_screen/controller/wallet_controller.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1003,10 +1004,11 @@ class WalletScreen extends StatelessWidget {
                               );
                               await FireStoreUtils.withdrawWalletAmount(
                                   withdrawHistory);
+                              String? userId = await LoginController.getFirebaseId();
                               await FireStoreUtils.updateUserWallet(
                                       amount:
                                           "-${controller.amountTextFieldController.value.text}",
-                                      userId: FireStoreUtils.getCurrentUid())
+                                      userId:userId)
                                   .then((value) {
                                 Get.back();
                                 FireStoreUtils.sendPayoutMail(

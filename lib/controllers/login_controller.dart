@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:http/http.dart' as http;
+import 'package:jippydriver_driver/app/auth_screen/login_screen.dart';
 import 'package:jippydriver_driver/app/auth_screen/signup_screen.dart';
 import 'package:jippydriver_driver/app/dash_board_screen/dash_board_screen.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
@@ -7,12 +9,10 @@ import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
-import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:developer';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 
@@ -40,218 +40,255 @@ class LoginController extends GetxController {
   loginWithEmailAndPassword() async {
     ShowToastDialog.showLoader("Please wait.".tr);
     try {
-      final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: emailEditingController.value.text.trim(),
-        password: passwordEditingController.value.text.trim(),
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver/login'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          "email": emailEditingController.value.text.trim(),
+          "password": passwordEditingController.value.text.trim(),
+        }),
       );
-      UserModel? userModel =
-          await FireStoreUtils.getUserProfile(credential.user!.uid);
-      if (userModel?.role == Constant.userRoleDriver) {
-        if (userModel?.active == true) {
-          userModel?.fcmToken = await NotificationService.getToken();
-          await FireStoreUtils.updateUser(userModel!);
-          Get.offAll(const DashBoardScreen());
-          log('\u001b[32mLoginScreen -> DashBoardScreen\u001b[0m');
+      print("Login Response: ${response.body}");
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          final userData = responseData['data'];
+          UserModel userModel = UserModel.fromJson(userData);
+          await _saveUserToSharedPreferences(userData);
+          if (userModel.role == Constant.userRoleDriver) {
+            if (userModel.active == true || userModel.isActive == true) {
+              userModel.fcmToken = await NotificationService.getToken();
+              await FireStoreUtils.updateUser(userModel);
+              Get.offAll(const DashBoardScreen());
+              log('\u001b[32mLoginScreen -> DashBoardScreen\u001b[0m');
+            } else {
+              ShowToastDialog.showToast(
+                  "This user is disable please contact to administrator".tr);
+            }
+          } else {
+            ShowToastDialog.showToast(
+                "This user is not created in driver application.".tr);
+          }
         } else {
-          await FirebaseAuth.instance.signOut();
-          ShowToastDialog.showToast(
-              "This user is disable please contact to administrator".tr);
+          ShowToastDialog.showToast(responseData['message'] ?? "Login failed".tr);
         }
       } else {
-        await FirebaseAuth.instance.signOut();
-        ShowToastDialog.showToast(
-            "This user is not created in driver application.".tr);
+        final errorData = json.decode(response.body);
+        ShowToastDialog.showToast(errorData['message'] ?? "Login failed".tr);
       }
-    } on FirebaseAuthException catch (e) {
-      print(e.code);
-      if (e.code == 'user-not-found') {
-        ShowToastDialog.showToast("No user found for that email.".tr);
-      } else if (e.code == 'wrong-password') {
-        ShowToastDialog.showToast("Wrong password provided for that user.".tr);
-      } else if (e.code == 'invalid-email') {
-        ShowToastDialog.showToast("Invalid Email.".tr);
-      } else {
-        ShowToastDialog.showToast("${e.message}");
-      }
+    } on http.ClientException catch (e) {
+      ShowToastDialog.showToast("Network error: ${e.message}".tr);
+    } on FormatException catch (e) {
+      ShowToastDialog.showToast("Invalid response format".tr);
+    } catch (e) {
+      print("Login error: $e");
+      ShowToastDialog.showToast("An error occurred during login".tr);
     }
     ShowToastDialog.closeLoader();
   }
 
-  loginWithGoogle() async {
-    ShowToastDialog.showLoader("please wait...".tr);
-    await signInWithGoogle().then((value) async {
-      ShowToastDialog.closeLoader();
-      if (value != null) {
-        if (value.additionalUserInfo!.isNewUser) {
-          UserModel userModel = UserModel();
-          userModel.id = value.user!.uid;
-          userModel.email = value.user!.email;
-          userModel.firstName = value.user!.displayName?.split(' ').first;
-          userModel.lastName = value.user!.displayName?.split(' ').last;
-          userModel.provider = 'google';
+// Save ALL user data to SharedPreferences
+  Future<void> _saveUserToSharedPreferences(Map<String, dynamic> userData) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-          ShowToastDialog.closeLoader();
-          Get.off(const SignupScreen(), arguments: {
-            "userModel": userModel,
-            "type": "google",
-          });
-          log('\u001b[32mLoginScreen -> SignupScreen (Google)\u001b[0m');
-        } else {
-          await FireStoreUtils.userExistOrNot(value.user!.uid)
-              .then((userExit) async {
-            ShowToastDialog.closeLoader();
-            if (userExit == true) {
-              UserModel? userModel =
-                  await FireStoreUtils.getUserProfile(value.user!.uid);
-              if (userModel!.role == Constant.userRoleVendor) {
-                if (userModel.active == true) {
-                  userModel.fcmToken = await NotificationService.getToken();
-                  await FireStoreUtils.updateUser(userModel);
-                  Get.offAll(const DashBoardScreen());
-                } else {
-                  await FirebaseAuth.instance.signOut();
-                  ShowToastDialog.showToast(
-                      "This user is disable please contact to administrator"
-                          .tr);
-                }
-              } else {
-                await FirebaseAuth.instance.signOut();
-                // ShowToastDialog.showToast("This user is disable please contact to administrator".tr);
-              }
-            } else {
-              UserModel userModel = UserModel();
-              userModel.id = value.user!.uid;
-              userModel.email = value.user!.email;
-              userModel.firstName = value.user!.displayName?.split(' ').first;
-              userModel.lastName = value.user!.displayName?.split(' ').last;
-              userModel.provider = 'google';
+      // Save complete user data as JSON string
+      String userJson = json.encode(userData);
+      await prefs.setString('userData', userJson);
 
-              Get.off(const SignupScreen(), arguments: {
-                "userModel": userModel,
-                "type": "google",
-              });
-            }
-          });
-        }
+      // Save individual important fields for quick access
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('userId', userData['id']?.toString() ?? '');
+      await prefs.setString('firebase_id', userData['firebase_id'] ?? '');
+      await prefs.setString('userEmail', userData['email'] ?? '');
+      await prefs.setString('userPassword', userData['password'] ?? ''); // Save encrypted password
+      await prefs.setString('userRole', userData['role'] ?? '');
+      await prefs.setString('firstName', userData['firstName'] ?? '');
+      await prefs.setString('lastName', userData['lastName'] ?? '');
+      await prefs.setString('phoneNumber', userData['phoneNumber'] ?? '');
+      await prefs.setString('countryCode', userData['countryCode'] ?? '');
+      await prefs.setString('fcmToken', userData['fcmToken'] ?? '');
+      await prefs.setString('appIdentifier', userData['appIdentifier'] ?? '');
+      await prefs.setString('provider', userData['provider'] ?? '');
+      await prefs.setString('zoneId', userData['zoneId'] ?? '');
+
+      // Save boolean values
+      await prefs.setBool('isActive', userData['isActive'] ?? false);
+      await prefs.setString('isDocumentVerify', userData['isDocumentVerify']?.toString() ?? '');
+      await prefs.setInt('active', userData['active'] ?? 0);
+
+      // Save numeric values
+      await prefs.setDouble('wallet_amount', userData['wallet_amount'] ?? 0.0);
+      await prefs.setDouble('deliveryAmount', userData['deliveryAmount'] ?? 0.0);
+
+      // Save timestamps and other fields
+      if (userData['createdAt'] != null) {
+        await prefs.setString('createdAt', userData['createdAt'].toString());
       }
-    });
+
+      // Save car-related information
+      await prefs.setString('carName', userData['carName'] ?? '');
+      await prefs.setString('carNumber', userData['carNumber'] ?? '');
+      await prefs.setString('carPictureURL', userData['carPictureURL'] ?? '');
+
+      // Save location if available
+      if (userData['location'] != null) {
+        await prefs.setString('userLocation', json.encode(userData['location']));
+      }
+
+      // Save bank details if available
+      if (userData['userBankDetails'] != null) {
+        await prefs.setString('userBankDetails', json.encode(userData['userBankDetails']));
+      }
+
+      // Save subscription details
+      await prefs.setString('subscriptionPlanId', userData['subscriptionPlanId'] ?? '');
+      if (userData['subscriptionExpiryDate'] != null) {
+        await prefs.setString('subscriptionExpiryDate', userData['subscriptionExpiryDate'].toString());
+      }
+
+      print("✅ ALL user data saved to SharedPreferences successfully");
+      print("📱 Saved User ID: ${userData['id']}");
+      print("📧 Saved Email: ${userData['email']}");
+      print("🔑 Saved Firebase ID: ${userData['firebase_id']}");
+
+    } catch (e) {
+      print("❌ Error saving to SharedPreferences: $e");
+    }
   }
 
-  loginWithApple() async {
-    ShowToastDialog.showLoader("please wait...".tr);
-    await signInWithApple().then((value) async {
-      ShowToastDialog.closeLoader();
-      if (value != null) {
-        Map<String, dynamic> map = value;
-        AuthorizationCredentialAppleID appleCredential = map['appleCredential'];
-        UserCredential userCredential = map['userCredential'];
-        if (userCredential.additionalUserInfo!.isNewUser) {
-          UserModel userModel = UserModel();
-          userModel.id = userCredential.user!.uid;
-          userModel.email = appleCredential.email;
-          userModel.firstName = appleCredential.givenName;
-          userModel.lastName = appleCredential.familyName;
-          userModel.provider = 'apple';
+// Get user data from SharedPreferences
+  Future<UserModel?> getUserFromSharedPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? userJson = prefs.getString('userData');
 
-          ShowToastDialog.closeLoader();
-          Get.off(const SignupScreen(), arguments: {
-            "userModel": userModel,
-            "type": "apple",
-          });
-          log('\u001b[32mLoginScreen -> SignupScreen (Apple)\u001b[0m');
-        } else {
-          await FireStoreUtils.userExistOrNot(userCredential.user!.uid)
-              .then((userExit) async {
-            ShowToastDialog.closeLoader();
-            if (userExit == true) {
-              UserModel? userModel =
-                  await FireStoreUtils.getUserProfile(userCredential.user!.uid);
-              if (userModel!.role == Constant.userRoleVendor) {
-                if (userModel.active == true) {
-                  userModel.fcmToken = await NotificationService.getToken();
-                  await FireStoreUtils.updateUser(userModel);
-                  Get.offAll(const DashBoardScreen());
-                } else {
-                  await FirebaseAuth.instance.signOut();
-                  ShowToastDialog.showToast(
-                      "This user is disable please contact to administrator"
-                          .tr);
-                }
-              } else {
-                await FirebaseAuth.instance.signOut();
-                // ShowToastDialog.showToast("This user is disable please contact to administrator".tr);
-              }
-            } else {
-              UserModel userModel = UserModel();
-              userModel.id = userCredential.user!.uid;
-              userModel.email = appleCredential.email;
-              userModel.firstName = appleCredential.givenName;
-              userModel.lastName = appleCredential.familyName;
-              userModel.provider = 'apple';
-
-              Get.off(const SignupScreen(), arguments: {
-                "userModel": userModel,
-                "type": "apple",
-              });
-            }
-          });
-        }
+      if (userJson != null) {
+        final Map<String, dynamic> userData = json.decode(userJson);
+        return UserModel.fromJson(userData);
       }
-    });
+      return null;
+    } catch (e) {
+      print("Error reading from SharedPreferences: $e");
+      return null;
+    }
   }
+
+// Check if user is logged in
+  Future<bool> isUserLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('isLoggedIn') ?? false;
+  }
+
+// Get specific user data quickly
+//   Future<String> getUserId() async {
+//     final prefs = await SharedPreferences.getInstance();
+//     return prefs.getString('userId') ?? '';
+//   }
+
+  Future<String> getUserEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('userEmail') ?? '';
+  }
+
+ static Future<String> getFirebaseId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('firebase_id') ?? '';
+  }
+
+  Future<String> getUserPassword() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('userPassword') ?? '';
+  }
+
+// Logout - Clear all user data from SharedPreferences
+  static Future<void> logout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Remove all user-related data
+      await prefs.remove('userData');
+      await prefs.remove('isLoggedIn');
+      await prefs.remove('userId');
+      await prefs.remove('firebase_id');
+      await prefs.remove('userEmail');
+      await prefs.remove('userPassword');
+      await prefs.remove('userRole');
+      await prefs.remove('firstName');
+      await prefs.remove('lastName');
+      await prefs.remove('phoneNumber');
+      await prefs.remove('countryCode');
+      await prefs.remove('fcmToken');
+      await prefs.remove('appIdentifier');
+      await prefs.remove('provider');
+      await prefs.remove('zoneId');
+      await prefs.remove('isActive');
+      await prefs.remove('isDocumentVerify');
+      await prefs.remove('active');
+      await prefs.remove('wallet_amount');
+      await prefs.remove('deliveryAmount');
+      await prefs.remove('createdAt');
+      await prefs.remove('carName');
+      await prefs.remove('carNumber');
+      await prefs.remove('carPictureURL');
+      await prefs.remove('userLocation');
+      await prefs.remove('userBankDetails');
+      await prefs.remove('subscriptionPlanId');
+      await prefs.remove('subscriptionExpiryDate');
+      Get.offAll(const LoginScreen());
+      print("✅ All user data cleared from SharedPreferences");
+    } catch (e) {
+      print("❌ Error during logout: $e");
+    }
+  }
+  // loginWithEmailAndPassword() async {
+  //   ShowToastDialog.showLoader("Please wait.".tr);
+  //   try {
+  //     final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+  //       email: emailEditingController.value.text.trim(),
+  //       password: passwordEditingController.value.text.trim(),
+  //     );
+  //     UserModel? userModel =
+  //         await FireStoreUtils.getUserProfile(credential.user!.uid);
+  //     if (userModel?.role == Constant.userRoleDriver) {
+  //       if (userModel?.active == true) {
+  //         userModel?.fcmToken = await NotificationService.getToken();
+  //         await FireStoreUtils.updateUser(userModel!);
+  //         Get.offAll(const DashBoardScreen());
+  //         log('\u001b[32mLoginScreen -> DashBoardScreen\u001b[0m');
+  //       } else {
+  //         await FirebaseAuth.instance.signOut();
+  //         ShowToastDialog.showToast(
+  //             "This user is disable please contact to administrator".tr);
+  //       }
+  //     } else {
+  //       await FirebaseAuth.instance.signOut();
+  //       ShowToastDialog.showToast(
+  //           "This user is not created in driver application.".tr);
+  //     }
+  //   } on FirebaseAuthException catch (e) {
+  //     print(e.code);
+  //     if (e.code == 'user-not-found') {
+  //       ShowToastDialog.showToast("No user found for that email.".tr);
+  //     } else if (e.code == 'wrong-password') {
+  //       ShowToastDialog.showToast("Wrong password provided for that user.".tr);
+  //     } else if (e.code == 'invalid-email') {
+  //       ShowToastDialog.showToast("Invalid Email.".tr);
+  //     } else {
+  //       ShowToastDialog.showToast("${e.message}");
+  //     }
+  //   }
+  //   ShowToastDialog.closeLoader();
+  // }
+
+
 // ... other imports ...
 
 // 1. Get the singleton instance
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
 
-
-  Future<UserCredential?> signInWithGoogle() async {
-    try {
-      // Ensure initialization is done before calling other methods.
-      // In a real app, ensure this runs once before any sign-in attempts.
-      // await initializeGoogleSignIn();
-
-      // 2. Use the authenticate() method
-      final GoogleSignInAccount? googleUser = await _googleSignIn
-          .authenticate()
-          .catchError((error) {
-        // Handle errors during the Google Sign-In process (e.g., user cancellation, network issues)
-        ShowToastDialog.closeLoader();
-        // Use 'tr' for translation if you have a localization package
-        ShowToastDialog.showToast("Something went wrong with Google Sign-In.");
-        return null;
-      });
-
-      // If the user cancelled or sign-in failed before returning the user.
-      if (googleUser == null) {
-        return null;
-      }
-
-      // --- Firebase Authentication Flow ---
-
-      // Obtain the auth details (ID Token is mandatory for Firebase)
-      // NOTE: authentication is now synchronous in v7
-      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.idToken,
-        idToken: googleAuth.idToken, // This is crucial for Firebase
-      );
-
-      // Once signed in, return the UserCredential
-      return await FirebaseAuth.instance.signInWithCredential(credential);
-
-    } on GoogleSignInException catch (e) {
-      // This provides more structured error handling for Google Sign-In issues
-      debugPrint('Google Sign-In Error: ${e.code.name} - ${e.description}');
-    } catch (e) {
-      // General error handling
-      debugPrint(e.toString());
-    }
-    return null;
-  }
   // Future<UserCredential?> signInWithGoogle() async {
   //   try {
   //
@@ -287,40 +324,4 @@ class LoginController extends GetxController {
     return digest.toString();
   }
 
-  Future<Map<String, dynamic>?> signInWithApple() async {
-    try {
-      final rawNonce = generateNonce();
-      final nonce = sha256ofString(rawNonce);
-
-      // Request credential for the currently signed in Apple account.
-      AuthorizationCredentialAppleID appleCredential =
-          await SignInWithApple.getAppleIDCredential(
-        scopes: [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-        nonce: nonce,
-        // webAuthenticationOptions: WebAuthenticationOptions(clientId: clientID, redirectUri: Uri.parse(redirectURL)),
-      );
-
-      // Create an `OAuthCredential` from the credential returned by Apple.
-      final oauthCredential = OAuthProvider("apple.com").credential(
-        idToken: appleCredential.identityToken,
-        rawNonce: rawNonce,
-        accessToken: appleCredential.authorizationCode,
-      );
-
-      // Sign in the user with Firebase. If the nonce we generated earlier does
-      // not match the nonce in `appleCredential.identityToken`, sign in will fail.
-      UserCredential userCredential =
-          await FirebaseAuth.instance.signInWithCredential(oauthCredential);
-      return {
-        "appleCredential": appleCredential,
-        "userCredential": userCredential
-      };
-    } catch (e) {
-      debugPrint(e.toString());
-    }
-    return null;
-  }
 }

@@ -5,12 +5,12 @@ import 'package:jippydriver_driver/app/auth_screen/login_screen.dart';
 import 'package:jippydriver_driver/app/dash_board_screen/dash_board_screen.dart';
 import 'package:jippydriver_driver/app/on_boarding_screen.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:get/get.dart';
 
 class SplashController extends GetxController {
@@ -28,6 +28,7 @@ class SplashController extends GetxController {
   }
 
   redirectScreen() async {
+    String? userId = await LoginController.getFirebaseId();
     String fromScreen = 'SplashScreen';
     try {
       if (Preferences.getBoolean(Preferences.isFinishOnBoardingKey) == false) {
@@ -40,7 +41,7 @@ class SplashController extends GetxController {
         
         if (isLogin == true) {
           log(' [32m$fromScreen -> Getting user profile... [0m');
-          UserModel? userModel = await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid());
+          UserModel? userModel = await FireStoreUtils.getUserProfile(userId);
           
           if (userModel != null) {
             log(' [32m$fromScreen -> User profile loaded: ${userModel.toJson().toString()} [0m');
@@ -55,34 +56,26 @@ class SplashController extends GetxController {
                 Get.offAll(() => DashBoardScreen(userModel: userModel));
               } else {
                 log(' [32m$fromScreen -> User inactive, signing out... [0m');
-                await FirebaseAuth.instance.signOut();
-                log(' [32m$fromScreen -> LoginScreen (inactive) [0m');
-                Get.offAll(const LoginScreen());
+                LoginController.logout();
               }
             } else {
               log(' [32m$fromScreen -> User not a driver, signing out... [0m');
-              await FirebaseAuth.instance.signOut();
-              log(' [32m$fromScreen -> LoginScreen (not driver) [0m');
-              Get.offAll(const LoginScreen());
+              LoginController.logout();
             }
           } else {
             log(' [32m$fromScreen -> User profile null, signing out... [0m');
-            await FirebaseAuth.instance.signOut();
-            log(' [32m$fromScreen -> LoginScreen (no profile) [0m');
-            Get.offAll(const LoginScreen());
+            LoginController.logout();
           }
         } else {
           log(' [32m$fromScreen -> Not logged in, signing out... [0m');
-          await FirebaseAuth.instance.signOut();
-          log(' [32m$fromScreen -> LoginScreen (not logged in) [0m');
-          Get.offAll(const LoginScreen());
+          LoginController.logout();
         }
       }
     } catch (e) {
       log(' [31m$fromScreen -> Error in redirectScreen: $e [0m');
       // Fallback to login screen on any error
       try {
-        await FirebaseAuth.instance.signOut();
+        LoginController.logout();
       } catch (signOutError) {
         log(' [31m$fromScreen -> Error signing out: $signOutError [0m');
       }

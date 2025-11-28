@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/app/wallet_screen/screens/model/delivery_amount_model.dart';
 import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 
 import 'package:jippydriver_driver/models/user_model.dart';
@@ -166,10 +167,10 @@ class DeliveryAmountWalletController extends GetxController {
       dailyEarningList.clear();
       monthlyEarningList.clear();
       yearlyEarningList.clear();
-
+      String? userId = await LoginController.getFirebaseId();
       // Ensure user loaded
       if (Constant.userModel == null || Constant.userModel!.id == null) {
-        Constant.userModel = await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid());
+        Constant.userModel = await FireStoreUtils.getUserProfile(userId);
       }
 
       final driverId = Constant.userModel!.id.toString();
@@ -233,7 +234,7 @@ class DeliveryAmountWalletController extends GetxController {
 
       // === USER PROFILE ===
       userModel.value =
-          await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid()) ??
+          await FireStoreUtils.getUserProfile(userId) ??
               UserModel();
     } catch (e, st) {
       log("getWalletTransaction() failed: $e\n$st");

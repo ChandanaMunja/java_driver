@@ -71,7 +71,9 @@ class UserModel {
   }
 
   UserModel.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
+    if (json['id'] != null) {
+      id = json['id'].toString();
+    }
     email = json['email'];
     firstName = json['firstName'];
     lastName = json['lastName'];
@@ -82,9 +84,9 @@ class UserModel {
     walletAmount = json['wallet_amount'] ?? 0;
     deliveryAmount = json['deliveryAmount']??0;
     createdAt = json['createdAt'];
-    active = json['active'];
-    isActive = json['isActive'];
-    isDocumentVerify = json['isDocumentVerify'] ?? false;
+    active = json['active'] == 1 || json['active'] == true;
+    isActive = json['isActive'] == 1 || json['isActive'] == true;
+    isDocumentVerify = json['isDocumentVerify'] == "1" || json['isDocumentVerify'] == true || json['isDocumentVerify'] == 1;
     role = json['role'] ?? 'user';
     location = json['location'] != null
         ? UserLocation.fromJson(json['location'])

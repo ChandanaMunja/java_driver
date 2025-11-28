@@ -3,6 +3,7 @@ import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/app/home_screen/controller/home_controller.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
@@ -39,10 +40,11 @@ class DashBoardController extends GetxController {
   RxBool canPopNow = false.obs;
 
   getUser() async {
+    String? userId = await LoginController.getFirebaseId();
     await updateCurrentLocation();
     FireStoreUtils.fireStore
         .collection(CollectionName.users)
-        .doc(FireStoreUtils.getCurrentUid())
+        .doc(userId)
         .snapshots()
         .listen(
       (event) {
@@ -104,6 +106,7 @@ class DashBoardController extends GetxController {
 
   updateCurrentLocation() async {
     try {
+      String? userId = await LoginController.getFirebaseId();
       PermissionStatus permissionStatus = await location.hasPermission();
       if (permissionStatus == PermissionStatus.granted) {
         location.enableBackgroundMode(enable: true);
@@ -112,8 +115,9 @@ class DashBoardController extends GetxController {
             distanceFilter: double.parse(Constant.driverLocationUpdate));
 
         location.onLocationChanged.listen((locationData) async {
+          String? userId = await LoginController.getFirebaseId();
           Constant.locationDataFinal = locationData;
-          await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid())
+          await FireStoreUtils.getUserProfile(userId)
               .then((value) async {
             if (value != null) {
               userModel.value = value;
@@ -137,7 +141,7 @@ class DashBoardController extends GetxController {
             location.onLocationChanged.listen((locationData) async {
               Constant.locationDataFinal = locationData;
               await FireStoreUtils.getUserProfile(
-                      FireStoreUtils.getCurrentUid())
+                     userId)
                   .then((value) async {
                 if (value != null) {
                   userModel.value = value;

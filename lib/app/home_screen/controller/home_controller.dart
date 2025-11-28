@@ -7,6 +7,7 @@ import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/controllers/edit_profile_controller.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
@@ -549,11 +550,12 @@ if(arrowDrop.value){
     }
   }
 
-  getDriver() {
+  getDriver() async{
+    String? userId = await LoginController.getFirebaseId();
     AppLogger.log('getDriver() called', tag: 'Function');
     FireStoreUtils.fireStore
         .collection(CollectionName.users)
-        .doc(FireStoreUtils.getCurrentUid())
+        .doc(userId)
         .snapshots()
         .listen(
           (event) async {
@@ -947,10 +949,11 @@ if(arrowDrop.value){
     AppLogger.log('refreshHomeScreen() called', tag: 'Function');
 
     try {
+      String? userId = await LoginController.getFirebaseId();
       // Refresh driver data
       final driverDoc = await FireStoreUtils.fireStore
           .collection(CollectionName.users)
-          .doc(FireStoreUtils.getCurrentUid())
+          .doc(userId)
           .get();
 
       if (driverDoc.exists) {

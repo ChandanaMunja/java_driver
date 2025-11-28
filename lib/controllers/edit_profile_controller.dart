@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/models/zone_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
@@ -37,7 +38,8 @@ class EditProfileController extends GetxController {
         zoneList.value = value;
       }
     });
-    await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid())
+    String? userId = await LoginController.getFirebaseId();
+    await FireStoreUtils.getUserProfile(userId)
         .then((value) {
       if (value != null) {
         userModel.value = value;

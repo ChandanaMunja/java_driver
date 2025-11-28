@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 
@@ -44,7 +45,8 @@ class BankDetailsController extends GetxController {
   }
 
   getCurrentUser() async {
-    await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid()).then(
+    String? userId = await LoginController.getFirebaseId();
+    await FireStoreUtils.getUserProfile(userId).then(
       (value) {
         if (value != null) {
           userModel.value = value;

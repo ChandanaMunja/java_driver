@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/payment_model/mid_trans.dart';
 import 'package:jippydriver_driver/models/payment_model/orange_money.dart';
@@ -211,8 +212,8 @@ class WalletController extends GetxController {
     }).catchError((error) {
       log(error.toString());
     });
-
-    await FireStoreUtils.getUserProfile(FireStoreUtils.getCurrentUid()).then(
+    String? userId = await LoginController.getFirebaseId();
+    await FireStoreUtils.getUserProfile(userId).then(
       (value) {
         if (value != null) {
           userModel.value = value;
@@ -305,6 +306,7 @@ class WalletController extends GetxController {
       return;
     }
     */
+    String? userId = await LoginController.getFirebaseId();
     print('💰 [Wallet Controller] ✅ Proceeding with wallet top-up...');
     WalletTransactionModel transactionModel = WalletTransactionModel(
         id: Constant.getUuid(),
@@ -312,7 +314,7 @@ class WalletController extends GetxController {
         date: Timestamp.now(),
         paymentMethod: selectedPaymentMethod.value,
         transactionUser: "user",
-        userId: FireStoreUtils.getCurrentUid(),
+        userId:userId,
         isTopup: true,
         note: "Wallet Top-up",
         paymentStatus: "success");
@@ -320,9 +322,10 @@ class WalletController extends GetxController {
     await FireStoreUtils.setWalletTransaction(transactionModel)
         .then((value) async {
       if (value == true) {
+        String? userId = await LoginController.getFirebaseId();
         await FireStoreUtils.updateUserWallet(
                 amount: topUpAmountController.value.text,
-                userId: FireStoreUtils.getCurrentUid())
+                userId:userId)
             .then((value) {
           getWalletTransaction();
           Get.back();
@@ -370,10 +373,11 @@ class WalletController extends GetxController {
 
     await FireStoreUtils.setDriverWalletRecord(transactionModel)
         .then((value) async {
+      String? userId = await LoginController.getFirebaseId();
       if (value == true) {
         await FireStoreUtils.updateUserDeliveryAmount(
             amount: driverRecordAmountController.value.text,
-            userId: FireStoreUtils.getCurrentUid())
+            userId:userId)
             .then((value) {
           getWalletTransaction();
           Get.back();

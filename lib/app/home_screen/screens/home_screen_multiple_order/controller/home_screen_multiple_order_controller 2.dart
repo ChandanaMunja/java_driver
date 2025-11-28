@@ -8,6 +8,8 @@ import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:get/get.dart';
 
+import '../../../../../controllers/login_controller.dart';
+
 class HomeScreenMultipleOrderController extends GetxController {
   Rx<UserModel> driverModel = Constant.userModel!.obs;
   RxBool isLoading = true.obs;
@@ -24,9 +26,10 @@ class HomeScreenMultipleOrderController extends GetxController {
   }
 
   getDriver() async {
+    String? userId = await LoginController.getFirebaseId();
     FireStoreUtils.fireStore
         .collection(CollectionName.users)
-        .doc(FireStoreUtils.getCurrentUid())
+        .doc(userId)
         .snapshots()
         .listen(
           (event) async {
