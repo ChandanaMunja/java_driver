@@ -370,7 +370,6 @@ class WalletController extends GetxController {
       "bonusAmount":bonusAmount,
     };
     print(" transactionModel ${transactionModel}");
-
     await FireStoreUtils.setDriverWalletRecord(transactionModel)
         .then((value) async {
       String? userId = await LoginController.getFirebaseId();

@@ -28,24 +28,19 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl = "http://192.168.0.101:8000/api/";
+  static String baseUrl = "http://192.168.0.126:8000/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
-
   static ShippingAddress selectedLocation = ShippingAddress();
   static LocationData? locationDataFinal;
-
   static UserModel? userModel;
   static const globalUrl = "https://foodie.siswebapp.com/";
-
   static bool singleOrderReceive = false;
   static String driverLocationUpdate = '50';
   static String minimumDepositToRideAccept = '-1000.0'; // Allow negative balance up to -1000
   static String minimumAmountToWithdrawal = '0.0';
-
   static bool isDriverVerification = false;
-
   static ZoneModel? selectedZone;
 
   static String mapAPIKey = "";

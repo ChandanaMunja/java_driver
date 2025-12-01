@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/app/chat_screens/ChatVideoContainer.dart';
 import 'package:jippydriver_driver/app/wallet_screen/screens/model/delivery_amount_model.dart';
@@ -107,11 +106,20 @@ class FireStoreUtils {
         log("getUserProfile timeout");
         throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
       });
+      print("getUserProfile ${Constant.baseUrl}users/$uuid ");
+      print("getUserProfile ${response.body} ");
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-        userModel = UserModel.fromJson(data);
+
+        // Check if the API call was successful and extract the user data
+        if (data['success'] == true && data['data'] != null) {
+          userModel = UserModel.fromJson(data['data']); // Pass only the 'data' part
+        } else {
+          log("API returned success=false or null data");
+          userModel = null;
+        }
       } else if (response.statusCode == 404) {
-        // User not found
         userModel = null;
       } else {
         log("Failed to get user profile: ${response.statusCode} - ${response.body}");
@@ -126,30 +134,7 @@ class FireStoreUtils {
     }
     return userModel;
   }
-  // static Future<UserModel?> getUserProfile(String uuid) async {
-  //   UserModel? userModel;
-  //   try {
-  //     await fireStore
-  //         .collection(CollectionName.users)
-  //         .doc(uuid)
-  //         .get()
-  //         .timeout(const Duration(seconds: 10), onTimeout: () {
-  //       log("getUserProfile timeout");
-  //       throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
-  //     }).then((value) {
-  //       if (value.exists) {
-  //         userModel = UserModel.fromJson(value.data()!);
-  //       }
-  //     }).catchError((error) {
-  //       log("Failed to get user profile: $error");
-  //       userModel = null;
-  //     });
-  //   } catch (e) {
-  //     log("getUserProfile error: $e");
-  //     userModel = null;
-  //   }
-  //   return userModel;
-  // }
+
   static Future<bool?> updateUserWallet({
     required String amount,
     required String userId
@@ -175,7 +160,6 @@ class FireStoreUtils {
         return false;
       }
     } catch (e) {
-      // Handle network or parsing errors
       print('Error updating wallet: $e');
       return false;
     }
@@ -196,21 +180,33 @@ class FireStoreUtils {
     });
     return isAdded;
   }
-
   static Future<bool> updateUser(UserModel userModel) async {
-    bool isUpdate = false;
-    await fireStore
-        .collection(CollectionName.users)
-        .doc(userModel.id)
-        .set(userModel.toJson())
-        .whenComplete(() {
-      Constant.userModel = userModel;
-      isUpdate = true;
-    }).catchError((error) {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/users/update'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(userModel.toJson()),
+      );
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          Constant.userModel = userModel;
+          log("User updated successfully: ${responseData['message']}");
+          return true;
+        } else {
+          log("Failed to update user: ${responseData['message'] ?? 'Unknown error'}");
+          return false;
+        }
+      } else {
+        log("Failed to update user: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } catch (error) {
       log("Failed to update user: $error");
-      isUpdate = false;
-    });
-    return isUpdate;
+      return false;
+    }
   }
   static Future<List<OnBoardingModel>> getOnBoardingList() async {
     try {
@@ -243,15 +239,11 @@ class FireStoreUtils {
   }
   static Future<List<VendorModel>> getVendors() async {
     List<VendorModel> vendorList = [];
-
     try {
-      // Check if zone is selected
       if (Constant.selectedZone == null) {
-
         debugPrint('No zone selected');
         return vendorList;
       }
-
       final String zoneId = Constant.selectedZone!.id.toString();
       final response = await http.get(
         Uri.parse('${Constant.baseUrl}driver-sql/vendors?zone_id=$zoneId'),
@@ -288,49 +280,74 @@ class FireStoreUtils {
 
   static Future<bool?> setWalletTransaction(
       WalletTransactionModel walletTransactionModel) async {
-    bool isAdded = false;
-    await fireStore
-        .collection(CollectionName.wallet)
-        .doc(walletTransactionModel.id)
-        .set(walletTransactionModel.toJson())
-        .then((value) {
-      isAdded = true;
-    }).catchError((error) {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver/wallet/transaction'),
+        headers: {
+          'Content-Type': 'application/json',
+          // Add any other required headers like authorization
+        },
+        body: jsonEncode(walletTransactionModel.toJson()),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        log("Wallet transaction added successfully");
+        return true;
+      } else {
+        log("Failed to add wallet transaction: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } catch (error) {
       log("Failed to update user: $error");
-      isAdded = false;
-    });
-    return isAdded;
+      return false;
+    }
   }
   static Future<bool?> setDriverWalletRecord(
       Map<String, dynamic> driverWalletTransaction) async {
-    bool isAdded = false;
-    print(" transactionModel id ${driverWalletTransaction['id']}");
-    await fireStore
-        .collection(CollectionName.deliveryWalletRecord)
-        .doc(driverWalletTransaction['id'])
-        .set(driverWalletTransaction)
-        .then((value) {
-      isAdded = true;
-    }).catchError((error) {
-      log("Failed to update user: $error");
-      isAdded = false;
-    });
-    return isAdded;
+    try {
+      print("transactionModel id ${driverWalletTransaction['id']}");
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver/wallet/withdraw-method'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(driverWalletTransaction),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print("Driver wallet record added successfully");
+        return true;
+      } else {
+        // Handle different error status codes
+        print("Failed to add driver wallet record: ${response.statusCode}");
+        return false;
+      }
+    } catch (error) {
+      print("Failed to update user: $error");
+      return false;
+    }
   }
   Future<Map<String, dynamic>> getDriverCharges() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(CollectionName.settings)
-          .doc("driver_total_charges")
-          .get();
-      if (doc.exists) {
-        final data = doc.data();
-        return {
-          "pickup_charges": data?["pickup_charges"] ?? "0",
-          "user_delivery_charge": data?["user_delivery_charge"] ?? "0",
-        };
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/charges'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+
+        if (jsonResponse["success"] == true) {
+          final data = jsonResponse["data"];
+          return {
+            "pickup_charges": data["pickup_charges"] ?? "0",
+            "user_delivery_charge": data["user_delivery_charge"] ?? "0",
+          };
+        } else {
+          throw Exception("API returned unsuccessful response");
+        }
       } else {
-        throw Exception("driver_total_charges document not found");
+        throw Exception("HTTP request failed with status: ${response.statusCode}");
       }
     } catch (e) {
       print("❌ Error fetching driver charges: $e");
@@ -340,406 +357,419 @@ class FireStoreUtils {
 
   getSettings() async {
     try {
-      await FirebaseFirestore.instance
-          .collection(CollectionName.settings)
-          .doc("globalSettings")
-          .get()
-          .timeout(const Duration(seconds: 15), onTimeout: () {
-        log("getSettings timeout for globalSettings");
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/settings'),
+      ).timeout(const Duration(seconds: 15), onTimeout: () {
+        log("getSettings timeout for API call");
         throw TimeoutException('getSettings timeout', const Duration(seconds: 15));
-      }).then((value) async {
-        if (value.exists && value.data() != null) {
-          Constant.orderRingtoneUrl = value.data()?['order_ringtone_url'] ?? '';
-          Constant.isSelfDeliveryFeature =
-              value.data()!['isSelfDelivery'] ?? false;
-          Preferences.setString(
-              Preferences.orderRingtone, Constant.orderRingtoneUrl);
-          AppThemeData.driverApp300 = Color(int.parse(
-              value.data()!['app_driver_color'].replaceFirst("#", "0xff")));
+      });
 
-          if (Constant.orderRingtoneUrl.isNotEmpty) {
-            await AudioPlayerService.initAudio();
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true) {
+          final data = jsonResponse['data'];
+          // Process globalSettings
+          final globalSettings = data['globalSettings'];
+          if (globalSettings != null) {
+            Constant.orderRingtoneUrl = globalSettings['order_ringtone_url'] ?? '';
+            Constant.isSelfDeliveryFeature = globalSettings['isSelfDelivery'] ?? false;
+            Preferences.setString(Preferences.orderRingtone, Constant.orderRingtoneUrl);
+
+            final appDriverColor = globalSettings['app_driver_color'];
+            if (appDriverColor != null) {
+              AppThemeData.driverApp300 = Color(int.parse(appDriverColor.replaceFirst("#", "0xff")));
+            }
+
+            if (Constant.orderRingtoneUrl.isNotEmpty) {
+              await AudioPlayerService.initAudio();
+            }
           }
+
+          // Process googleMapKey
+          final googleMapKey = data['googleMapKey'];
+          if (googleMapKey != null) {
+            Constant.mapAPIKey = googleMapKey["key"] ?? '';
+          }
+
+          // Process notification_setting
+          final notificationSetting = data['notification_setting'];
+          if (notificationSetting != null) {
+            Constant.senderId = notificationSetting["projectId"] ?? '';
+            Constant.jsonNotificationFileURL = notificationSetting["serviceJson"] ?? '';
+          }
+          final restaurantNearBy = data['RestaurantNearBy'];
+          if (restaurantNearBy != null) {
+            Constant.distanceType = restaurantNearBy["distanceType"] ?? '';
+          }
+          // Process privacyPolicy
+          final privacyPolicy = data['privacyPolicy'];
+          if (privacyPolicy != null) {
+            Constant.privacyPolicy = privacyPolicy["privacy_policy"] ?? '';
+          }
+          // Process termsAndConditions
+          final termsAndConditions = data['termsAndConditions'];
+          if (termsAndConditions != null) {
+            Constant.termsAndConditions = termsAndConditions["termsAndConditions"] ?? '';
+          }
+          // Process Version
+          final version = data['Version'];
+          if (version != null) {
+            Constant.googlePlayLink = version["googlePlayLink"] ?? '';
+            Constant.appStoreLink = version["appStoreLink"] ?? '';
+            Constant.appVersion = version["app_version"] ?? '';
+          }
+          // Process referral_amount
+          final referralAmount = data['referral_amount'];
+          if (referralAmount != null) {
+            Constant.referralAmount = referralAmount['referralAmount']?.toString() ?? '';
+          }
+
+          // Process emailSetting
+          final emailSetting = data['emailSetting'];
+          if (emailSetting != null) {
+            Constant.mailSettings = MailSettings.fromJson(emailSetting);
+          }
+          // Process placeHolderImage
+          final placeHolderImage = data['placeHolderImage'];
+          if (placeHolderImage != null) {
+            Constant.placeHolderImage = placeHolderImage['image'] ?? '';
+          }
+          // Process document_verification_settings
+          final docVerification = data['document_verification_settings'];
+          if (docVerification != null) {
+            Constant.isDriverVerification = docVerification['isDriverVerification'] ?? false;
+          }
+          // Process DriverNearBy
+          final driverNearBy = data['DriverNearBy'];
+          if (driverNearBy != null) {
+            Constant.minimumDepositToRideAccept = driverNearBy['minimumDepositToRideAccept']?.toString() ?? '';
+            Constant.minimumAmountToWithdrawal = driverNearBy['minimumAmountToWithdrawal']?.toString() ?? '';
+            Constant.driverLocationUpdate = driverNearBy['driverLocationUpdate']?.toString() ?? '';
+            Constant.singleOrderReceive = driverNearBy['singleOrderReceive'] ?? false;
+            Constant.selectedMapType = driverNearBy["selectedMapType"] ?? '';
+            Constant.mapType = driverNearBy["mapType"] ?? '';
+            Constant.autoApproveDriver = driverNearBy["auto_approve_driver"] ?? false;
+            log("Constant.singleOrderReceive :: ${Constant.singleOrderReceive}");
+          }
+        } else {
+          log('API returned success: false');
         }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("googleMapKey")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.mapAPIKey = event.data()!["key"];
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("notification_setting")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.senderId = event.data()?["projectId"];
-          Constant.jsonNotificationFileURL = event.data()?["serviceJson"];
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("RestaurantNearBy")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.distanceType = event.data()!["distanceType"];
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("privacyPolicy")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.privacyPolicy = event.data()!["privacy_policy"];
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("termsAndConditions")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.termsAndConditions = event.data()!["termsAndConditions"];
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc("Version")
-          .snapshots()
-          .listen((event) {
-        if (event.exists) {
-          Constant.googlePlayLink = event.data()!["googlePlayLink"] ?? '';
-          Constant.appStoreLink = event.data()!["appStoreLink"] ?? '';
-          Constant.appVersion = event.data()!["app_version"] ?? '';
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc('referral_amount')
-          .get()
-          .then((value) {
-        Constant.referralAmount = value.data()!['referralAmount'];
-      });
-
-      FirebaseFirestore.instance
-          .collection(CollectionName.settings)
-          .doc("emailSetting")
-          .get()
-          .then((value) {
-        if (value.exists) {
-          Constant.mailSettings = MailSettings.fromJson(value.data()!);
-        }
-      });
-
-      fireStore
-          .collection(CollectionName.settings)
-          .doc('placeHolderImage')
-          .get()
-          .then((value) {
-        Constant.placeHolderImage = value.data()!['image'];
-      });
-
-      await FirebaseFirestore.instance
-          .collection(CollectionName.settings)
-          .doc("document_verification_settings")
-          .get()
-          .then((value) {
-        Constant.isDriverVerification = value.data()!['isDriverVerification'];
-      });
-
-      await FirebaseFirestore.instance
-          .collection(CollectionName.settings)
-          .doc("DriverNearBy")
-          .get()
-          .then((value) {
-        Constant.minimumDepositToRideAccept =
-            value.data()!['minimumDepositToRideAccept'];
-        Constant.minimumAmountToWithdrawal =
-            value.data()!['minimumAmountToWithdrawal'];
-        Constant.driverLocationUpdate = value.data()!['driverLocationUpdate'];
-        Constant.singleOrderReceive = value.data()!['singleOrderReceive'];
-        Constant.selectedMapType = value.data()!["selectedMapType"];
-        Constant.mapType = value.data()!["mapType"];
-        Constant.autoApproveDriver = value.data()!["auto_approve_driver"];
-        log("Constant.singleOrderReceive :: ${Constant.singleOrderReceive}");
-      });
+      } else {
+        log('HTTP error: ${response.statusCode}');
+      }
     } catch (e) {
       log(e.toString());
     }
   }
 
   static Future<List<ZoneModel>?> getZone() async {
-    List<ZoneModel> airPortList = [];
-    await fireStore
-        .collection(CollectionName.zone)
-        .where('publish', isEqualTo: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        ZoneModel ariPortModel = ZoneModel.fromJson(element.data());
-        airPortList.add(ariPortModel);
+    List<ZoneModel> zoneList = [];
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}restaurant/zones'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+
+        // Assuming the API returns a list directly or wrapped in a 'data' field
+        List<dynamic> zonesData = responseData['data'] ?? responseData;
+
+        for (var element in zonesData) {
+          // Filter for published zones if needed (equivalent to where('publish', isEqualTo: true))
+          if (element['publish'] == true) {
+            ZoneModel zoneModel = ZoneModel.fromJson(element);
+            zoneList.add(zoneModel);
+          }
+        }
+      } else {
+        throw Exception('Failed to load zones: ${response.statusCode}');
       }
-    }).catchError((error) {
-      log(error.toString());
-    });
-    return airPortList;
+    } catch (e, s) {
+      log('APIUtils.getZone $e $s');
+      return null;
+    }
+    return zoneList;
   }
 
   static Future<List<WalletTransactionModel>?> getWalletTransaction() async {
-    List<WalletTransactionModel> walletTransactionList = [];
-    await fireStore
-        .collection(CollectionName.wallet)
-        .where('user_id', isEqualTo: FireStoreUtils.getCurrentUid())
-        .orderBy('date', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        WalletTransactionModel walletTransactionModel =
-            WalletTransactionModel.fromJson(element.data());
-        walletTransactionList.add(walletTransactionModel);
+    try {
+      final String driverId = await FireStoreUtils.getCurrentUid();
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/transactions?driver_id=$driverId'),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true) {
+          List<WalletTransactionModel> walletTransactionList = [];
+
+          final data = jsonResponse['data'];
+          if (data is List) {
+            for (var element in data) {
+              WalletTransactionModel walletTransactionModel =
+              WalletTransactionModel.fromJson(element);
+              walletTransactionList.add(walletTransactionModel);
+            }
+          }
+
+          // Sort by date in descending order with null safety
+          walletTransactionList.sort((a, b) {
+            // Handle null dates - consider null as the earliest possible date
+            if (a.date == null && b.date == null) return 0;
+            if (a.date == null) return 1; // Put null dates at the end
+            if (b.date == null) return -1; // Put null dates at the end
+            return b.date!.compareTo(a.date!); // Both dates are non-null
+          });
+
+          return walletTransactionList;
+        } else {
+          log('API returned success: false');
+          return null;
+        }
+      } else {
+        log('HTTP error: ${response.statusCode}');
+        return null;
       }
-    }).catchError((error) {
+    } catch (error) {
       log(error.toString());
-    });
-    return walletTransactionList;
+      return null;
+    }
   }
+
+
   static Future<List<DriverAmountWalletTransactionModel>?> getDriverAmountWalletTransaction() async {
     List<DriverAmountWalletTransactionModel> driverAmountWalletTransactionModelList = [];
-    await fireStore
-        .collection(CollectionName.deliveryWalletRecord)
-        .where('driverId', isEqualTo: FireStoreUtils.getCurrentUid())
-        .orderBy('date', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        DriverAmountWalletTransactionModel driverAmountWalletTransactionModel =
-        DriverAmountWalletTransactionModel.fromJson(element.data());
-        driverAmountWalletTransactionModelList.add(driverAmountWalletTransactionModel);
+
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/delivery-records?driver_id=${FireStoreUtils.getCurrentUid()}'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        // Assuming the API returns a list of transactions
+        if (responseData is List) {
+          for (var element in responseData) {
+            DriverAmountWalletTransactionModel driverAmountWalletTransactionModel =
+            DriverAmountWalletTransactionModel.fromJson(element);
+            driverAmountWalletTransactionModelList.add(driverAmountWalletTransactionModel);
+          }
+        }
+        // If the API returns an object with a data field containing the list
+        else if (responseData is Map && responseData['data'] is List) {
+          for (var element in responseData['data']) {
+            DriverAmountWalletTransactionModel driverAmountWalletTransactionModel =
+            DriverAmountWalletTransactionModel.fromJson(element);
+            driverAmountWalletTransactionModelList.add(driverAmountWalletTransactionModel);
+          }
+        }
+
+        // Sort by date descending with null safety
+        driverAmountWalletTransactionModelList.sort((a, b) {
+          final dateA = a.date;
+          final dateB = b.date;
+
+          // Handle null cases - put nulls at the end
+          if (dateA == null && dateB == null) return 0;
+          if (dateA == null) return 1;
+          if (dateB == null) return -1;
+
+          return dateB.compareTo(dateA);
+        });
+
+      } else {
+        log("getDriverAmountWalletTransaction API error: ${response.statusCode} - ${response.body}");
+        return null;
       }
-    }).catchError((error) {
+    } catch (error) {
       log("getDriverAmountWalletTransaction ${error.toString()}");
-    });
+      return null;
+    }
+
     return driverAmountWalletTransactionModelList;
   }
 
   static Future getPaymentSettingsData() async {
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("payFastSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        PayFastModel payFastModel = PayFastModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.payFastSettings, jsonEncode(payFastModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("MercadoPago")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        MercadoPagoModel mercadoPagoModel =
-            MercadoPagoModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.mercadoPago, jsonEncode(mercadoPagoModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("paypalSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        PayPalModel payPalModel = PayPalModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.paypalSettings, jsonEncode(payPalModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("stripeSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        StripeModel stripeModel = StripeModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.stripeSettings, jsonEncode(stripeModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("flutterWave")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        FlutterWaveModel flutterWaveModel =
-            FlutterWaveModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.flutterWave, jsonEncode(flutterWaveModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("payStack")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        PayStackModel payStackModel = PayStackModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.payStack, jsonEncode(payStackModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("PaytmSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        PaytmModel paytmModel = PaytmModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.paytmSettings, jsonEncode(paytmModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("walletSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        WalletSettingModel walletSettingModel =
-            WalletSettingModel.fromJson(value.data()!);
-        await Preferences.setString(Preferences.walletSettings,
-            jsonEncode(walletSettingModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("razorpaySettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        RazorPayModel razorPayModel = RazorPayModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.razorpaySettings, jsonEncode(razorPayModel.toJson()));
-      }
-    });
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("CODSettings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        CodSettingModel codSettingModel =
-            CodSettingModel.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.codSettings, jsonEncode(codSettingModel.toJson()));
-      }
-    });
-
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("midtrans_settings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        MidTrans midTrans = MidTrans.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.midTransSettings, jsonEncode(midTrans.toJson()));
-      }
-    });
-
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("orange_money_settings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        OrangeMoney orangeMoney = OrangeMoney.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.orangeMoneySettings, jsonEncode(orangeMoney.toJson()));
-      }
-    });
-
-    await fireStore
-        .collection(CollectionName.settings)
-        .doc("xendit_settings")
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        Xendit xendit = Xendit.fromJson(value.data()!);
-        await Preferences.setString(
-            Preferences.xenditSettings, jsonEncode(xendit.toJson()));
-      }
-    });
-  }
-
-  static Future<VendorModel?> getVendorById(String vendorId) async {
-    VendorModel? vendorModel;
     try {
-      await fireStore
-          .collection(CollectionName.vendors)
-          .doc(vendorId)
-          .get()
-          .then((value) {
-        if (value.exists) {
-          vendorModel = VendorModel.fromJson(value.data()!);
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}settings/payment'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+
+        if (responseData['success'] == true) {
+          final Map<String, dynamic> paymentData = responseData['data'];
+
+          // Process each payment method
+          if (paymentData['payFastSettings'] != null) {
+            PayFastModel payFastModel = PayFastModel.fromJson(paymentData['payFastSettings']);
+            await Preferences.setString(
+                Preferences.payFastSettings,
+                jsonEncode(payFastModel.toJson())
+            );
+          }
+
+          if (paymentData['MercadoPago'] != null) {
+            MercadoPagoModel mercadoPagoModel = MercadoPagoModel.fromJson(paymentData['MercadoPago']);
+            await Preferences.setString(
+                Preferences.mercadoPago,
+                jsonEncode(mercadoPagoModel.toJson())
+            );
+          }
+
+          if (paymentData['paypalSettings'] != null) {
+            PayPalModel payPalModel = PayPalModel.fromJson(paymentData['paypalSettings']);
+            await Preferences.setString(
+                Preferences.paypalSettings,
+                jsonEncode(payPalModel.toJson())
+            );
+          }
+
+          if (paymentData['stripeSettings'] != null) {
+            StripeModel stripeModel = StripeModel.fromJson(paymentData['stripeSettings']);
+            await Preferences.setString(
+                Preferences.stripeSettings,
+                jsonEncode(stripeModel.toJson())
+            );
+          }
+
+          if (paymentData['flutterWave'] != null) {
+            FlutterWaveModel flutterWaveModel = FlutterWaveModel.fromJson(paymentData['flutterWave']);
+            await Preferences.setString(
+                Preferences.flutterWave,
+                jsonEncode(flutterWaveModel.toJson())
+            );
+          }
+
+          if (paymentData['payStack'] != null) {
+            PayStackModel payStackModel = PayStackModel.fromJson(paymentData['payStack']);
+            await Preferences.setString(
+                Preferences.payStack,
+                jsonEncode(payStackModel.toJson())
+            );
+          }
+
+          if (paymentData['PaytmSettings'] != null) {
+            PaytmModel paytmModel = PaytmModel.fromJson(paymentData['PaytmSettings']);
+            await Preferences.setString(
+                Preferences.paytmSettings,
+                jsonEncode(paytmModel.toJson())
+            );
+          }
+
+          if (paymentData['walletSettings'] != null) {
+            WalletSettingModel walletSettingModel = WalletSettingModel.fromJson(paymentData['walletSettings']);
+            await Preferences.setString(
+                Preferences.walletSettings,
+                jsonEncode(walletSettingModel.toJson())
+            );
+          }
+
+          if (paymentData['razorpaySettings'] != null) {
+            RazorPayModel razorPayModel = RazorPayModel.fromJson(paymentData['razorpaySettings']);
+            await Preferences.setString(
+                Preferences.razorpaySettings,
+                jsonEncode(razorPayModel.toJson())
+            );
+          }
+
+          if (paymentData['CODSettings'] != null) {
+            CodSettingModel codSettingModel = CodSettingModel.fromJson(paymentData['CODSettings']);
+            await Preferences.setString(
+                Preferences.codSettings,
+                jsonEncode(codSettingModel.toJson())
+            );
+          }
+
+          if (paymentData['midtrans_settings'] != null) {
+            MidTrans midTrans = MidTrans.fromJson(paymentData['midtrans_settings']);
+            await Preferences.setString(
+                Preferences.midTransSettings,
+                jsonEncode(midTrans.toJson())
+            );
+          }
+
+          if (paymentData['orange_money_settings'] != null) {
+            OrangeMoney orangeMoney = OrangeMoney.fromJson(paymentData['orange_money_settings']);
+            await Preferences.setString(
+                Preferences.orangeMoneySettings,
+                jsonEncode(orangeMoney.toJson())
+            );
+          }
+
+          if (paymentData['xendit_settings'] != null) {
+            Xendit xendit = Xendit.fromJson(paymentData['xendit_settings']);
+            await Preferences.setString(
+                Preferences.xenditSettings,
+                jsonEncode(xendit.toJson())
+            );
+          }
+        } else {
+          throw Exception('Failed to load payment settings: ${responseData['message']}');
         }
-      });
-    } catch (e, s) {
-      log('FireStoreUtils.firebaseCreateNewUser $e $s');
-      return null;
+      } else {
+        throw Exception('HTTP error ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      print('Error fetching payment settings: $e');
+      rethrow;
     }
-    return vendorModel;
   }
+
 
   static Future<OrderModel?> getOrderById(String orderId) async {
     OrderModel? orderModel;
     try {
-      await fireStore
-          .collection(CollectionName.restaurantOrders)
-          .doc(orderId)
-          .get()
-          .then((value) {
-        if (value.exists) {
-          orderModel = OrderModel.fromJson(value.data()!);
-        }
-      });
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}restaurant/orders/$orderId'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        orderModel = OrderModel.fromJson(responseData);
+      } else if (response.statusCode == 404) {
+        orderModel = null;
+      } else {
+        throw Exception('Failed to load order: ${response.statusCode}');
+      }
     } catch (e, s) {
-      log('FireStoreUtils.firebaseCreateNewUser $e $s');
+      log('APIUtils.getOrderById $e $s');
       return null;
     }
     return orderModel;
   }
-
   static Future<DeliveryCharge?> getDeliveryCharge() async {
     DeliveryCharge? deliveryCharge;
     try {
-      await fireStore
-          .collection(CollectionName.settings)
-          .doc("DeliveryCharge")
-          .get()
-          .then((value) {
-        if (value.exists) {
-          deliveryCharge = DeliveryCharge.fromJson(value.data()!);
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}restaurant/delivery-charge'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          deliveryCharge = DeliveryCharge.fromJson(responseData['data']);
         }
-      });
+      } else {
+        throw Exception('Failed to load delivery charge: ${response.statusCode}');
+      }
     } catch (e, s) {
-      log('FireStoreUtils.firebaseCreateNewUser $e $s');
+      log('APIUtils.getDeliveryCharge $e $s');
       return null;
     }
     return deliveryCharge;
@@ -747,59 +777,78 @@ class FireStoreUtils {
 
   static Future<List<TaxModel>?> getTaxList() async {
     List<TaxModel> taxList = [];
-    List<Placemark> placeMarks = await placemarkFromCoordinates(
-        Constant.selectedLocation.location?.latitude ?? 0.0,
-        Constant.selectedLocation.location?.longitude ?? 0.0);
-    await fireStore
-        .collection(CollectionName.tax)
-        .where('country', isEqualTo: placeMarks.first.country)
-        .where('enable', isEqualTo: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        TaxModel taxModel = TaxModel.fromJson(element.data());
-        taxList.add(taxModel);
+
+    try {
+      // Get location coordinates
+      List<Placemark> placeMarks = await placemarkFromCoordinates(
+          Constant.selectedLocation.location?.latitude ?? 0.0,
+          Constant.selectedLocation.location?.longitude ?? 0.0);
+
+      final String country = placeMarks.first.country ?? 'India';
+
+      // Make API call
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/tax?country=$country'),
+        headers: {
+          'Content-Type': 'application/json',
+          // Add any other required headers like authorization
+          // 'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+
+        // Assuming the API returns a list of tax records
+        if (responseData is List) {
+          for (var element in responseData) {
+            // Filter for enabled taxes on client side since API might not support it
+            if (element['enable'] == true) {
+              TaxModel taxModel = TaxModel.fromJson(element);
+              taxList.add(taxModel);
+            }
+          }
+        }
+        // If the API returns an object with a data field containing the list
+        else if (responseData is Map && responseData['data'] is List) {
+          for (var element in responseData['data']) {
+            // Filter for enabled taxes on client side
+            if (element['enable'] == true) {
+              TaxModel taxModel = TaxModel.fromJson(element);
+              taxList.add(taxModel);
+            }
+          }
+        }
+      } else {
+        log("getTaxList API error: ${response.statusCode} - ${response.body}");
+        return null;
       }
-    }).catchError((error) {
-      log(error.toString());
-    });
+    } catch (error) {
+      log("getTaxList error: ${error.toString()}");
+      return null;
+    }
 
     return taxList;
   }
-  // static Future<bool?> setOrder(OrderModel orderModel) async {
-  //   bool isAdded = false;
-  //   await fireStore
-  //       .collection(CollectionName.restaurantOrders)
-  //       .doc(orderModel.id)
-  //       .set(
-  //     orderModel.toJson(),
-  //     SetOptions(merge: true), // ✅ keeps existing fields
-  //   ).then((value) {
-  //     isAdded = true;
-  //   }).catchError((error) {
-  //     log("Failed to update order: $error");
-  //     isAdded = false;
-  //   });
-  //   return isAdded;
-  // }
+
   static Future<bool?> setOrder(OrderModel orderModel) async {
     bool isAdded = false;
-
     try {
-      // Convert to JSON and remove all null fields
       final Map<String, dynamic> data = orderModel.toJson()
         ..removeWhere((key, value) => value == null);
-
-      // Write to Firestore, merging with existing fields
-      await fireStore
-          .collection(CollectionName.restaurantOrders)
-          .doc(orderModel.id)
-          .set(
-        data,
-        SetOptions(merge: true),
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}restaurant/orders'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(data),
       );
-
-      isAdded = true;
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        isAdded = true;
+      } else {
+        log("🔥 Failed to update or set order: ${response.statusCode} - ${response.body}");
+        isAdded = false;
+      }
     } catch (error) {
       log("🔥 Failed to update or set order: $error");
       isAdded = false;
@@ -807,38 +856,38 @@ class FireStoreUtils {
 
     return isAdded;
   }
-  // static Future<bool?> setOrder(OrderModel orderModel) async {
-  //   bool isAdded = false;
-  //   await fireStore
-  //       .collection(CollectionName.restaurantOrders)
-  //       .doc(orderModel.id)
-  //       .set(orderModel.toJson())
-  //       .then((value) {
-  //     isAdded = true;
-  //   }).catchError((error) {
-  //     log("Failed to update user: $error");
-  //     isAdded = false;
-  //   });
-  //   return isAdded;
-  // }
 
   static Future<EmailTemplateModel?> getEmailTemplates(String type) async {
     EmailTemplateModel? emailTemplateModel;
-    await fireStore
-        .collection(CollectionName.emailTemplates)
-        .where('type', isEqualTo: type)
-        .get()
-        .then((value) {
-      print("------>");
-      if (value.docs.isNotEmpty) {
-        print(value.docs.first.data());
-        emailTemplateModel =
-            EmailTemplateModel.fromJson(value.docs.first.data());
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}restaurant/email-templates/$type'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        final dynamic templateData = responseData['data'] ?? responseData;
+        print("------>");
+        print(templateData);
+        if (templateData != null) {
+          emailTemplateModel = EmailTemplateModel.fromJson(templateData);
+        }
+      } else if (response.statusCode == 404) {
+        // Email template not found
+        print("------>");
+        print("Email template not found for type: $type");
+        emailTemplateModel = null;
+      } else {
+        throw Exception('Failed to load email template: ${response.statusCode}');
       }
-    });
+    } catch (e, s) {
+      log('APIUtils.getEmailTemplates $e $s');
+      return null;
+    }
     return emailTemplateModel;
   }
-
   static updateWallateAmount(OrderModel orderModel) async {
     double subTotal = 0.0;
     double specialDiscount = 0.0;
@@ -873,7 +922,6 @@ class FireStoreUtils {
         (subTotal / (1 + (double.parse(orderModel.adminCommission!) / 100))) -
             double.parse(orderModel.discount.toString()) -
             specialDiscount;
-
     if (orderModel.taxSetting != null) {
       for (var element in orderModel.taxSetting!) {
         taxAmount = taxAmount +
@@ -937,144 +985,257 @@ class FireStoreUtils {
         recipients: [Constant.userModel?.email ?? '']);
   }
 
+  static Future<List<Map<String, dynamic>>> getVendorProducts(String id) async {
+    final url = "${Constant.baseUrl}restaurant/vendors/$id";
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      /// Assuming API returns:
+      /// {
+      ///   "success": true,
+      ///   "data": [ { product1 }, { product2 } ]
+      /// }
+      return List<Map<String, dynamic>>.from(data["data"]);
+    } else {
+      throw Exception("Failed to load vendor products");
+    }
+  }
+
+ static Future<List<Map<String, dynamic>>> getVendorCategories() async {
+    final url = "${Constant.baseUrl}restaurant/vendor-categories";
+
+    final response = await http.get(Uri.parse(url));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      /// Expected API format:
+      /// {
+      ///   "success": true,
+      ///   "data": [ {...}, {...} ]
+      /// }
+      return List<Map<String, dynamic>>.from(data["data"]);
+    } else {
+      throw Exception("Failed to load vendor categories");
+    }
+  }
+
   static Future<List> getVendorCuisines(String id) async {
     List tagList = [];
     List prodTagList = [];
-    QuerySnapshot<Map<String, dynamic>> productsQuery = await fireStore
-        .collection(CollectionName.vendorProducts)
-        .where('vendorID', isEqualTo: id)
-        .get();
-    await Future.forEach(productsQuery.docs,
-        (QueryDocumentSnapshot<Map<String, dynamic>> document) {
-      if (document.data().containsKey("categoryID") &&
-          document.data()['categoryID'].toString().isNotEmpty) {
-        prodTagList.add(document.data()['categoryID']);
+    List<Map<String, dynamic>> productsQuery = await getVendorProducts(id);
+    for (var document in productsQuery) {
+      if (document.containsKey("categoryID") &&
+          document['categoryID'].toString().isNotEmpty) {
+        prodTagList.add(document['categoryID']);
       }
-    });
-    QuerySnapshot<Map<String, dynamic>> catQuery = await fireStore
-        .collection(CollectionName.vendorCategories)
-        .where('publish', isEqualTo: true)
-        .get();
-    await Future.forEach(catQuery.docs,
-        (QueryDocumentSnapshot<Map<String, dynamic>> document) {
-      Map<String, dynamic> catDoc = document.data();
-      if (catDoc.containsKey("id") &&
-          catDoc['id'].toString().isNotEmpty &&
-          catDoc.containsKey("title") &&
-          catDoc['title'].toString().isNotEmpty &&
-          prodTagList.contains(catDoc['id'])) {
-        tagList.add(catDoc['title']);
+    }
+    List<Map<String, dynamic>> catData = await getVendorCategories();
+    for (var document in catData) {
+      if (document.containsKey("id") &&
+          document["id"].toString().isNotEmpty &&
+          document.containsKey("title") &&
+          document["title"].toString().isNotEmpty &&
+          prodTagList.contains(document["id"])) {
+        tagList.add(document["title"]);
       }
-    });
+    }
     return tagList;
   }
 
+
   static Future<NotificationModel?> getNotificationContent(String type) async {
     NotificationModel? notificationModel;
-    await fireStore
-        .collection(CollectionName.dynamicNotification)
-        .where('type', isEqualTo: type)
-        .get()
-        .then((value) {
-      print("------>");
-      if (value.docs.isNotEmpty) {
-        print(value.docs.first.data());
-
-        notificationModel = NotificationModel.fromJson(value.docs.first.data());
-      } else {
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}firestore/notifications/$type'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        // Assuming the API returns the notification data directly or wrapped in a 'data' field
+        final dynamic notificationData = responseData['data'] ?? responseData;
+        print("------>");
+        print(notificationData);
+        notificationModel = NotificationModel.fromJson(notificationData);
+      } else if (response.statusCode == 404) {
+        // Notification not found - return default notification
+        print("------>");
+        print("Notification not found, using default");
         notificationModel = NotificationModel(
-            id: "",
-            message: "Notification setup is pending",
-            subject: "setup notification",
-            type: "");
+          id: "",
+          message: "Notification setup is pending",
+          subject: "setup notification",
+          type: type,
+        );
+      } else {
+        throw Exception('Failed to load notification: ${response.statusCode}');
       }
-    });
+    } catch (e, s) {
+      log('APIUtils.getNotificationContent $e $s');
+      // Return default notification on error
+      notificationModel = NotificationModel(
+        id: "",
+        message: "Notification setup is pending",
+        subject: "setup notification",
+        type: type,
+      );
+    }
     return notificationModel;
   }
-
   static Future<bool?> deleteUser() async {
-    bool? isDelete;
     try {
       String? userId = await LoginController.getFirebaseId();
-      await fireStore
-          .collection(CollectionName.users)
-          .doc(userId)
-          .delete();
-      await FirebaseAuth.instance.currentUser?.delete().then((value) {
-        isDelete = true;
-      });
+      // Delete user from database via API
+      final response = await http.delete(
+        Uri.parse('${Constant.baseUrl}driver-sql/users/$userId'),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true) {
+          return true;
+        } else {
+          print('API returned error: ${jsonResponse['message']}');
+          return false;
+        }
+      } else {
+        print('API Error: ${response.statusCode}');
+        return false;
+      }
     } catch (e, s) {
-      log('FireStoreUtils.firebaseCreateNewUser $e $s');
+      print('deleteUser error: $e $s');
       return false;
     }
-    return isDelete;
   }
 
   static Future<List<DocumentModel>> getDocumentList() async {
-    List<DocumentModel> documentList = [];
-    await fireStore
-        .collection(CollectionName.documents)
-        .where('type', isEqualTo: "driver")
-        .where('enable', isEqualTo: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        DocumentModel documentModel = DocumentModel.fromJson(element.data());
-        documentList.add(documentModel);
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}documents/driver/list'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true) {
+          List<DocumentModel> documentList = [];
+          for (var element in jsonResponse['data']) {
+            DocumentModel documentModel = DocumentModel.fromJson(element);
+            documentList.add(documentModel);
+          }
+          return documentList;
+        } else {
+          throw Exception('API Error: ${jsonResponse['message']}');
+        }
+      } else {
+        throw Exception('HTTP Error: ${response.statusCode}');
       }
-    }).catchError((error) {
+    } catch (error) {
       log(error.toString());
-    });
-    return documentList;
+      rethrow; // or return an empty list: return [];
+    }
   }
-
   static Future<DriverDocumentModel?> getDocumentOfDriver() async {
     String? userId = await LoginController.getFirebaseId();
+
     DriverDocumentModel? driverDocumentModel;
-    await fireStore
-        .collection(CollectionName.documentsVerify)
-        .doc(userId)
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        driverDocumentModel = DriverDocumentModel.fromJson(value.data()!);
+    print("getDocumentOfDriver ${Constant.baseUrl}driver/documents/$userId ");
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver/documents/$userId'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      print("getDocumentOfDriver ${response.body} ");
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+
+        // Check if data exists in response
+        if (responseData['data'] != null) {
+          driverDocumentModel = DriverDocumentModel.fromJson(responseData);
+        } else if (responseData['exists'] == true) {
+          // Handle the case where API might return exists flag
+          return null;
+        }
+      } else if (response.statusCode == 404) {
+        // Document not found
+        return null;
+      } else {
+        // Handle other error status codes
+        throw Exception('Failed to load document: ${response.statusCode}');
       }
-    });
+    } catch (e) {
+      print('Error fetching driver document: $e');
+      throw Exception('Failed to load driver document');
+    }
+
     return driverDocumentModel;
   }
-
-  static Future addDriverInbox(InboxModel inboxModel) async {
-    return await fireStore
-        .collection("chat_driver")
-        .doc(inboxModel.orderId)
-        .set(inboxModel.toJson())
-        .then((document) {
-      return inboxModel;
-    });
+  static Future<InboxModel> addDriverInbox(InboxModel inboxModel) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}chat-driver/inbox'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(inboxModel.toJson()),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return inboxModel;
+      } else {
+        throw Exception('Failed to add driver inbox: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to add driver inbox: $e');
+    }
   }
 
-  static Future addDriverChat(ConversationModel conversationModel) async {
-    return await fireStore
-        .collection("chat_driver")
-        .doc(conversationModel.orderId)
-        .collection("thread")
-        .doc(conversationModel.id)
-        .set(conversationModel.toJson())
-        .then((document) {
-      return conversationModel;
-    });
+  static Future<ConversationModel> addDriverChat(ConversationModel conversationModel) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}chat-driver/thread'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(conversationModel.toJson()),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return conversationModel;
+      } else {
+        throw Exception('Failed to add driver chat: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to add driver chat: $e');
+    }
   }
 
-  static Future addRestaurantChat(ConversationModel conversationModel) async {
-    return await fireStore
-        .collection("chat_restaurant")
-        .doc(conversationModel.orderId)
-        .collection("thread")
-        .doc(conversationModel.id)
-        .set(conversationModel.toJson())
-        .then((document) {
-      return conversationModel;
-    });
+
+  static Future<ConversationModel> addRestaurantChat(ConversationModel conversationModel) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}chat-restaurant/thread'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(conversationModel.toJson()),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return conversationModel;
+      } else {
+        throw Exception('Failed to add chat: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Failed to add chat: $e');
+    }
   }
 
   static Future<Url> uploadChatImageToFireStorage(
@@ -1162,120 +1323,188 @@ class FireStoreUtils {
         await (await uploadTask.whenComplete(() {})).ref.getDownloadURL();
     return downloadUrl.toString();
   }
-
   static Future<bool> uploadDriverDocument(Documents documents) async {
-
     String? userId = await LoginController.getFirebaseId();
     bool isAdded = false;
-    DriverDocumentModel driverDocumentModel = DriverDocumentModel();
-    List<Documents> documentsList = [];
-    await fireStore
-        .collection(CollectionName.documentsVerify)
-        .doc(userId)
-        .get()
-        .then((value) async {
-      if (value.exists) {
-        DriverDocumentModel newDriverDocumentModel =
-            DriverDocumentModel.fromJson(value.data()!);
-        documentsList = newDriverDocumentModel.documents!;
-        var contain = newDriverDocumentModel.documents!
-            .where((element) => element.documentId == documents.documentId);
-        if (contain.isEmpty) {
-          documentsList.add(documents);
 
-          driverDocumentModel.id = userId;
-          driverDocumentModel.type = "driver";
-          driverDocumentModel.documents = documentsList;
-        } else {
-          var index = newDriverDocumentModel.documents!.indexWhere(
-              (element) => element.documentId == documents.documentId);
+    try {
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('${Constant.baseUrl}documents/driver/upload'),
+      );
+      // Add fields
+      request.fields['user_id'] = userId ?? '';
+      request.fields['documentId'] = documents.documentId.toString();
+      request.fields['type'] = 'driver';
+      request.fields['status'] = documents.status ?? '';
 
-          driverDocumentModel.id = userId;
-          driverDocumentModel.type = "driver";
-          documentsList.removeAt(index);
-          documentsList.insert(index, documents);
-          driverDocumentModel.documents = documentsList;
-          isAdded = false;
+      // Print request fields
+      print('=== REQUEST FIELDS ===');
+      request.fields.forEach((key, value) {
+        print('$key: $value');
+      });
+      print('=====================');
+
+      // Add image files if they exist
+      if (documents.frontImage != null && documents.frontImage!.isNotEmpty) {
+        var frontImageFile = File(documents.frontImage!);
+        if (await frontImageFile.exists()) {
+          var multipartFile = await http.MultipartFile.fromPath(
+            'front_image',
+            frontImageFile.path,
+          );
+          request.files.add(multipartFile);
+          print('Added front_image: ${frontImageFile.path}');
         }
-      } else {
-        documentsList.add(documents);
-        driverDocumentModel.id = userId;
-        driverDocumentModel.type = "driver";
-        driverDocumentModel.documents = documentsList;
       }
-    });
+      if (documents.backImage != null && documents.backImage!.isNotEmpty) {
+        var backImageFile = File(documents.backImage!);
+        if (await backImageFile.exists()) {
+          var multipartFile = await http.MultipartFile.fromPath(
+            'back_image',
+            backImageFile.path,
+          );
+          request.files.add(multipartFile);
+          print('Added back_image: ${backImageFile.path}');
+        }
+      }
+      // Print files info
+      print('=== REQUEST FILES ===');
+      for (var file in request.files) {
+        print('Field: ${file.field}, Filename: ${file.filename}');
+      }
+      print('====================');
+      // Print complete request details
+      print('=== COMPLETE REQUEST DETAILS ===');
+      print('URL: ${request.url}');
+      print('Method: ${request.method}');
+      print('Fields: ${request.fields}');
+      print('Files count: ${request.files.length}');
+      print('==============================');
 
-    await fireStore
-        .collection(CollectionName.documentsVerify)
-        .doc(userId)
-        .set(driverDocumentModel.toJson())
-        .then((value) {
-      isAdded = true;
-    }).catchError((error) {
+      // Send request
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        var jsonResponse = json.decode(responseData);
+        isAdded = jsonResponse['success'] == true;
+      } else {
+        isAdded = false;
+        log('Error: ${response.statusCode} - $responseData');
+      }
+    } catch (error) {
       isAdded = false;
       log(error.toString());
-    });
+    }
 
     return isAdded;
   }
 
+
   static Future<WithdrawMethodModel?> getWithdrawMethod() async {
-    WithdrawMethodModel? withdrawMethodModel;
-    await fireStore
-        .collection(CollectionName.withdrawMethod)
-        .where("userId", isEqualTo: getCurrentUid())
-        .get()
-        .then((value) async {
-      if (value.docs.isNotEmpty) {
-        withdrawMethodModel =
-            WithdrawMethodModel.fromJson(value.docs.first.data());
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver/wallet/withdraw-method?userId=${getCurrentUid()}'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        // Assuming the API returns the data directly or in a 'data' field
+        if (jsonResponse is Map<String, dynamic> && jsonResponse.isNotEmpty) {
+          return WithdrawMethodModel.fromJson(jsonResponse);
+        } else if (jsonResponse['data'] != null) {
+          return WithdrawMethodModel.fromJson(jsonResponse['data']);
+        }
+        return null;
+      } else if (response.statusCode == 404) {
+        // No data found - equivalent to empty docs in Firebase
+        return null;
+      } else {
+        // Handle other error status codes
+        throw Exception('Failed to load withdraw method: ${response.statusCode}');
       }
-    });
-    return withdrawMethodModel;
+    } catch (e) {
+      // Handle network errors or parsing errors
+      print('Error fetching withdraw method: $e');
+      return null;
+    }
   }
 
   static Future<WithdrawMethodModel?> setWithdrawMethod(
       WithdrawMethodModel withdrawMethodModel) async {
-    String? userId = await LoginController.getFirebaseId();
-    if (withdrawMethodModel.id == null) {
-      withdrawMethodModel.id = const Uuid().v4();
-      withdrawMethodModel.userId = userId;
-    }
-    await fireStore
-        .collection(CollectionName.withdrawMethod)
-        .doc(withdrawMethodModel.id)
-        .set(withdrawMethodModel.toJson())
-        .then((value) async {});
-    return withdrawMethodModel;
-  }
+    try {
+      String? userId = await LoginController.getFirebaseId();
 
-  static Future<List<WithdrawalModel>?> getWithdrawHistory() async {
-    List<WithdrawalModel> walletTransactionList = [];
-    await fireStore
-        .collection(CollectionName.driverPayouts)
-        .where('driverID', isEqualTo: Constant.userModel!.id.toString())
-        .orderBy('paidDate', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        WithdrawalModel walletTransactionModel =
-            WithdrawalModel.fromJson(element.data());
-        walletTransactionList.add(walletTransactionModel);
+      // Prepare the data
+      if (withdrawMethodModel.id == null) {
+        withdrawMethodModel.id = const Uuid().v4();
+        withdrawMethodModel.userId = userId;
       }
-    }).catchError((error) {
-      log(error.toString());
-    });
-    return walletTransactionList;
+
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver/wallet/withdraw-method'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(withdrawMethodModel.toJson()),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse is Map<String, dynamic>) {
+          if (jsonResponse['data'] != null) {
+            return WithdrawMethodModel.fromJson(jsonResponse['data']);
+          } else {
+            return WithdrawMethodModel.fromJson(jsonResponse);
+          }
+        }
+        // If API doesn't return the object, return the original with updates
+        return withdrawMethodModel;
+      } else {
+        throw Exception('Failed to set withdraw method: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error setting withdraw method: $e');
+      return null;
+    }
+  }
+  static Future<List<WithdrawalModel>?> getWithdrawHistory() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/withdraw?driverID=${Constant.userModel!.id.toString()}'),
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true && jsonResponse['data'] != null) {
+          List<WithdrawalModel> walletTransactionList = [];
+          for (var element in jsonResponse['data']) {
+            WithdrawalModel walletTransactionModel = WithdrawalModel.fromJson(element);
+            walletTransactionList.add(walletTransactionModel);
+          }
+          return walletTransactionList;
+        } else {
+          print('API returned error: ${jsonResponse['message']}');
+          return [];
+        }
+      } else {
+        print('API Error: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching withdrawal history: $e');
+      return [];
+    }
   }
 
   static sendPayoutMail(
       {required String amount, required String payoutrequestid}) async {
     EmailTemplateModel? emailTemplateModel =
         await FireStoreUtils.getEmailTemplates(Constant.payoutRequest);
-
     String body = emailTemplateModel!.subject.toString();
     body = body.replaceAll("{userid}", Constant.userModel!.id.toString());
-
     String newString = emailTemplateModel.message.toString();
     newString =
         newString.replaceAll("{username}", Constant.userModel!.fullName());
@@ -1291,82 +1520,107 @@ class FireStoreUtils {
         subject: body,
         isAdmin: emailTemplateModel.isSendToAdmin,
         body: newString,
-        recipients: [Constant.userModel!.email]);
+        recipients: [Constant.userModel!.email],);
   }
 
+
   static Future<bool> withdrawWalletAmount(WithdrawalModel userModel) async {
-    bool isUpdate = false;
-    await fireStore
-        .collection(CollectionName.driverPayouts)
-        .doc(userModel.id)
-        .set(userModel.toJson())
-        .whenComplete(() {
-      isUpdate = true;
-    }).catchError((error) {
-      log("Failed to update user: $error");
-      isUpdate = false;
-    });
-    return isUpdate;
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/withdraw'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(userModel.toJson()),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      } else {
+        log("Failed to withdraw wallet amount: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } catch (error) {
+      log("Error withdrawing wallet amount: $error");
+      return false;
+    }
   }
 
   static Future<bool> getFirestOrderOrNOt(OrderModel orderModel) async {
-    bool isFirst = true;
-    await fireStore
-        .collection(CollectionName.restaurantOrders)
-        .where('authorID', isEqualTo: orderModel.authorID)
-        .get()
-        .then((value) {
-      if (value.size == 1) {
-        isFirst = true;
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/orders/${orderModel.authorID}/is-first'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          return responseData['data']['isFirstOrder'] ?? false;
+        } else {
+          log("API returned error: ${responseData['message']}");
+          return false;
+        }
       } else {
-        isFirst = false;
+        log("Failed to check first order: ${response.statusCode} - ${response.body}");
+        return false;
       }
-    });
-    return isFirst;
-  }
-
-  static Future updateReferralAmount(OrderModel orderModel) async {
-    ReferralModel? referralModel;
-    await fireStore
-        .collection(CollectionName.referral)
-        .doc(orderModel.authorID)
-        .get()
-        .then((value) {
-      if (value.data() != null) {
-        referralModel = ReferralModel.fromJson(value.data()!);
-      } else {
-        return;
-      }
-    });
-    if (referralModel != null) {
-      if (referralModel!.referralBy != null &&
-          referralModel!.referralBy!.isNotEmpty) {
-        WalletTransactionModel transactionModel = WalletTransactionModel(
-            id: Constant.getUuid(),
-            amount: double.parse(Constant.referralAmount.toString()),
-            date: Timestamp.now(),
-            paymentMethod: "Referral Amount",
-            transactionUser: "user",
-            userId: referralModel!.referralBy,
-            isTopup: true,
-            note:
-                "You referral user has complete his this order #${orderModel.id}",
-            paymentStatus: "success");
-
-        await FireStoreUtils.setWalletTransaction(transactionModel)
-            .then((value) async {
-          if (value == true) {
-            await FireStoreUtils.updateUserWallet(
-                    amount: Constant.referralAmount.toString(),
-                    userId: referralModel!.referralBy.toString())
-                .then((value) {});
-          }
-        });
-      } else {
-        return;
-      }
+    } catch (error) {
+      log("Error checking first order: $error");
+      return false;
     }
   }
+  static Future updateReferralAmount(OrderModel orderModel) async {
+    ReferralModel? referralModel;
+
+    try {
+      // Replace Firebase call with API call
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/referrals/${orderModel.authorID}'),
+      );
+
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true && jsonResponse['data'] != null) {
+          referralModel = ReferralModel.fromJson(jsonResponse['data']);
+        } else {
+          return;
+        }
+      } else {
+        print('API Error: ${response.statusCode}');
+        return;
+      }
+    } catch (e) {
+      // Handle network/parsing errors
+      print('Error fetching referral data: $e');
+      return;
+    }
+
+    if (referralModel.referralBy != null &&
+        referralModel.referralBy!.isNotEmpty) {
+      WalletTransactionModel transactionModel = WalletTransactionModel(
+          id: Constant.getUuid(),
+          amount: double.parse(Constant.referralAmount.toString()),
+          date: Timestamp.now(),
+          paymentMethod: "Referral Amount",
+          transactionUser: "user",
+          userId: referralModel.referralBy,
+          isTopup: true,
+          note: "You referral user has complete his this order #${orderModel.id}",
+          paymentStatus: "success"
+      );
+      await FireStoreUtils.setWalletTransaction(transactionModel).then((value) async {
+        if (value == true) {
+          await FireStoreUtils.updateUserWallet(
+              amount: Constant.referralAmount.toString(),
+              userId: referralModel!.referralBy.toString()
+          ).then((value) {});
+        }
+      });
+    } else {
+      return;
+    }
+    }
 
   /// Atomically assign an order to a driver using Firestore transaction (FCFS locking)
   static Future<bool> assignOrderToDriverFCFS({
@@ -1374,44 +1628,53 @@ class FireStoreUtils {
     required String driverId,
     required UserModel driverModel,
   }) async {
-    final orderRef = fireStore.collection(CollectionName.restaurantOrders).doc(orderId);
-
-    return await fireStore.runTransaction((transaction) async {
-      final orderSnap = await transaction.get(orderRef);
-
-      // Check if order is still unassigned or pending
-      if (orderSnap.exists &&
-          (orderSnap['driverID'] == null ||
-           orderSnap['driverID'] == '' ||
-           orderSnap['status'] == Constant.driverPending)) {
-        // Assign order to this driver
-        transaction.update(orderRef, {
-          'driverID': driverId,
-          'driver': driverModel.toJson(),
-          'status': Constant.driverAccepted,
-        });
-        return true; // Success
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/orders/assign'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'driver_id': driverId,
+          'order_id': orderId,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        return jsonResponse['success'] == true;
       } else {
-        return false; // Order already taken
+        print('API Error: ${response.statusCode}');
+        return false;
       }
-    });
+    } catch (e) {
+      print('Error assigning order to driver: $e');
+      return false;
+    }
   }
 
-  /// Remove orderId from all drivers' orderRequestData except the assigned driver
   static Future<void> removeOrderFromOtherDrivers({
     required String orderId,
     required String assignedDriverId,
   }) async {
-    final usersRef = fireStore.collection(CollectionName.users);
-    final driversSnap = await usersRef.where('orderRequestData', arrayContains: orderId).get();
-    final batch = fireStore.batch();
-    for (final doc in driversSnap.docs) {
-      if (doc.id != assignedDriverId) {
-        batch.update(doc.reference, {
-          'orderRequestData': FieldValue.arrayRemove([orderId])
-        });
+    try {
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/orders/remove-from-others'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'assigned_driver_id': assignedDriverId,
+          'order_id': orderId,
+        }),
+      );
+      if (response.statusCode == 200) {
+        final jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] != true) {
+          print('Failed to remove order from other drivers');
+        }
+      } else {
+        // Handle API error
+        print('API Error: ${response.statusCode}');
       }
+    } catch (e) {
+      // Handle network/parsing errors
+      print('Error removing order from other drivers: $e');
     }
-    await batch.commit();
   }
 }

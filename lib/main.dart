@@ -62,7 +62,7 @@ import 'controllers/edit_profile_controller.dart';
 // Add this to your main function
 // Add this to your main function
 void main() async {
-  runZonedGuarded(() async {
+  // runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
     // Initialize Firebase
     await Firebase.initializeApp(
@@ -79,9 +79,9 @@ void main() async {
     Get.put(PlayIntegrityController());
     Get.put(EditProfileController(), permanent: true);
     runApp(const MyApp());
-  }, (error, stackTrace) {
-    log('Error in main: $error');
-  });
+  // }, (error, stackTrace) {
+  //   log('Error in main: $error');
+  // });
 }
 
 final RxBool isInPipMode = false.obs; // 👈 global reactive variable

@@ -38,19 +38,48 @@ class DetailsUploadController extends GetxController {
   Rx<Documents> documents = Documents().obs;
 
   getDocument() async {
-    await FireStoreUtils.getDocumentOfDriver().then((value) {
-      isLoading.value = false;
-      if (value != null) {
-        var contain = value.documents!
-            .where((element) => element.documentId == documentModel.value.id);
-        if (contain.isNotEmpty) {
-          documents.value = value.documents!.firstWhere((itemToCheck) =>
-              itemToCheck.documentId == documentModel.value.id);
-          frontImage.value = documents.value.frontImage!;
-          backImage.value = documents.value.backImage!;
+    isLoading.value = true;
+    try {
+      await FireStoreUtils.getDocumentOfDriver().then((value) {
+        if (value != null && value.documents != null) {
+          var contain = value.documents!
+              .where((element) => element.documentId == documentModel.value.id);
+
+          if (contain.isNotEmpty) {
+            documents.value = value.documents!.firstWhere((itemToCheck) =>
+            itemToCheck.documentId == documentModel.value.id);
+
+            // Safe null checks instead of assertion operators
+            if (documents.value.frontImage != null) {
+              frontImage.value = documents.value.frontImage!;
+            } else {
+              frontImage.value = ""; // or some default value
+            }
+
+            if (documents.value.backImage != null) {
+              backImage.value = documents.value.backImage!;
+            } else {
+              backImage.value = ""; // or some default value
+            }
+          } else {
+            // Handle case where no matching document is found
+            frontImage.value = "";
+            backImage.value = "";
+          }
+        } else {
+          // Handle case where value or value.documents is null
+          frontImage.value = "";
+          backImage.value = "";
         }
-      }
-    });
+      });
+    } catch (e) {
+      print('Error in getDocument: $e');
+      // Handle error appropriately
+      frontImage.value = "";
+      backImage.value = "";
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   final ImagePicker _imagePicker = ImagePicker();
@@ -94,7 +123,6 @@ class DetailsUploadController extends GetxController {
     documents.value.backImage = backImage.value;
     documents.value.documentId = documentModel.value.id;
     documents.value.status = "uploaded";
-
     await FireStoreUtils.uploadDriverDocument(documents.value).then((value) {
       if (value) {
         ShowToastDialog.closeLoader();

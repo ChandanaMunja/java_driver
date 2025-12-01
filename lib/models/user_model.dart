@@ -4,6 +4,7 @@ import 'package:jippydriver_driver/models/subscription_plan_model.dart';
 
 class UserModel {
   String? id;
+  String? firebaseId;
   String? firstName;
   String? lastName;
   String? email;
@@ -35,38 +36,41 @@ class UserModel {
   SubscriptionPlanModel? subscriptionPlan;
   num? deliveryAmount;
 
-  UserModel(
-      {this.id,
-      this.firstName,
-      this.lastName,
-      this.active,
-      this.isActive,
-      this.isDocumentVerify,
-      this.email,
-      this.profilePictureURL,
-      this.fcmToken,
-      this.countryCode,
-      this.phoneNumber,
-      this.walletAmount,
-      this.createdAt,
-      this.role,
-      this.location,
-      this.shippingAddress,
-      this.carName,
-      this.carNumber,
-      this.carPictureURL,
-      this.inProgressOrderID,
-      this.orderRequestData,
-      this.vendorID,
-      this.zoneId,
-      this.rotation,
-      this.appIdentifier,
-      this.provider,
-      this.subscriptionPlanId,
-      this.subscriptionExpiryDate,
-      this.subscriptionPlan,this.deliveryAmount});
+  UserModel({
+    this.id,
+    this.firebaseId,
+    this.firstName,
+    this.lastName,
+    this.active,
+    this.isActive,
+    this.isDocumentVerify,
+    this.email,
+    this.profilePictureURL,
+    this.fcmToken,
+    this.countryCode,
+    this.phoneNumber,
+    this.walletAmount,
+    this.createdAt,
+    this.role,
+    this.location,
+    this.shippingAddress,
+    this.carName,
+    this.carNumber,
+    this.carPictureURL,
+    this.inProgressOrderID,
+    this.orderRequestData,
+    this.vendorID,
+    this.zoneId,
+    this.rotation,
+    this.appIdentifier,
+    this.provider,
+    this.subscriptionPlanId,
+    this.subscriptionExpiryDate,
+    this.subscriptionPlan,
+    this.deliveryAmount
+  });
 
-  fullName() {
+  String fullName() {
     return "${firstName ?? ''} ${lastName ?? ''}";
   }
 
@@ -74,15 +78,16 @@ class UserModel {
     if (json['id'] != null) {
       id = json['id'].toString();
     }
+    firebaseId = json['id']?.toString(); // Map from 'id' instead of 'firebase_id'
     email = json['email'];
     firstName = json['firstName'];
     lastName = json['lastName'];
-    profilePictureURL = json['profilePictureURL'];
+    profilePictureURL = json['profile_pic']; // Map from 'profile_pic'
     fcmToken = json['fcmToken'];
     countryCode = json['countryCode'];
-    phoneNumber = json['phoneNumber'];
+    phoneNumber = json['phone']; // Map from 'phone' instead of 'phoneNumber'
     walletAmount = json['wallet_amount'] ?? 0;
-    deliveryAmount = json['deliveryAmount']??0;
+    deliveryAmount = json['deliveryAmount'] ?? 0;
     createdAt = json['createdAt'];
     active = json['active'] == 1 || json['active'] == true;
     isActive = json['isActive'] == 1 || json['isActive'] == true;
@@ -94,12 +99,14 @@ class UserModel {
     userBankDetails = json['userBankDetails'] != null
         ? UserBankDetails.fromJson(json['userBankDetails'])
         : null;
+
     if (json['shippingAddress'] != null) {
       shippingAddress = <ShippingAddress>[];
       json['shippingAddress'].forEach((v) {
         shippingAddress!.add(ShippingAddress.fromJson(v));
       });
     }
+
     carName = json['carName'];
     carNumber = json['carNumber'];
     carPictureURL = json['carPictureURL'];
@@ -120,6 +127,7 @@ class UserModel {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
+    data['firebase_id'] = firebaseId;
     data['email'] = email;
     data['firstName'] = firstName;
     data['lastName'] = lastName;
@@ -128,7 +136,7 @@ class UserModel {
     data['countryCode'] = countryCode;
     data['phoneNumber'] = phoneNumber;
     data['wallet_amount'] = walletAmount ?? 0;
-    data['deliveryAmount']= deliveryAmount??0;
+    data['deliveryAmount'] = deliveryAmount ?? 0;
     data['createdAt'] = createdAt;
     data['active'] = active;
     data['isActive'] = isActive;
@@ -139,13 +147,15 @@ class UserModel {
     if (location != null) {
       data['location'] = location!.toJson();
     }
+
     if (userBankDetails != null) {
       data['userBankDetails'] = userBankDetails!.toJson();
     }
+
     if (shippingAddress != null) {
-      data['shippingAddress'] =
-          shippingAddress!.map((v) => v.toJson()).toList();
+      data['shippingAddress'] = shippingAddress!.map((v) => v.toJson()).toList();
     }
+
     if (role == Constant.userRoleDriver) {
       data['vendorID'] = vendorID;
       data['carName'] = carName;
@@ -155,12 +165,14 @@ class UserModel {
       data['orderRequestData'] = orderRequestData;
       data['rotation'] = rotation;
     }
+
     if (role == Constant.userRoleVendor) {
       data['vendorID'] = vendorID;
       data['subscriptionPlanId'] = subscriptionPlanId;
       data['subscriptionExpiryDate'] = subscriptionExpiryDate;
       data['subscription_plan'] = subscriptionPlan?.toJson();
     }
+
     data['appIdentifier'] = appIdentifier;
     data['provider'] = provider;
 
@@ -196,14 +208,15 @@ class ShippingAddress {
   UserLocation? location;
   bool? isDefault;
 
-  ShippingAddress(
-      {this.address,
-      this.landmark,
-      this.locality,
-      this.location,
-      this.isDefault,
-      this.addressAs,
-      this.id});
+  ShippingAddress({
+    this.address,
+    this.landmark,
+    this.locality,
+    this.location,
+    this.isDefault,
+    this.addressAs,
+    this.id
+  });
 
   ShippingAddress.fromJson(Map<String, dynamic> json) {
     id = json['id'];

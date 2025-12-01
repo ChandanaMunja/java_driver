@@ -9,7 +9,6 @@ class ZoneModel {
   double? longitude;
   String? pickupCharges;
   String? userDeliveryCharge;
-
   ZoneModel(
       {this.area,
         this.publish,
@@ -25,7 +24,6 @@ class ZoneModel {
         area!.add(v);
       });
     }
-
     publish = json['publish'];
     latitude = json['latitude'];
     name = json['name'];

@@ -9,12 +9,12 @@ class DocumentModel {
   DocumentModel({this.backSide, this.enable, this.id, this.frontSide, this.title, this.expireAt});
 
   DocumentModel.fromJson(Map<String, dynamic> json) {
-    backSide = json['backSide'];
-    enable = json['enable'];
+    backSide = json['backSide'] == 1;
+    enable = json['enable'] == 1;
+    frontSide = json['frontSide'] == 1;
     id = json['id'];
-    frontSide = json['frontSide'];
     title = json['title'];
-    expireAt = json['expireAt'];
+    expireAt = json['expireAt'] == 1; // if DB also returns int
   }
 
   Map<String, dynamic> toJson() {

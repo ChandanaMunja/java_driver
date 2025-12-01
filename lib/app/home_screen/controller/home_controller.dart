@@ -57,8 +57,8 @@ if(arrowDrop.value){
     // RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.parse(charges["user_delivery_charge"]);; // ₹7 per km
     print(" Pickup: ${editProfileController.selectedZone.value.pickupCharges}");
     print("Delivery: ${editProfileController.selectedZone.value.userDeliveryCharge}");
-    DRIVER_TO_RESTAURANT_RATE_PER_KM =double.parse(editProfileController.selectedZone.value.pickupCharges.toString());
-    RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.parse(editProfileController.selectedZone.value.userDeliveryCharge.toString());; // ₹7 per
+    DRIVER_TO_RESTAURANT_RATE_PER_KM =double.parse(editProfileController.selectedZone.value.pickupCharges??'2');
+    RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.parse(editProfileController.selectedZone.value.userDeliveryCharge??"7");; // ₹7 per
     print(" ${driverToRestaurantCharge.value} driverToRestaurantCharge ");
     update();
   }
@@ -458,7 +458,6 @@ if(arrowDrop.value){
         String? firstOrderId = driverModel.value.orderRequestData!.isNotEmpty
             ? driverModel.value.orderRequestData!.first
             : null;
-
         if (firstOrderId != null && firstOrderId.isNotEmpty) {
           FireStoreUtils.fireStore
               .collection(CollectionName.restaurantOrders)

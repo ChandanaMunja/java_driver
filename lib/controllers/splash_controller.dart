@@ -29,6 +29,7 @@ class SplashController extends GetxController {
 
   redirectScreen() async {
     String? userId = await LoginController.getFirebaseId();
+    print("redirectScreen . $userId ");
     String fromScreen = 'SplashScreen';
     try {
       if (Preferences.getBoolean(Preferences.isFinishOnBoardingKey) == false) {
@@ -38,11 +39,10 @@ class SplashController extends GetxController {
         log(' [32m$fromScreen -> Checking login status... [0m');
         bool isLogin = await FireStoreUtils.isLogin();
         log(' [32m$fromScreen -> Login status: $isLogin [0m');
-        
         if (isLogin == true) {
           log(' [32m$fromScreen -> Getting user profile... [0m');
           UserModel? userModel = await FireStoreUtils.getUserProfile(userId);
-          
+          print("FireStoreUtils.getUserProfile ${userModel?.firebaseId} ");
           if (userModel != null) {
             log(' [32m$fromScreen -> User profile loaded: ${userModel.toJson().toString()} [0m');
             if (userModel.role == Constant.userRoleDriver) {
@@ -56,26 +56,26 @@ class SplashController extends GetxController {
                 Get.offAll(() => DashBoardScreen(userModel: userModel));
               } else {
                 log(' [32m$fromScreen -> User inactive, signing out... [0m');
-                LoginController.logout();
+                Get.offAll(const LoginScreen());
               }
             } else {
               log(' [32m$fromScreen -> User not a driver, signing out... [0m');
-              LoginController.logout();
+              Get.offAll(const LoginScreen());
             }
           } else {
             log(' [32m$fromScreen -> User profile null, signing out... [0m');
-            LoginController.logout();
+            Get.offAll(const LoginScreen());
           }
         } else {
           log(' [32m$fromScreen -> Not logged in, signing out... [0m');
-          LoginController.logout();
+          Get.offAll(const LoginScreen());
         }
       }
     } catch (e) {
       log(' [31m$fromScreen -> Error in redirectScreen: $e [0m');
       // Fallback to login screen on any error
       try {
-        LoginController.logout();
+        // LoginController.logout();
       } catch (signOutError) {
         log(' [31m$fromScreen -> Error signing out: $signOutError [0m');
       }

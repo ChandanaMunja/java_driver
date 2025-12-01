@@ -55,10 +55,8 @@ class DashBoardController extends GetxController {
       },
     );
   }
-
   RxString isDarkMode = "Light".obs;
   RxBool isDarkModeSwitch = false.obs;
-
   getThem() {
     isDarkMode.value = Preferences.getString(Preferences.themKey);
     if (isDarkMode.value == "Dark") {

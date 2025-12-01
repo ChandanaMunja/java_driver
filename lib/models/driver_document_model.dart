@@ -1,20 +1,18 @@
-
 class DriverDocumentModel {
   List<Documents>? documents;
   String? id;
   String? type;
-
   DriverDocumentModel({this.documents, this.id});
 
   DriverDocumentModel.fromJson(Map<String, dynamic> json) {
-    if (json['documents'] != null) {
+    if (json['data'] != null && json['data']['documents'] != null) {
       documents = <Documents>[];
-      json['documents'].forEach((v) {
+      json['data']['documents'].forEach((v) {
         documents!.add(Documents.fromJson(v));
       });
     }
-    id = json['id'];
-    type = json['type'];
+    id = json['data']?['id'];
+    type = json['data']?['type'];
   }
 
   Map<String, dynamic> toJson() {
@@ -27,6 +25,32 @@ class DriverDocumentModel {
     return data;
   }
 }
+// class DriverDocumentModel {
+//   List<Documents>? documents;
+//   String? id;
+//   String? type;
+//   DriverDocumentModel({this.documents, this.id});
+//   DriverDocumentModel.fromJson(Map<String, dynamic> json) {
+//     if (json['documents'] != null) {
+//       documents = <Documents>[];
+//       json['documents'].forEach((v) {
+//         documents!.add(Documents.fromJson(v));
+//       });
+//     }
+//     id = json['id'];
+//     type = json['type'];
+//   }
+//
+//   Map<String, dynamic> toJson() {
+//     final Map<String, dynamic> data = <String, dynamic>{};
+//     if (documents != null) {
+//       data['documents'] = documents!.map((v) => v.toJson()).toList();
+//     }
+//     data['id'] = id;
+//     data['type'] = type;
+//     return data;
+//   }
+// }
 
 class Documents {
   String? frontImage;

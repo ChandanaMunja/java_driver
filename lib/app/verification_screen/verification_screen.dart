@@ -75,7 +75,6 @@ class VerificationScreen extends StatelessWidget {
                                 DocumentModel documentModel =
                                     controller.documentList[index];
                                 Documents documents = Documents();
-
                                 var contain = controller.driverDocumentList
                                     .where((element) =>
                                         element.documentId == documentModel.id);
@@ -85,7 +84,6 @@ class VerificationScreen extends StatelessWidget {
                                           itemToCheck.documentId ==
                                           documentModel.id);
                                 }
-
                                 return InkWell(
                                   onTap: () {
                                     Get.to(const VerificationDetailsUploadScreen(),

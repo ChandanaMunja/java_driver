@@ -17,15 +17,26 @@ class VerificationController extends GetxController {
   RxList driverDocumentList = <Documents>[].obs;
 
   getDocument() async {
-    await FireStoreUtils.getDocumentList().then((value) {
-      documentList.value = value;
-    });
-    await FireStoreUtils.getDocumentOfDriver().then((value) {
-      if(value != null){
-        driverDocumentList.value = value.documents!;
-      }
-    });
-    isLoading.value = false;
+    isLoading.value = true;
     update();
+
+    try {
+      await FireStoreUtils.getDocumentList().then((value) {
+        documentList.value = value;
+      });
+
+      await FireStoreUtils.getDocumentOfDriver().then((value) {
+        if(value != null && value.documents != null){
+          driverDocumentList.value = value.documents!;
+        } else {
+          driverDocumentList.value = []; // or handle empty case
+        }
+      });
+    } catch (e) {
+      print('Error in getDocument: $e');
+    } finally {
+      isLoading.value = false;
+      update();
+    }
   }
 }
