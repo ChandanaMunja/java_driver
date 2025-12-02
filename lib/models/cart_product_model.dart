@@ -28,15 +28,15 @@ class CartProductModel {
   });
 
   CartProductModel.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    categoryId = json['category_id'];
+    id = json['id']?.toString();
+    categoryId = json['category_id']?.toString();
     name = json['name'];
     photo = json['photo'];
-    price = json['price'] ?? "0.0";
-    discountPrice = json['discountPrice'] ?? "0.0";
-    vendorID = json['vendorID'];
+    price = json['price']?.toString() ?? "0.0";
+    discountPrice = json['discountPrice']?.toString() ?? "0.0";
+    vendorID = json['vendorID']?.toString();
     quantity = json['quantity'];
-    extrasPrice = json['extras_price'];
+    extrasPrice = json['extras_price']?.toString();
 
     extras = json['extras'] != null
         ? "String" == json['extras'].runtimeType.toString()
@@ -44,11 +44,17 @@ class CartProductModel {
             : List<dynamic>.from(json['extras'])
         : null;
 
-    variantInfo = json['variant_info'] != null
-        ? "String" == json['variant_info'].runtimeType.toString()
-            ? VariantInfo.fromJson(jsonDecode(json['variant_info']))
-            : VariantInfo.fromJson(json['variant_info'])
-        : null;
+    variantInfo = null;
+    if (json['variant_info'] != null) {
+      if (json['variant_info'] is String) {
+        variantInfo = VariantInfo.fromJson(jsonDecode(json['variant_info']));
+      } else if (json['variant_info'] is Map<String, dynamic>) {
+        variantInfo = VariantInfo.fromJson(json['variant_info']);
+      } else if (json['variant_info'] is List) {
+        variantInfo = null;
+      }
+    }
+
   }
 
   Map<String, dynamic> toJson() {
@@ -80,12 +86,18 @@ class VariantInfo {
   VariantInfo({this.variantId, this.variantPrice, this.variantSku, this.variantImage, this.variantOptions});
 
   VariantInfo.fromJson(Map<String, dynamic> json) {
-    variantId = json['variant_id'] ?? '';
-    variantPrice = json['variant_price'] ?? '';
-    variantSku = json['variant_sku'] ?? '';
-    variantImage = json['variant_image'] ?? '';
-    variantOptions = json['variant_options'] ?? {};
+    variantId = json['variant_id']?.toString() ?? '';
+    variantPrice = json['variant_price']?.toString() ?? '';
+    variantSku = json['variant_sku']?.toString() ?? '';
+    variantImage = json['variant_image']?.toString() ?? '';
+    // Handle variantOptions safely
+    if (json['variant_options'] is Map<String, dynamic>) {
+      variantOptions = Map<String, dynamic>.from(json['variant_options']);
+    } else {
+      variantOptions = {}; // If it's a List or null, default to empty Map
+    }
   }
+
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};

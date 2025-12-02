@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/models/cart_product_model.dart';
 import 'package:jippydriver_driver/models/tax_model.dart';
@@ -71,13 +72,16 @@ class OrderModel {
     address = json['address'] != null ? ShippingAddress.fromJson(json['address']) : null;
     status = json['status'];
     couponId = json['couponId'];
-    vendorID = json['vendorID'];
-    driverID = json['driverID'];
-    discount = json['discount'] ?? 0.0;
-    authorID = json['authorID'];
+    vendorID = json['vendorID']?.toString();
+    driverID = json['driverID']?.toString();
+    // Handle discount coming as string, int, double or null from API
+    discount = _parseNum(json['discount']);
+    authorID = json['authorID']?.toString();
     estimatedTimeToPrepare = json['estimatedTimeToPrepare'];
-    createdAt = json['createdAt'];
-    triggerDelivery = json['triggerDelevery'] ?? Timestamp.now();
+    // Handle createdAt coming from Firestore Timestamp, milliseconds, or null
+    createdAt = _parseTimestamp(json['createdAt']);
+    // Some APIs/collections use "triggerDelevery" (typo) – keep backward compatible
+    triggerDelivery = _parseTimestamp(json['triggerDelevery'] ?? json['triggerDelivery']) ?? Timestamp.now();
     if (json['taxSetting'] != null) {
       taxSetting = <TaxModel>[];
       json['taxSetting'].forEach((v) {
@@ -92,23 +96,105 @@ class OrderModel {
       });
     }
     adminCommissionType = json['adminCommissionType'];
-    vendor = json['vendor'] != null ? VendorModel.fromJson(json['vendor']) : null;
-    id = json['id'];
-    adminCommission = json['adminCommission'];
-    couponCode = json['couponCode'];
+    // vendor = json['vendor'] != null ? VendorModel.fromJson(json['vendor']) : null;
+    if (json['vendor'] is Map<String, dynamic>) {
+      vendor = VendorModel.fromJson(json['vendor']);
+    } else {
+      vendorID = json['vendor']?.toString();
+      vendor = null;
+    }
+    id = json['id']?.toString();
+    adminCommission = json['adminCommission']?.toString();
+    couponCode = json['couponCode']?.toString();
     specialDiscount = json['specialDiscount'];
-    deliveryCharge = json['deliveryCharge'].toString().isEmpty ? "0.0" : json['deliveryCharge'] ?? '0.0';
-    scheduleTime = json['scheduleTime'];
-    tipAmount = json['tip_amount'].toString().isEmpty ? "0.0" : json['tip_amount'] ?? "0.0";
+    // Safely parse deliveryCharge (can be num, string, null)
+    deliveryCharge = _parseNum(json['deliveryCharge'])?.toString() ?? '0.0';
+    // Handle scheduleTime from Timestamp or milliseconds
+    scheduleTime = _parseTimestamp(json['scheduleTime']);
+    // Safely parse tip amount (can be num, string, null)
+    tipAmount = _parseNum(json['tip_amount'])?.toString() ?? '0.0';
     notes = json['notes'];
     author = json['author'] != null ? UserModel.fromJson(json['author']) : null;
     driver = json['driver'] != null ? UserModel.fromJson(json['driver']) : null;
-    takeAway = json['takeAway'];
-    rejectedByDrivers = json['rejectedByDrivers'] ?? [];
+    takeAway = _parseBool(json['takeAway']);
+    rejectedByDrivers = _parseList(json['rejectedByDrivers']);
     toPay = json['ToPay']?.toString();
     calculatedCharges = json['calculatedCharges'] != null
         ? Map<String, dynamic>.from(json['calculatedCharges'])
         : null;
+  }
+  bool? _parseBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is String) {
+      return value == '1' || value.toLowerCase() == 'true';
+    }
+    if (value is num) {
+      return value == 1;
+    }
+    return null;
+  }
+
+  /// Safely parse a numeric value that may come as int, double, String or null.
+  num? _parseNum(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value;
+    if (value is String) {
+      return num.tryParse(value);
+    }
+    return null;
+  }
+
+  /// Safely parse a timestamp that may come as:
+  /// - Firestore [Timestamp]
+  /// - millisecondsSinceEpoch (int or String)
+  /// - ISO8601 String
+  /// - or null
+  Timestamp? _parseTimestamp(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value;
+    if (value is int) {
+      return Timestamp.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is String) {
+      // Try parsing as milliseconds string (e.g., "1764675379043")
+      final milliseconds = int.tryParse(value);
+      if (milliseconds != null) {
+        return Timestamp.fromMillisecondsSinceEpoch(milliseconds);
+      }
+      // Try parsing as ISO8601 string
+      try {
+        final dt = DateTime.tryParse(value);
+        if (dt != null) {
+          return Timestamp.fromDate(dt);
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// Safely parse a list that may come as:
+  /// - List
+  /// - JSON String (e.g., "[]" or "[1,2,3]")
+  /// - or null
+  List<dynamic>? _parseList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value;
+    if (value is String) {
+      try {
+        // Try to parse as JSON string
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded;
+        }
+      } catch (_) {
+        // If parsing fails, return empty list
+        return [];
+      }
+    }
+    return [];
   }
 
   Map<String, dynamic> toJson() {

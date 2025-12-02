@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/models/admin_commission.dart';
 import 'package:jippydriver_driver/models/subscription_plan_model.dart';
@@ -95,12 +96,10 @@ class VendorModel {
     author = json['author'];
     dineInActive = json['dine_in_active'];
     openDineTime = json['openDineTime'];
-    if (json['categoryID'].runtimeType != String) {
-      categoryID = json['categoryID'] ?? [];
-    }
+    categoryID = _parseList(json['categoryID']);
     id = json['id'];
     categoryPhoto = json['categoryPhoto'];
-    restaurantMenuPhotos = json['restaurantMenuPhotos'] ?? [];
+    restaurantMenuPhotos = _parseList(json['restaurantMenuPhotos']);
     if (json['workingHours'] != null) {
       workingHours = <WorkingHours>[];
       json['workingHours'].forEach((v) {
@@ -120,7 +119,7 @@ class VendorModel {
     walletAmount = json['walletAmount'];
     closeDineTime = json['closeDineTime'];
     zoneId = json['zoneId'];
-    createdAt = json['createdAt'];
+    createdAt = _parseTimestamp(json['createdAt']);
     longitude = double.parse(json['longitude'].toString());
     enabledDiveInFuture = json['enabledDiveInFuture'];
     restaurantCost = json['restaurantCost']?.toString();
@@ -132,7 +131,7 @@ class VendorModel {
         : null;
     authorProfilePic = json['authorProfilePic'];
     authorName = json['authorName'];
-    phonenumber = json['phonenumber'];
+    phonenumber = json['phonenumber']?.toString();
     if (json['specialDiscount'] != null) {
       specialDiscount = <SpecialDiscount>[];
       json['specialDiscount'].forEach((v) {
@@ -140,21 +139,87 @@ class VendorModel {
       });
     }
     specialDiscountEnable = json['specialDiscountEnable'];
-    coordinates = json['coordinates'];
-    reviewsSum = json['reviewsSum'] ?? 0.0;
-    photos = json['photos'] ?? [];
-    title = json['title'];
-    if (json['categoryTitle'].runtimeType != String) {
-      categoryTitle = json['categoryTitle'] ?? [];
+    // Handle coordinates coming as Map or GeoPoint
+    if (json['coordinates'] != null) {
+      if (json['coordinates'] is GeoPoint) {
+        coordinates = json['coordinates'];
+      } else if (json['coordinates'] is Map<String, dynamic>) {
+        final coordMap = json['coordinates'] as Map<String, dynamic>;
+        final lat = coordMap['latitude'] ?? coordMap['_latitude'];
+        final lng = coordMap['longitude'] ?? coordMap['_longitude'];
+        if (lat != null && lng != null) {
+          coordinates = GeoPoint(
+            lat is double ? lat : double.parse(lat.toString()),
+            lng is double ? lng : double.parse(lng.toString()),
+          );
+        }
+      }
     }
+    reviewsSum = json['reviewsSum'] ?? 0.0;
+    photos = _parseList(json['photos']);
+    title = json['title'];
     latitude = double.parse(json['latitude'].toString());
     subscriptionPlanId = json['subscriptionPlanId'];
-    subscriptionExpiryDate = json['subscriptionExpiryDate'];
+    subscriptionExpiryDate = _parseTimestamp(json['subscriptionExpiryDate']);
     subscriptionPlan = json['subscription_plan'] != null
         ? SubscriptionPlanModel.fromJson(json['subscription_plan'])
         : null;
     subscriptionTotalOrders = json['subscriptionTotalOrders'];
     isSelfDelivery = json['isSelfDelivery'];
+    // Handle categoryTitle - can be String or List
+    categoryTitle = _parseList(json['categoryTitle']);
+  }
+
+  /// Safely parse a timestamp that may come as:
+  /// - Firestore [Timestamp]
+  /// - millisecondsSinceEpoch (int or String)
+  /// - ISO8601 String
+  /// - or null
+  Timestamp? _parseTimestamp(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value;
+    if (value is int) {
+      return Timestamp.fromMillisecondsSinceEpoch(value);
+    }
+    if (value is String) {
+      // Try parsing as milliseconds string (e.g., "1764675379043")
+      final milliseconds = int.tryParse(value);
+      if (milliseconds != null) {
+        return Timestamp.fromMillisecondsSinceEpoch(milliseconds);
+      }
+      // Try parsing as ISO8601 string
+      try {
+        final dt = DateTime.tryParse(value);
+        if (dt != null) {
+          return Timestamp.fromDate(dt);
+        }
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  /// Safely parse a list that may come as:
+  /// - List
+  /// - JSON String (e.g., "[]" or "[1,2,3]")
+  /// - or null
+  List<dynamic>? _parseList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value;
+    if (value is String) {
+      try {
+        // Try to parse as JSON string
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded;
+        }
+      } catch (_) {
+        // If parsing fails, return empty list
+        return [];
+      }
+    }
+    return [];
   }
 
   Map<String, dynamic> toJson() {
@@ -271,7 +336,22 @@ class G {
 
   G.fromJson(Map<String, dynamic> json) {
     geohash = json['geohash'];
-    geopoint = json['geopoint'];
+    // Handle geopoint coming as Map or GeoPoint
+    if (json['geopoint'] != null) {
+      if (json['geopoint'] is GeoPoint) {
+        geopoint = json['geopoint'];
+      } else if (json['geopoint'] is Map<String, dynamic>) {
+        final geoMap = json['geopoint'] as Map<String, dynamic>;
+        final lat = geoMap['latitude'] ?? geoMap['_latitude'];
+        final lng = geoMap['longitude'] ?? geoMap['_longitude'];
+        if (lat != null && lng != null) {
+          geopoint = GeoPoint(
+            lat is double ? lat : double.parse(lat.toString()),
+            lng is double ? lng : double.parse(lng.toString()),
+          );
+        }
+      }
+    }
   }
 
   Map<String, dynamic> toJson() {

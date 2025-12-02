@@ -73,7 +73,6 @@ print("getUser ${response.body}");
 
 
   updateDriverOrder() async {
-
     List<OrderModel> orders = [];
     final response = await http.get(
       Uri.parse('${Constant.baseUrl}update-driver-order'),
@@ -82,10 +81,8 @@ print("getUser ${response.body}");
         'Accept': 'application/json',
       },
     );
-
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-
       if (data['orders'] != null) {
         for (var element in data['orders']) {
           try {
@@ -100,7 +97,8 @@ print("getUser ${response.body}");
     }
     // Update triggerDelivery for each order
     for (var orderModel in orders) {
-      orderModel.triggerDelivery = DateTime.now() as Timestamp?;
+      // Ensure we always store a valid Firestore Timestamp
+      orderModel.triggerDelivery = Timestamp.now();
       // Send updated order back (assuming setOrder is same)
       await FireStoreUtils.setOrder(orderModel);
     }

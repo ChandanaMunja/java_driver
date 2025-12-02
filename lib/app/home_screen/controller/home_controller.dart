@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSergeFee, fetchOrderSurgeFee;
 import 'package:jippydriver_driver/constant/constant.dart';
@@ -25,7 +26,6 @@ import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/utils/app_logger.dart';
 // import '../services/order_service.dart';
 // import 'package:jippydriver_driver/services/order_service.dart';
-
 class HomeController extends GetxController {
 
   RxBool arrowDrop = false.obs;
@@ -351,57 +351,129 @@ if(arrowDrop.value){
     }
     update();
   }
-
-
-  Future<void> getCurrentOrder() async {
-    final response = await http.post(
-      Uri.parse("${Constant.baseUrl}driver/get-current-order"),
-      body: {
-        "driver_id": driverModel.value.id,
-        "current_order_id": currentOrder.value.id ?? "",
-        "argument_order_id": orderModel.value.id ?? "",
-        "single_order_receive": Constant.singleOrderReceive.toString()
-      },
-    );
-    final data = jsonDecode(response.body);
-    switch(data["action"]) {
-      case "clear_and_stopSound":
-        currentOrder.value = OrderModel();
-        await clearMap();
-        await AudioPlayerService.playSound(false);
-        break;
-
-      case "in_progress":
-        currentOrder.value = OrderModel.fromJson(data["order"]);
-        calculateOrderChargesInitial();
-        changeData();
-        break;
-      case "remove_inProgress_and_clear":
-        currentOrder.value = OrderModel();
-        await clearMap();
-        await AudioPlayerService.playSound(false);
-        break;
-      case "order_request":
-        currentOrder.value = OrderModel.fromJson(data["order"]);
-        calculateOrderChargesInitial();
-        changeData();
-        break;
-      case "remove_request":
-        currentOrder.value = OrderModel();
-        await AudioPlayerService.playSound(false);
-        break;
-      case "order_by_argument":
-        currentOrder.value = OrderModel.fromJson(data["order"]);
-        calculateOrderChargesInitial();
-        changeData();
-        break;
-      case "argument_not_found_stopSound":
-        currentOrder.value = OrderModel();
-        await AudioPlayerService.playSound(false);
-        break;
+  getCurrentOrder() async {
+    AppLogger.log('getCurrentOrder() called', tag: 'Function');
+    // Clear currentOrder if it's not in any driver lists
+    if (currentOrder.value.id != null &&
+        !(driverModel.value.orderRequestData?.contains(currentOrder.value.id) ?? false) &&
+        !(driverModel.value.inProgressOrderID?.contains(currentOrder.value.id) ?? false)) {
+      currentOrder.value = OrderModel();
+      await clearMap();
+      await AudioPlayerService.playSound(false);
+      AppLogger.log('No current order, cleared map and stopped sound', tag: 'UI');
+      return;
     }
-    update();
+
+    // Determine firstOrderId
+    String? firstOrderId;
+    final inProgress = driverModel.value.inProgressOrderID;
+    final orderRequest = driverModel.value.orderRequestData;
+    if (Constant.singleOrderReceive == true) {
+      if (inProgress != null && inProgress.isNotEmpty) {
+        firstOrderId = inProgress.first;
+      } else if (orderRequest != null && orderRequest.isNotEmpty) {
+        firstOrderId = orderRequest.first;
+      }
+    } else if (orderModel.value.id != null) {
+      firstOrderId = orderModel.value.id.toString();
+    }
+    if (firstOrderId == null || firstOrderId.isEmpty) {
+      AppLogger.log('No valid firstOrderId found, exiting getCurrentOrder()', tag: 'UI');
+      return;
+    }
+    // Construct API URL
+    final excludeStatuses = (inProgress?.contains(firstOrderId) ?? false)
+        ? 'Order Cancelled,Driver Rejected,Order Completed'
+        : 'Order Cancelled,Driver Rejected';
+    final uri = Uri.parse(
+        '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$firstOrderId&exclude_statuses=$excludeStatuses');
+   log("getCurrentOrder $uri");
+    try {
+      final response = await http.get(uri);
+      if (response.statusCode != 200) {
+        AppLogger.log('API call failed with status: ${response.statusCode}', tag: 'API');
+        return;
+      }
+      final data = jsonDecode(response.body);
+      if (data['success'] == true && data['order'] != null) {
+        currentOrder.value = OrderModel.fromJson(data['order']);
+        calculateOrderChargesInitial();
+        if ((inProgress?.contains(currentOrder.value.id) ?? false) ||
+            (orderRequest?.contains(currentOrder.value.id) ?? false)) {
+          changeData();
+          AppLogger.log('Fetched order: $firstOrderId via API', tag: 'API');
+        }
+      } else {
+        // Remove missing/completed order from driver lists
+        if (inProgress?.contains(firstOrderId) ?? false) {
+          inProgress!.remove(firstOrderId);
+          await FireStoreUtils.updateUser(driverModel.value);
+          AppLogger.log('Removed completed order from inProgressOrderID', tag: 'API');
+        } else if (orderRequest?.contains(firstOrderId) ?? false) {
+          orderRequest!.remove(firstOrderId);
+          await FireStoreUtils.updateUser(driverModel.value);
+          AppLogger.log('Removed missing order from orderRequestData', tag: 'API');
+        }
+        currentOrder.value = OrderModel();
+        await clearMap();
+        await AudioPlayerService.playSound(false);
+        update();
+        AppLogger.log('No order found, cleared map and stopped sound', tag: 'UI');
+      }
+    } catch (e) {
+      AppLogger.log('Error fetching order via API: $e', tag: 'API');
+    }
   }
+
+  // Future<void> getCurrentOrder() async {
+  //   final response = await http.post(
+  //     Uri.parse("${Constant.baseUrl}driver/get-current-order"),
+  //     body: {
+  //       "driver_id": driverModel.value.id,
+  //       "current_order_id": currentOrder.value.id ?? "",
+  //       "argument_order_id": orderModel.value.id ?? "",
+  //       "single_order_receive": Constant.singleOrderReceive.toString()
+  //     },
+  //   );
+  //   final data = jsonDecode(response.body);
+  //   switch(data["action"]) {
+  //     case "clear_and_stopSound":
+  //       currentOrder.value = OrderModel();
+  //       await clearMap();
+  //       await AudioPlayerService.playSound(false);
+  //       break;
+  //
+  //     case "in_progress":
+  //       currentOrder.value = OrderModel.fromJson(data["order"]);
+  //       calculateOrderChargesInitial();
+  //       changeData();
+  //       break;
+  //     case "remove_inProgress_and_clear":
+  //       currentOrder.value = OrderModel();
+  //       await clearMap();
+  //       await AudioPlayerService.playSound(false);
+  //       break;
+  //     case "order_request":
+  //       currentOrder.value = OrderModel.fromJson(data["order"]);
+  //       calculateOrderChargesInitial();
+  //       changeData();
+  //       break;
+  //     case "remove_request":
+  //       currentOrder.value = OrderModel();
+  //       await AudioPlayerService.playSound(false);
+  //       break;
+  //     case "order_by_argument":
+  //       currentOrder.value = OrderModel.fromJson(data["order"]);
+  //       calculateOrderChargesInitial();
+  //       changeData();
+  //       break;
+  //     case "argument_not_found_stopSound":
+  //       currentOrder.value = OrderModel();
+  //       await AudioPlayerService.playSound(false);
+  //       break;
+  //   }
+  //   update();
+  // }
 //finded
   RxBool isChange = false.obs;
 

@@ -478,17 +478,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
 Obx(
   () {
     bool hideUI = isInPipMode.value;
-    return    hideUI?SizedBox():  (controller.currentOrder.value.id != null &&
-        controller.currentOrder.value.status ==
-            Constant.driverPending &&
-        (controller.currentOrder.value.driverID ==
-            null ||
-            controller.currentOrder.value.driverID
-                ?.isEmpty ==
-                true))
+    // Check if order is in orderRequestData (pending driver acceptance)
+    final isOrderInRequestData = controller.driverModel.value.orderRequestData
+        ?.contains(controller.currentOrder.value.id) ?? false;
+    // Show accept/reject bottom sheet if:
+    // 1. Order exists
+    // 2. Order is in orderRequestData OR status is Driver Pending
+    // 3. No driver assigned yet
+    // 4. Vendor and address are not null (required for bottom sheet)
+    final shouldShowAcceptReject = controller.currentOrder.value.id != null &&
+        (isOrderInRequestData || 
+         controller.currentOrder.value.status == Constant.driverPending) &&
+        (controller.currentOrder.value.driverID == null ||
+            controller.currentOrder.value.driverID?.isEmpty == true) &&
+        controller.currentOrder.value.vendor != null &&
+        controller.currentOrder.value.address != null;
+    
+    return    hideUI?SizedBox():  shouldShowAcceptReject
         ?
     showDriverBottomSheet(themeChange, controller)
         : (controller.currentOrder.value.id != null &&
+        !isOrderInRequestData &&
         controller.currentOrder.value.status !=
             Constant.driverPending &&
         controller.currentOrder.value.driverID ==
@@ -719,11 +729,18 @@ Obx(
 
 
   showDriverBottomSheet(themeChange, HomeController controller) {
-    double distanceInMeters = Geolocator.distanceBetween(
-        controller.currentOrder.value.vendor!.latitude ?? 0.0,
-        controller.currentOrder.value.vendor!.longitude ?? 0.0,
-        controller.currentOrder.value.address!.location!.latitude ?? 0.0,
-        controller.currentOrder.value.address!.location!.longitude ?? 0.0);
+    // Add null checks before calculating distance
+    final vendor = controller.currentOrder.value.vendor;
+    final address = controller.currentOrder.value.address;
+    final location = address?.location;
+    double distanceInMeters = 0.0;
+    if (vendor != null && location != null) {
+      distanceInMeters = Geolocator.distanceBetween(
+          vendor.latitude ?? 0.0,
+          vendor.longitude ?? 0.0,
+          location.latitude ?? 0.0,
+          location.longitude ?? 0.0);
+    }
     double kilometer = distanceInMeters / 1000;
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -800,7 +817,7 @@ Obx(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${controller.currentOrder.value.vendor!.title}",
+                                  "${vendor?.title ?? 'N/A'}",
                                   textAlign: TextAlign.start,
                                   style: TextStyle(
                                     fontFamily: AppThemeData.semiBold,
@@ -811,7 +828,7 @@ Obx(
                                   ),
                                 ),
                                 Text(
-                                  "${controller.currentOrder.value.vendor!.location}",
+                                  "${vendor?.location ?? 'N/A'}",
                                   textAlign: TextAlign.start,
                                   style: TextStyle(
                                     fontFamily: AppThemeData.medium,
@@ -838,8 +855,7 @@ Obx(
                                   ),
                                 ),
                                 Text(
-                                  controller.currentOrder.value.address!
-                                      .getFullAddress(),
+                                  address?.getFullAddress() ?? 'N/A',
                                   textAlign: TextAlign.start,
                                   style: TextStyle(
                                     fontFamily: AppThemeData.medium,
@@ -928,7 +944,7 @@ Obx(
                         children: [
                           Expanded(
                             child: Text(
-                              "Trip Distance".tr,
+                              "Trip Distance  ${controller.currentOrder.value.id}".tr,
                               textAlign: TextAlign.start,
                               style: TextStyle(
                                 fontFamily: AppThemeData.regular,
@@ -2007,18 +2023,15 @@ class HomeScreenLogger extends RouteAware {
 
 Future<double?> fetchOrderSurgeFee(String orderId) async {
   try {
-    final response = await http.get(
-      Uri.parse('${Constant.baseUrl}mobile/orders/$orderId/billing/surge-fee'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    );
+    final url = '${Constant.baseUrl}mobile/orders/$orderId/billing/surge-fee';
+    print("fetchOrderSurgeFee $url");
+    final response = await http.get(Uri.parse(url));
+    print(" fetchOrderSurgeFee ${response.body}");
     if (response.statusCode == 200) {
       final Map<String, dynamic> jsonResponse = json.decode(response.body);
-      if (jsonResponse['success'] == true &&
-          jsonResponse['data'] != null &&
-          jsonResponse['data']['total_surge_fee'] != null) {
-        return (jsonResponse['data']['total_surge_fee'] as num).toDouble();
+      final totalSurgeFee = jsonResponse['data']?['total_surge_fee'];
+      if (jsonResponse['success'] == true && totalSurgeFee != null) {
+        return (totalSurgeFee is num) ? totalSurgeFee.toDouble() : double.tryParse(totalSurgeFee.toString());
       }
     } else {
       print('Failed to fetch surge fee. Status code: ${response.statusCode}');

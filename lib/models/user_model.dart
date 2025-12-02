@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/models/subscription_plan_model.dart';
@@ -75,34 +76,40 @@ class UserModel {
   }
 
   UserModel.fromJson(Map<String, dynamic> json) {
+    // Safely convert id from int or String to String?
     if (json['id'] != null) {
-      id = json['id'].toString();
+      id = json['id'] is String ? json['id'] : json['id'].toString();
     }
-    firebaseId = json['id']?.toString();
+    firebaseId = json['firebase_id']?.toString() ?? json['id']?.toString();
     email = json['email'];
     firstName = json['firstName'];
     lastName = json['lastName'];
     profilePictureURL = json['profile_pic'];
     fcmToken = json['fcmToken'];
     countryCode = json['countryCode'];
-    phoneNumber = json['phone'];
+    phoneNumber = (json['phoneNumber'] ?? json['phone'])?.toString();
     walletAmount = json['wallet_amount'] ?? 0;
     deliveryAmount = json['deliveryAmount'] ?? 0;
-
-    // Handle createdAt - check if it exists and convert if needed
     if (json['createdAt'] != null) {
       if (json['createdAt'] is Timestamp) {
         createdAt = json['createdAt'];
+      } else if (json['createdAt'] is int) {
+        createdAt = Timestamp.fromMillisecondsSinceEpoch(json['createdAt']);
       } else if (json['createdAt'] is String) {
-        // Try to parse string to DateTime, then to Timestamp
-        try {
-          final dateTime = DateTime.parse(json['createdAt']);
-          createdAt = Timestamp.fromDate(dateTime);
-        } catch (e) {
-          createdAt = null;
+        // Try parsing as milliseconds string first (e.g., "1764675379043")
+        final milliseconds = int.tryParse(json['createdAt']);
+        if (milliseconds != null) {
+          createdAt = Timestamp.fromMillisecondsSinceEpoch(milliseconds);
+        } else {
+          // Try parsing as ISO8601 string
+          try {
+            final dateTime = DateTime.parse(json['createdAt']);
+            createdAt = Timestamp.fromDate(dateTime);
+          } catch (e) {
+            createdAt = null;
+          }
         }
       } else if (json['createdAt'] is Map) {
-        // Handle Firestore timestamp format {seconds: ..., nanoseconds: ...}
         try {
           createdAt = Timestamp(
             json['createdAt']['seconds'] ?? 0,
@@ -183,8 +190,8 @@ class UserModel {
     carName = json['carName'];
     carNumber = json['carNumber'];
     carPictureURL = json['carPictureURL'];
-    inProgressOrderID = json['inProgressOrderID'] ?? [];
-    orderRequestData = json['orderRequestData'] ?? [];
+    inProgressOrderID = _parseList(json['inProgressOrderID']);
+    orderRequestData = _parseList(json['orderRequestData']);
     vendorID = json['vendorID'] ?? '';
     zoneId = json['zoneId'] ?? '';
     rotation = json['rotation'];
@@ -196,12 +203,21 @@ class UserModel {
     if (json['subscriptionExpiryDate'] != null) {
       if (json['subscriptionExpiryDate'] is Timestamp) {
         subscriptionExpiryDate = json['subscriptionExpiryDate'];
+      } else if (json['subscriptionExpiryDate'] is int) {
+        subscriptionExpiryDate = Timestamp.fromMillisecondsSinceEpoch(json['subscriptionExpiryDate']);
       } else if (json['subscriptionExpiryDate'] is String) {
-        try {
-          final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
-          subscriptionExpiryDate = Timestamp.fromDate(dateTime);
-        } catch (e) {
-          subscriptionExpiryDate = null;
+        // Try parsing as milliseconds string first (e.g., "1764675379043")
+        final milliseconds = int.tryParse(json['subscriptionExpiryDate']);
+        if (milliseconds != null) {
+          subscriptionExpiryDate = Timestamp.fromMillisecondsSinceEpoch(milliseconds);
+        } else {
+          // Try parsing as ISO8601 string
+          try {
+            final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
+            subscriptionExpiryDate = Timestamp.fromDate(dateTime);
+          } catch (e) {
+            subscriptionExpiryDate = null;
+          }
         }
       } else if (json['subscriptionExpiryDate'] is Map) {
         try {
@@ -234,6 +250,28 @@ class UserModel {
     } else {
       subscriptionPlan = null;
     }
+  }
+
+  /// Safely parse a list that may come as:
+  /// - List
+  /// - JSON String (e.g., "[]" or "[1,2,3]")
+  /// - or null
+  List<dynamic>? _parseList(dynamic value) {
+    if (value == null) return [];
+    if (value is List) return value;
+    if (value is String) {
+      try {
+        // Try to parse as JSON string
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded;
+        }
+      } catch (_) {
+        // If parsing fails, return empty list
+        return [];
+      }
+    }
+    return [];
   }
 
   Map<String, dynamic> toJson() {
@@ -330,7 +368,7 @@ class ShippingAddress {
   });
 
   ShippingAddress.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
+    id = json['id']?.toString();
     address = json['address'];
     landmark = json['landmark'];
     locality = json['locality'];
