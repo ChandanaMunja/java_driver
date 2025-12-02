@@ -20,7 +20,6 @@ class SplashController extends GetxController {
     Timer(const Duration(seconds: 3), () => redirectScreen());
     super.onInit();
   }
-
   @override
   void onClose() {
     AppLogger.log('SplashController onClose() called', tag: 'Controller');
@@ -42,6 +41,7 @@ class SplashController extends GetxController {
         if (isLogin == true) {
           log(' [32m$fromScreen -> Getting user profile... [0m');
           UserModel? userModel = await FireStoreUtils.getUserProfile(userId);
+          await   FireStoreUtils.getSettings();
           print("FireStoreUtils.getUserProfile ${userModel?.firebaseId} ");
           if (userModel != null) {
             log(' [32m$fromScreen -> User profile loaded: ${userModel.toJson().toString()} [0m');

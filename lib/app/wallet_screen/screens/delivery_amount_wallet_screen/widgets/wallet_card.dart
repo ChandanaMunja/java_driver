@@ -44,7 +44,7 @@ Widget deliveryWalletCard({required BuildContext context,required DarkThemeProvi
               Constant.amountShow(
                   amount: controller
                       .userModel.value.deliveryAmount
-                      .toString()),
+                      .toString(),),
               maxLines: 1,
               style: TextStyle(
                 color: themeChange.getThem()

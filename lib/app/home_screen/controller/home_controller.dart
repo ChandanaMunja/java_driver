@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSergeFee;
-import 'package:jippydriver_driver/constant/collection_name.dart';
+import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSergeFee, fetchOrderSurgeFee;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
@@ -107,26 +106,6 @@ if(arrowDrop.value){
     }
   }
 
-  // Calculate driver to restaurant details
-  // Future<void> calculateDriverToRestaurantDetails() async {
-  //   double distanceInMeters = Geolocator.distanceBetween(
-  //     driverModel.value.location!.latitude!,
-  //     driverModel.value.location!.longitude!,
-  //     currentOrder.value.vendor!.latitude ?? 0.0,
-  //     currentOrder.value.vendor!.longitude ?? 0.0,
-  //   );
-  //
-  //   // Convert to kilometers
-  //   driverToRestaurantDistance.value = distanceInMeters / 1000;
-  //
-  //   // Calculate duration (assuming average speed of 30 km/h)
-  //   driverToRestaurantDuration.value = (driverToRestaurantDistance.value / 30) * 60;
-  //
-  //   // Calculate charge
-  //   driverToRestaurantCharge.value = driverToRestaurantDistance.value * DRIVER_TO_RESTAURANT_RATE_PER_KM;
-  //   print(" ${driverToRestaurantCharge.value} calculateDriverToRestaurantDetails ");
-  //
-  // }
   Future<void> calculateDriverToRestaurantDetails() async {
     print(" ${driverToRestaurantCharge.value} driverToRestaurantCharge ");
     double distanceInMeters = Geolocator.distanceBetween(
@@ -149,25 +128,7 @@ if(arrowDrop.value){
     update();
   }
 
-  // Calculate restaurant to customer details
-  // Future<void> calculateRestaurantToCustomerDetails() async {
-  //   double distanceInMeters = Geolocator.distanceBetween(
-  //     currentOrder.value.vendor!.latitude ?? 0.0,
-  //     currentOrder.value.vendor!.longitude ?? 0.0,
-  //     currentOrder.value.address!.location!.latitude ?? 0.0,
-  //     currentOrder.value.address!.location!.longitude ?? 0.0,
-  //   );
-  //
-  //   // Convert to kilometers
-  //   restaurantToCustomerDistance.value = distanceInMeters / 1000;
-  //
-  //   // Calculate duration (assuming average speed of 30 km/h)
-  //   restaurantToCustomerDuration.value = (restaurantToCustomerDistance.value / 30) * 60;
-  //
-  //   // Calculate charge
-  //   restaurantToCustomerCharge.value = restaurantToCustomerDistance.value * RESTAURANT_TO_CUSTOMER_RATE_PER_KM;
-  //   print(" ${restaurantToCustomerCharge.value} calculateRestaurantToCustomerDetails ");
-  // }
+
   Future<void> calculateRestaurantToCustomerDetails() async {
     double distanceInMeters = Geolocator.distanceBetween(
       currentOrder.value.vendor!.latitude ?? 0.0,
@@ -195,7 +156,7 @@ if(arrowDrop.value){
   // Update order with calculated charges
   Future<void> updateOrderWithCalculatedCharges() async {
     // Create a map to store calculated charges
- double? surgeAmount =await   fetchOrderSergeFee(
+ double? surgeAmount =await   fetchOrderSurgeFee(
         currentOrder.value.id.toString());
     Map<String, dynamic> calculatedCharges = {
       'driverToRestaurantDistance': driverToRestaurantDistance.value,
@@ -211,20 +172,7 @@ if(arrowDrop.value){
       'calculatedAt': FieldValue.serverTimestamp(),
     };
     print( "${calculatedCharges} calculatedCharges");
-    // Update the order in Firestore
-    // await FireStoreUtils.fireStore
-    //     .collection(CollectionName.restaurantOrders)
-    //     .doc(currentOrder.value.id)
-    //     .update({
-    //   'calculatedCharges': calculatedCharges,
-    // });
-    // await FireStoreUtils.fireStore
-    //     .collection(CollectionName.restaurantOrders)
-    //     .doc(currentOrder.value.id)
-    //     .set({
-    //   'calculatedCharges': calculatedCharges,
-    // }, SetOptions(merge: true));
-    // Also update local order model
+
     currentOrder.value.calculatedCharges = calculatedCharges;
   }
 
@@ -404,126 +352,57 @@ if(arrowDrop.value){
     update();
   }
 
-  getCurrentOrder() async {
-    AppLogger.log('getCurrentOrder() called', tag: 'Function');
-    if (currentOrder.value.id != null &&
-        !driverModel.value.orderRequestData!.contains(currentOrder.value.id) &&
-        !driverModel.value.inProgressOrderID!.contains(currentOrder.value.id)) {
-      currentOrder.value = OrderModel();
-      await clearMap();
-      await AudioPlayerService.playSound(false);
-      AppLogger.log('No current order, cleared map and stopped sound', tag: 'UI');
-    } else if (Constant.singleOrderReceive == true) {
-      if (driverModel.value.inProgressOrderID != null &&
-          driverModel.value.inProgressOrderID!.isNotEmpty) {
-        // Safely get the first order ID
-        String? firstOrderId = driverModel.value.inProgressOrderID!.isNotEmpty
-            ? driverModel.value.inProgressOrderID!.first
-            : null;
-        if (firstOrderId != null && firstOrderId.isNotEmpty) {
-          FireStoreUtils.fireStore
-              .collection(CollectionName.restaurantOrders)
-              .where('status',
-              whereNotIn: [Constant.orderCancelled, Constant.driverRejected,Constant.orderCompleted])
-              .where('id',
-              isEqualTo: firstOrderId)
-              .snapshots()
-              .listen(
-                (event) async {
-              if (event.docs.isNotEmpty) {
-                currentOrder.value =
-                    OrderModel.fromJson(event.docs.first.data());
-                 calculateOrderChargesInitial();
-                changeData();
-                AppLogger.log('Fetched in-progress order: $firstOrderId', tag: 'Firestore');
-              } else {
-                // Order completed or not found - clear from driver's inProgressOrderID
-                if (driverModel.value.inProgressOrderID!.contains(firstOrderId)) {
-                  driverModel.value.inProgressOrderID!.remove(firstOrderId);
-                  await FireStoreUtils.updateUser(driverModel.value);
-                  AppLogger.log('Removed completed order from inProgressOrderID', tag: 'Firestore');
-                }
-                currentOrder.value = OrderModel();
-                await clearMap();
-                await AudioPlayerService.playSound(false);
-                update();
-                AppLogger.log('No in-progress order found, cleared map and stopped sound', tag: 'UI');
-              }
-            },
-          );
-        }
-      } else if (driverModel.value.orderRequestData != null &&
-          driverModel.value.orderRequestData!.isNotEmpty) {
-        // Safely get the first order ID
-        String? firstOrderId = driverModel.value.orderRequestData!.isNotEmpty
-            ? driverModel.value.orderRequestData!.first
-            : null;
-        if (firstOrderId != null && firstOrderId.isNotEmpty) {
-          FireStoreUtils.fireStore
-              .collection(CollectionName.restaurantOrders)
-              .where('status',
-              whereNotIn: [Constant.orderCancelled, Constant.driverRejected])
-              .where('id',
-              isEqualTo: firstOrderId)
-              .snapshots()
-              .listen(
-                (event) async {
-              if (event.docs.isNotEmpty) {
-                currentOrder.value =
-                    OrderModel.fromJson(event.docs.first.data());
-                // ADD THIS: Calculate charges when order arrives
-                 calculateOrderChargesInitial();
-                if (driverModel.value.orderRequestData
-                    ?.contains(currentOrder.value.id) ==
-                    true) {
-                  changeData();
-                  AppLogger.log('Fetched order request: $firstOrderId', tag: 'Firestore');
-                } else {
-                  currentOrder.value = OrderModel();
-                  update();
-                  AppLogger.log('Order request not found, cleared currentOrder', tag: 'UI');
-                }
-              } else {
-                // Order not found - remove from orderRequestData
-                if (driverModel.value.orderRequestData!.contains(firstOrderId)) {
-                  driverModel.value.orderRequestData!.remove(firstOrderId);
-                  await FireStoreUtils.updateUser(driverModel.value);
-                  AppLogger.log('Removed missing order from orderRequestData', tag: 'Firestore');
-                }
-                currentOrder.value = OrderModel();
-                await AudioPlayerService.playSound(false);
-                update();
-                AppLogger.log('No order found, stopped sound and updated UI', tag: 'UI');
-              }
-            },
-          );
-        }
-      }
-    } else if (orderModel.value.id != null) {
-      FireStoreUtils.fireStore
-          .collection(CollectionName.restaurantOrders)
-          .where('status',
-          whereNotIn: [Constant.orderCancelled, Constant.driverRejected])
-          .where('id', isEqualTo: orderModel.value.id.toString())
-          .snapshots()
-          .listen(
-            (event) async {
-          if (event.docs.isNotEmpty) {
-            currentOrder.value =
-                OrderModel.fromJson(event.docs.first.data());
-            changeData();
-            AppLogger.log('Fetched order by argument: ${orderModel.value.id}', tag: 'Firestore');
-            calculateOrderChargesInitial();
-          } else {
-            currentOrder.value = OrderModel();
-            await AudioPlayerService.playSound(false);
-            AppLogger.log('No order found by argument, stopped sound', tag: 'UI');
-          }
-        },
-      );
-    }
-  }
 
+  Future<void> getCurrentOrder() async {
+    final response = await http.post(
+      Uri.parse("${Constant.baseUrl}driver/get-current-order"),
+      body: {
+        "driver_id": driverModel.value.id,
+        "current_order_id": currentOrder.value.id ?? "",
+        "argument_order_id": orderModel.value.id ?? "",
+        "single_order_receive": Constant.singleOrderReceive.toString()
+      },
+    );
+    final data = jsonDecode(response.body);
+    switch(data["action"]) {
+      case "clear_and_stopSound":
+        currentOrder.value = OrderModel();
+        await clearMap();
+        await AudioPlayerService.playSound(false);
+        break;
+
+      case "in_progress":
+        currentOrder.value = OrderModel.fromJson(data["order"]);
+        calculateOrderChargesInitial();
+        changeData();
+        break;
+      case "remove_inProgress_and_clear":
+        currentOrder.value = OrderModel();
+        await clearMap();
+        await AudioPlayerService.playSound(false);
+        break;
+      case "order_request":
+        currentOrder.value = OrderModel.fromJson(data["order"]);
+        calculateOrderChargesInitial();
+        changeData();
+        break;
+      case "remove_request":
+        currentOrder.value = OrderModel();
+        await AudioPlayerService.playSound(false);
+        break;
+      case "order_by_argument":
+        currentOrder.value = OrderModel.fromJson(data["order"]);
+        calculateOrderChargesInitial();
+        changeData();
+        break;
+      case "argument_not_found_stopSound":
+        currentOrder.value = OrderModel();
+        await AudioPlayerService.playSound(false);
+        break;
+    }
+    update();
+  }
+//finded
   RxBool isChange = false.obs;
 
   changeData() async {
@@ -549,28 +428,33 @@ if(arrowDrop.value){
     }
   }
 
-  getDriver() async{
+
+  Future<void> getDriver() async {
     String? userId = await LoginController.getFirebaseId();
-    AppLogger.log('getDriver() called', tag: 'Function');
-    FireStoreUtils.fireStore
-        .collection(CollectionName.users)
-        .doc(userId)
-        .snapshots()
-        .listen(
-          (event) async {
-        if (event.exists) {
-          driverModel.value = UserModel.fromJson(event.data()!);
+    AppLogger.log('getDriver() API called', tag: 'Function');
+    try {
+      var response = await http.get(Uri.parse("${Constant.baseUrl}users/$userId"));
+      if (response.statusCode == 200) {
+        var jsonResponse = jsonDecode(response.body);
+        if (jsonResponse["success"] == true && jsonResponse["data"] != null) {
+          driverModel.value = UserModel.fromJson(jsonResponse["data"]);
           if (driverModel.value.id != null) {
             isLoading.value = false;
             update();
             changeData();
             getCurrentOrder();
-            AppLogger.log('Driver data updated and order logic triggered', tag: 'Firestore');
+            AppLogger.log("Driver profile fetched & order flow executed", tag: "API");
           }
         }
-      },
-    );
+      } else {
+        AppLogger.log("API failed: ${response.statusCode}", tag: "API");
+      }
+
+    } catch (e) {
+      AppLogger.log("getDriver() Exception: $e", tag: "API");
+    }
   }
+
 
   GoogleMapController? mapController;
 
@@ -916,59 +800,75 @@ if(arrowDrop.value){
     }
   }
 
-  /// Force refresh current order state
-  Future<void> refreshCurrentOrder() async {
-    AppLogger.log('refreshCurrentOrder() called', tag: 'Function');
 
+  Future<void> refreshCurrentOrder() async {
+    AppLogger.log('refreshCurrentOrder() API called', tag: 'Function');
     if (currentOrder.value.id != null) {
       try {
-        // Fetch fresh order data from Firestore
-        final orderDoc = await FireStoreUtils.fireStore
-            .collection(CollectionName.restaurantOrders)
-            .doc(currentOrder.value.id)
-            .get();
+        final response = await http.get(
+          Uri.parse("${Constant.baseUrl}restaurant/orders/${currentOrder.value.id}"),
+        );
+        if (response.statusCode == 200) {
+          final body = jsonDecode(response.body);
+          if (body["success"] == true && body["data"] != null) {
+            currentOrder.value = OrderModel.fromJson(body["data"]);
 
-        if (orderDoc.exists) {
-          currentOrder.value = OrderModel.fromJson(orderDoc.data()!);
-          AppLogger.log('Order refreshed: ${currentOrder.value.id} - ${currentOrder.value.status}', tag: 'Firestore');
-          changeData();
+            AppLogger.log(
+                "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
+                tag: "API"
+            );
+
+            changeData();
+          } else {
+            AppLogger.log("Order not found - clearing", tag: "API");
+            currentOrder.value = OrderModel();
+            update();
+          }
         } else {
-          AppLogger.log('Order not found in Firestore, clearing current order', tag: 'Firestore');
-          currentOrder.value = OrderModel();
-          update();
+          AppLogger.log("API Error → ${response.statusCode}", tag: "API");
         }
+
       } catch (e) {
-        AppLogger.log('Error refreshing order: $e', tag: 'Error');
+        AppLogger.log("API Exception → $e", tag: "Exception");
       }
     }
   }
 
-  /// Refresh home screen data
   Future<void> refreshHomeScreen() async {
     AppLogger.log('refreshHomeScreen() called', tag: 'Function');
 
     try {
       String? userId = await LoginController.getFirebaseId();
-      // Refresh driver data
-      final driverDoc = await FireStoreUtils.fireStore
-          .collection(CollectionName.users)
-          .doc(userId)
-          .get();
+      /// API CALL instead of Firestore
+      final response = await http.get(
+        Uri.parse("${Constant.baseUrl}users/$userId"),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      );
 
-      if (driverDoc.exists) {
-        driverModel.value = UserModel.fromJson(driverDoc.data()!);
-        AppLogger.log('Driver data refreshed', tag: 'Firestore');
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+
+        if (responseData['success'] == true) {
+          /// Convert to UserModel from response.data
+          driverModel.value = UserModel.fromJson(responseData['data']);
+          AppLogger.log("Driver data refreshed from API", tag: "API");
+        }
+      } else {
+        AppLogger.log("Failed to get user | Code: ${response.statusCode}",
+            tag: "API");
       }
 
-      // Refresh current order if exists
+      /// Refresh existing order
       if (currentOrder.value.id != null) {
-        await refreshCurrentOrder();
+        await refreshCurrentOrder(); // convert this also later
       }
 
-      // Re-setup order listeners
+      /// Setup order listeners again (convert later)
       getCurrentOrder();
 
-      // Update UI
       update();
       AppLogger.log('Home screen refresh completed', tag: 'UI');
 
@@ -976,4 +876,5 @@ if(arrowDrop.value){
       AppLogger.log('Error refreshing home screen: $e', tag: 'Error');
     }
   }
+
 }

@@ -1,5 +1,7 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:jippydriver_driver/constant/collection_name.dart';
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/app/home_screen/controller/home_controller.dart';
@@ -39,22 +41,23 @@ class DashBoardController extends GetxController {
   DateTime? currentBackPressTime;
   RxBool canPopNow = false.obs;
 
-  getUser() async {
+  Future<void> getUser() async {
     String? userId = await LoginController.getFirebaseId();
     await updateCurrentLocation();
-    FireStoreUtils.fireStore
-        .collection(CollectionName.users)
-        .doc(userId)
-        .snapshots()
-        .listen(
-      (event) {
-        if (event.exists) {
-          userModel.value = UserModel.fromJson(event.data()!);
-          Constant.userModel = UserModel.fromJson(event.data()!);
-        }
-      },
-    );
+
+    final response = await http.get(Uri.parse("${Constant.baseUrl}users/$userId"));
+print("getUser ${response.body}");
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success'] == true && data['data'] != null) {
+        userModel.value = UserModel.fromJson(data['data']);
+        Constant.userModel = UserModel.fromJson(data['data']);
+      }
+    } else {
+      print("Error fetching user → ${response.statusCode}");
+    }
   }
+
   RxString isDarkMode = "Light".obs;
   RxBool isDarkModeSwitch = false.obs;
   getThem() {
@@ -68,40 +71,42 @@ class DashBoardController extends GetxController {
     }
   }
 
+
   updateDriverOrder() async {
-    Timestamp startTimestamp = Timestamp.now();
-    DateTime currentDate = startTimestamp.toDate();
-    currentDate = currentDate.subtract(const Duration(hours: 3));
-    startTimestamp = Timestamp.fromDate(currentDate);
 
     List<OrderModel> orders = [];
+    final response = await http.get(
+      Uri.parse('${Constant.baseUrl}update-driver-order'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+    );
 
-    await FirebaseFirestore.instance
-        .collection(CollectionName.restaurantOrders)
-        .where('status',
-            whereIn: [Constant.orderAccepted, Constant.orderRejected])
-        .where('createdAt', isGreaterThan: startTimestamp)
-        .get()
-        .then((value) async {
-          await Future.forEach(value.docs,
-              (QueryDocumentSnapshot<Map<String, dynamic>> element) {
-            try {
-              orders.add(OrderModel.fromJson(element.data()));
-            } catch (e, s) {
-              print('watchOrdersStatus parse error ${element.id}$e $s');
-            }
-          });
-        });
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
 
-    orders.forEach((element) async {
-      OrderModel orderModel = element;
-      orderModel.triggerDelivery = Timestamp.now();
+      if (data['orders'] != null) {
+        for (var element in data['orders']) {
+          try {
+            orders.add(OrderModel.fromJson(element));
+          } catch (e, s) {
+            print('watchOrdersStatus parse error ${element['id']} $e $s');
+          }
+        }
+      }
+    } else {
+      print('API request failed with status: ${response.statusCode}');
+    }
+    // Update triggerDelivery for each order
+    for (var orderModel in orders) {
+      orderModel.triggerDelivery = DateTime.now() as Timestamp?;
+      // Send updated order back (assuming setOrder is same)
       await FireStoreUtils.setOrder(orderModel);
-    });
+    }
   }
 
   Location location = Location();
-
   updateCurrentLocation() async {
     try {
       String? userId = await LoginController.getFirebaseId();
@@ -111,7 +116,6 @@ class DashBoardController extends GetxController {
         location.changeSettings(
             accuracy: LocationAccuracy.high,
             distanceFilter: double.parse(Constant.driverLocationUpdate));
-
         location.onLocationChanged.listen((locationData) async {
           String? userId = await LoginController.getFirebaseId();
           Constant.locationDataFinal = locationData;

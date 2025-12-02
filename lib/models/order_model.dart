@@ -32,39 +32,40 @@ class OrderModel {
   UserModel? driver;
   bool? takeAway;
   List<dynamic>? rejectedByDrivers;
-  String? toPay; // New field for 'ToPay' from Firestore
+  String? toPay;
   Map<String, dynamic>? calculatedCharges;
-  OrderModel(
-      {this.address,
-        this.status,
-        this.couponId,
-        this.vendorID,
-        this.driverID,
-        this.discount,
-        this.authorID,
-        this.estimatedTimeToPrepare,
-        this.createdAt,
-        this.triggerDelivery,
-        this.taxSetting,
-        this.paymentMethod,
-        this.products,
-        this.adminCommissionType,
-        this.vendor,
-        this.id,
-        this.adminCommission,
-        this.couponCode,
-        this.specialDiscount,
-        this.deliveryCharge,
-        this.scheduleTime,
-        this.tipAmount,
-        this.notes,
-        this.author,
-        this.driver,
-        this.takeAway,
-        this.rejectedByDrivers,
-        this.toPay,
-        this.calculatedCharges,
-      }); // Add to constructor
+
+  OrderModel({
+    this.address,
+    this.status,
+    this.couponId,
+    this.vendorID,
+    this.driverID,
+    this.discount,
+    this.authorID,
+    this.estimatedTimeToPrepare,
+    this.createdAt,
+    this.triggerDelivery,
+    this.taxSetting,
+    this.paymentMethod,
+    this.products,
+    this.adminCommissionType,
+    this.vendor,
+    this.id,
+    this.adminCommission,
+    this.couponCode,
+    this.specialDiscount,
+    this.deliveryCharge,
+    this.scheduleTime,
+    this.tipAmount,
+    this.notes,
+    this.author,
+    this.driver,
+    this.takeAway,
+    this.rejectedByDrivers,
+    this.toPay,
+    this.calculatedCharges,
+  });
 
   OrderModel.fromJson(Map<String, dynamic> json) {
     address = json['address'] != null ? ShippingAddress.fromJson(json['address']) : null;
@@ -104,12 +105,7 @@ class OrderModel {
     driver = json['driver'] != null ? UserModel.fromJson(json['driver']) : null;
     takeAway = json['takeAway'];
     rejectedByDrivers = json['rejectedByDrivers'] ?? [];
-    toPay = json['ToPay']?.toString(); // Parse 'ToPay' from Firestore
-    // calculatedCharges: json['calculatedCharges'] != null
-    //     ? Map<String, dynamic>.from(json['calculatedCharges'])
-    //     : null;
-
-    // ✅ Fixed line:
+    toPay = json['ToPay']?.toString();
     calculatedCharges = json['calculatedCharges'] != null
         ? Map<String, dynamic>.from(json['calculatedCharges'])
         : null;
@@ -117,9 +113,11 @@ class OrderModel {
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
+
     if (address != null) {
       data['address'] = address!.toJson();
     }
+
     data['status'] = status;
     data['couponId'] = couponId;
     data['vendorID'] = vendorID;
@@ -127,37 +125,86 @@ class OrderModel {
     data['discount'] = discount;
     data['authorID'] = authorID;
     data['estimatedTimeToPrepare'] = estimatedTimeToPrepare;
-    data['createdAt'] = createdAt;
-    data['triggerDelivery'] = triggerDelivery;
+
+    // Convert Timestamp to milliseconds
+    data['createdAt'] = createdAt?.millisecondsSinceEpoch;
+    data['triggerDelivery'] = triggerDelivery?.millisecondsSinceEpoch;
+
     if (taxSetting != null) {
       data['taxSetting'] = taxSetting!.map((v) => v.toJson()).toList();
     }
+
     data['payment_method'] = paymentMethod;
+
     if (products != null) {
-      data['products'] = products!.map((v) => v.toJson()).toList();
+      data['products'] = products!.map((e) => e.toJson()).toList();
     }
+
     data['adminCommissionType'] = adminCommissionType;
+
     if (vendor != null) {
-      data['vendor'] = vendor!.toJson();
+      // Get vendor JSON and handle GeoPoint serialization
+      final vendorJson = vendor!.toJson();
+
+      // Convert any GeoPoint objects in vendor JSON
+      _convertGeoPointsInMap(vendorJson);
+      data['vendor'] = vendorJson;
     }
+
     data['id'] = id;
     data['adminCommission'] = adminCommission;
     data['couponCode'] = couponCode;
     data['specialDiscount'] = specialDiscount;
     data['deliveryCharge'] = deliveryCharge;
-    data['scheduleTime'] = scheduleTime;
+
+    // Convert scheduleTime to milliseconds
+    data['scheduleTime'] = scheduleTime?.millisecondsSinceEpoch;
+
     data['tip_amount'] = tipAmount;
     data['notes'] = notes;
+
     if (author != null) {
       data['author'] = author!.toJson();
     }
+
     if (driver != null) {
       data['driver'] = driver!.toJson();
     }
+
     data['takeAway'] = takeAway;
     data['rejectedByDrivers'] = rejectedByDrivers;
-    data['ToPay'] = toPay; // Add 'ToPay' to Firestore
-    data['calculatedCharges'] = calculatedCharges; // Add 'ToPay' to Firestore
+    data['ToPay'] = toPay;
+    data['calculatedCharges'] = calculatedCharges;
+
     return data;
+  }
+
+  // Helper method to convert GeoPoint objects in a map
+  void _convertGeoPointsInMap(Map<String, dynamic> map) {
+    for (final key in map.keys.toList()) {
+      final value = map[key];
+
+      if (value is GeoPoint) {
+        map[key] = {
+          'latitude': value.latitude,
+          'longitude': value.longitude,
+          '_type': 'geopoint' // Optional: Add a type indicator
+        };
+      } else if (value is Map<String, dynamic>) {
+        _convertGeoPointsInMap(value);
+      } else if (value is List) {
+        for (var i = 0; i < value.length; i++) {
+          if (value[i] is Map<String, dynamic>) {
+            _convertGeoPointsInMap(value[i]);
+          } else if (value[i] is GeoPoint) {
+            value[i] = {
+              'latitude': value[i].latitude,
+              'longitude': value[i].longitude,
+              '_type': 'geopoint'
+            };
+          }
+        }
+      }
+    }
   }
 }

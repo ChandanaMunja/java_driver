@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/controllers/order_details_controller.dart';
 import 'package:jippydriver_driver/models/cart_product_model.dart';
@@ -13,27 +16,24 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:timelines_plus/timelines_plus.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Function to fetch ToPay value from order_Billing collection
 Future<double?> fetchToPayForOrder(String orderId) async {
-  const collectionName = 'order_Billing';
-  const fieldName = 'ToPay';
-  print('[DEBUG] Fetching from collection: $collectionName, doc: $orderId');
-  final doc = await FirebaseFirestore.instance
-      .collection(collectionName)
-      .doc(orderId)
-      .get();
-  if (doc.exists && doc.data() != null) {
-    final data = doc.data()!;
-    final toPay = (data[fieldName] as num?)?.toDouble();
-    print('[DEBUG] Field: $fieldName, Amount: ${toPay ?? 'null'}');
-    return toPay;
-  }
-  print('[DEBUG] Document not found or data is null for orderId: $orderId');
-  return null;
-}
+  final url = Uri.parse('${Constant.baseUrl}mobile/orders/$orderId/billing/to-pay');
+  try {
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
+        return (jsonResponse['data']['to_pay'] as num).toDouble();
+      }
+    }
 
+    return null;
+  } catch (e) {
+    print("Error fetching toPay: $e");
+    return null;
+  }
+}
 class OrderDetailsScreen extends StatelessWidget {
   const OrderDetailsScreen({super.key});
 

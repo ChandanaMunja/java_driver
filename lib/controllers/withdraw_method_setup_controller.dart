@@ -1,6 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:jippydriver_driver/constant/collection_name.dart';
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/models/payment_model/flutter_wave_model.dart';
 import 'package:jippydriver_driver/models/payment_model/paypal_model.dart';
@@ -70,43 +72,41 @@ class WithdrawMethodSetupController extends GetxController {
     isLoading.value = false;
   }
 
+
   getPaymentSettings() async {
-    if(Constant.userModel!.userBankDetails != null){
-      userBankDetails.value = Constant.userModel!.userBankDetails!;
-      isBankDetailsAdded.value = userBankDetails.value.accountNumber.isNotEmpty;
+    try {
+      // 1. Set user bank details if available
+      if (Constant.userModel!.userBankDetails != null) {
+        userBankDetails.value = Constant.userModel!.userBankDetails!;
+        isBankDetailsAdded.value = userBankDetails.value.accountNumber.isNotEmpty;
+      }
+
+      // 2. Make API call
+      final response = await http.get(Uri.parse("${Constant.baseUrl}settings/payment"));
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+
+        if (jsonResponse['success'] == true && jsonResponse['data'] != null) {
+          final data = jsonResponse['data'];
+
+          // Parse each payment method
+          razorPayModel.value = RazorPayModel.fromJson(data['razorpaySettings'] ?? {});
+          paypalDataModel.value = PayPalModel.fromJson(data['paypalSettings'] ?? {});
+          stripeSettingData.value = StripeModel.fromJson(data['stripeSettings'] ?? {});
+          flutterWaveSettingData.value = FlutterWaveModel.fromJson(data['flutterWave'] ?? {});
+
+          // You can also parse other payment methods as needed
+          // e.g. midtransSettings, payStack, xenditSettings, etc.
+        }
+      } else {
+        debugPrint('Failed to load payment settings: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error fetching payment settings: $e');
+    } finally {
+      isLoading.value = false;
     }
-
-    await FireStoreUtils.fireStore.collection(CollectionName.settings).doc("razorpaySettings").get().then((user) {
-      try {
-        razorPayModel.value = RazorPayModel.fromJson(user.data() ?? {});
-      } catch (e) {
-        debugPrint('FireStoreUtils.getUserByID failed to parse user object ${user.id}');
-      }
-    });
-
-    await FireStoreUtils.fireStore.collection(CollectionName.settings).doc("paypalSettings").get().then((paypalData) {
-      try {
-        paypalDataModel.value = PayPalModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
-
-    await FireStoreUtils.fireStore.collection(CollectionName.settings).doc("stripeSettings").get().then((paypalData) {
-      try {
-        stripeSettingData.value = StripeModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
-
-    await FireStoreUtils.fireStore.collection(CollectionName.settings).doc("flutterWave").get().then((paypalData) {
-      try {
-        flutterWaveSettingData.value = FlutterWaveModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
-    isLoading.value = false;
   }
+
 }

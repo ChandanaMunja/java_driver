@@ -1,7 +1,9 @@
 
+import 'dart:convert';
 import 'dart:developer';
 import 'package:android_pip/android_pip.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/app/chat_screens/chat_screen.dart';
 import 'package:jippydriver_driver/app/home_screen/screens/delivery_order_screen/deliver_order_screen.dart';
 import 'package:jippydriver_driver/app/home_screen/screens/pickup_order_screen/pickup_order_screen.dart';
@@ -118,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
+
                           Container(
                             decoration: ShapeDecoration(
                               color: themeChange.getThem()
@@ -713,84 +716,7 @@ Obx(
     );
   }
 
-// Helper method to get calculated charges
-  Future<Map<String, dynamic>?> _getCalculatedCharges(HomeController controller) async {
-    if (controller.currentOrder.value.calculatedCharges != null) {
-      return controller.currentOrder.value.calculatedCharges;
-    }
 
-    // If not in local model, try to fetch from Firestore
-    try {
-      final orderDoc = await FirebaseFirestore.instance
-          .collection('restaurant_orders')
-          .doc(controller.currentOrder.value.id)
-          .get();
-
-      if (orderDoc.exists && orderDoc.data()?['calculatedCharges'] != null) {
-        return Map<String, dynamic>.from(orderDoc.data()!['calculatedCharges']);
-      }
-    } catch (e) {
-      print('Error fetching calculated charges: $e');
-    }
-
-    return null;
-  }
-
-// Helper widget for charge breakdown rows
-  Widget _buildChargeBreakdownRow(String label, String distance, String amount, DarkThemeProvider themeChange) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 2),
-      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-      decoration: BoxDecoration(
-        color: themeChange.getThem()
-            ? AppThemeData.grey800
-            : AppThemeData.grey100,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontFamily: AppThemeData.regular,
-                fontSize: 14,
-                color: themeChange.getThem()
-                    ? AppThemeData.grey300
-                    : AppThemeData.grey700,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text(
-              distance,
-              style: TextStyle(
-                fontFamily: AppThemeData.medium,
-                fontSize: 14,
-                color: themeChange.getThem()
-                    ? AppThemeData.grey300
-                    : AppThemeData.grey700,
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 1,
-            child: Text(
-              amount,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontFamily: AppThemeData.semiBold,
-                fontSize: 14,
-                color: AppThemeData.success400,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   showDriverBottomSheet(themeChange, HomeController controller) {
     double distanceInMeters = Geolocator.distanceBetween(
@@ -938,9 +864,8 @@ Obx(
                         : AppThemeData.grey200),
               ),
 
-              // Surge Fee Section - Made More Prominent
               FutureBuilder<double?>(
-                future: fetchOrderSergeFee(
+                future: fetchOrderSurgeFee(
                     controller.currentOrder.value.id.toString()),
                 builder: (context, snapshot) {
                   final surgeFee = snapshot.data ?? 0.0;
@@ -2080,17 +2005,29 @@ class HomeScreenLogger extends RouteAware {
   }
 }
 
-Future<double?> fetchOrderSergeFee(String orderId) async {
-  final doc = await FirebaseFirestore.instance
-      .collection('order_Billing')
-      .doc(orderId)
-      .get();
-  if (doc.exists && doc.data() != null && doc.data()!['total_surge_fee'] != null) {
-    return double.tryParse(doc.data()!['total_surge_fee'].toString());
+Future<double?> fetchOrderSurgeFee(String orderId) async {
+  try {
+    final response = await http.get(
+      Uri.parse('${Constant.baseUrl}mobile/orders/$orderId/billing/surge-fee'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    );
+    if (response.statusCode == 200) {
+      final Map<String, dynamic> jsonResponse = json.decode(response.body);
+      if (jsonResponse['success'] == true &&
+          jsonResponse['data'] != null &&
+          jsonResponse['data']['total_surge_fee'] != null) {
+        return (jsonResponse['data']['total_surge_fee'] as num).toDouble();
+      }
+    } else {
+      print('Failed to fetch surge fee. Status code: ${response.statusCode}');
+    }
+  } catch (e) {
+    print('Error fetching surge fee: $e');
   }
   return null;
 }
-
 class ShiningHighDemandWidget extends StatefulWidget {
   final double surgeFee;
 

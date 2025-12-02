@@ -29,9 +29,8 @@ class HomeScreenMultipleOrder extends StatelessWidget {
           return Scaffold(
             body: controller.isLoading.value
                 ? Constant.loader()
-                : Constant.userModel?.vendorID?.isEmpty == true &&
-                        Constant.isDriverVerification == true &&
-                        Constant.userModel!.isDocumentVerify == false
+                : Constant.isDriverVerification == true &&
+             Constant.userModel!.isDocumentVerify == false
                     ? Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: Column(
@@ -103,8 +102,7 @@ class HomeScreenMultipleOrder extends StatelessWidget {
                                   double.parse(controller
                                           .driverModel.value.walletAmount
                                           .toString()) <
-                                      double.parse(
-                                          Constant.minimumDepositToRideAccept)
+                                      (double.tryParse(Constant.minimumDepositToRideAccept ?? '0') ?? 0.0)
                               ? Padding(
                                   padding: const EdgeInsets.all(8.0),
                                   child: Text(
@@ -176,7 +174,8 @@ class HomeScreenMultipleOrder extends StatelessWidget {
                                                     message:
                                                         "New Order not found."
                                                             .tr)
-                                                : ListView.builder(
+                                                :
+                                            ListView.builder(
                                                     shrinkWrap: true,
                                                     padding: EdgeInsets.zero,
                                                     scrollDirection:

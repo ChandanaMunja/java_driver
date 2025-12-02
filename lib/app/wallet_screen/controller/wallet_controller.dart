@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/controllers/login_controller.dart';
@@ -144,77 +143,64 @@ class WalletController extends GetxController {
     );
   }
 
+
   getWalletTransaction() async {
-    await FireStoreUtils.getWalletTransaction().then(
-      (value) {
-        if (value != null) {
-          walletTopTransactionList.value = value;
+    try {
+      await FireStoreUtils.getWalletTransaction().then(
+            (value) {
+          if (value != null) {
+            walletTopTransactionList.value = value;
+          }
+        },
+      );
+      await FireStoreUtils.getWithdrawHistory().then(
+            (value) {
+          if (value != null) {
+            withdrawalList.value = value;
+          }
+        },
+      );
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}wallet/transactions?user_id=${Constant.userModel!.id}'),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          List<dynamic> dailyOrders = data['daily_orders'] ?? [];
+          dailyEarningList.clear();
+          for (var orderData in dailyOrders) {
+            OrderModel dailyEarningModel = OrderModel.fromJson(orderData);
+            dailyEarningList.add(dailyEarningModel);
+          }
+
+          // Parse monthly orders from API response
+          List<dynamic> monthlyOrders = data['monthly_orders'] ?? [];
+          monthlyEarningList.clear();
+          for (var orderData in monthlyOrders) {
+            OrderModel monthlyEarningModel = OrderModel.fromJson(orderData);
+            monthlyEarningList.add(monthlyEarningModel);
+          }
+          // Parse yearly orders from API response
+          List<dynamic> yearlyOrders = data['yearly_orders'] ?? [];
+          yearlyEarningList.clear();
+          for (var orderData in yearlyOrders) {
+            OrderModel yearlyEarningModel = OrderModel.fromJson(orderData);
+            yearlyEarningList.add(yearlyEarningModel);
+          }
+          final userData = data['user'];
+          if (userData != null) {
+            userModel.value = UserModel.fromJson(userData);
+          }
         }
-      },
-    );
-
-    await FireStoreUtils.getWithdrawHistory().then(
-      (value) {
-        if (value != null) {
-          withdrawalList.value = value;
-        }
-      },
-    );
-
-    DateTime nowDate = DateTime.now();
-
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.restaurantOrders)
-        .where('driverID', isEqualTo: Constant.userModel!.id.toString())
-        .where('createdAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(
-                DateTime(nowDate.year, nowDate.month, nowDate.day)))
-        .orderBy('createdAt', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        OrderModel dailyEarningModel = OrderModel.fromJson(element.data());
-        dailyEarningList.add(dailyEarningModel);
+      } else {
+        log('API Error: ${response.statusCode}');
       }
-    }).catchError((error) {
+    } catch (error) {
       log(error.toString());
-    });
-
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.restaurantOrders)
-        .where('driverID', isEqualTo: Constant.userModel!.id.toString())
-        .where('createdAt',
-            isGreaterThanOrEqualTo:
-                Timestamp.fromDate(DateTime(nowDate.year, nowDate.month)))
-        .orderBy('createdAt', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        OrderModel dailyEarningModel = OrderModel.fromJson(element.data());
-        monthlyEarningList.add(dailyEarningModel);
-      }
-    }).catchError((error) {
-      log(error.toString());
-    });
-
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.restaurantOrders)
-        .where('driverID', isEqualTo: Constant.userModel!.id.toString())
-        .where('createdAt',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(nowDate.year)))
-        .orderBy('createdAt', descending: true)
-        .get()
-        .then((value) {
-      for (var element in value.docs) {
-        OrderModel dailyEarningModel = OrderModel.fromJson(element.data());
-        yearlyEarningList.add(dailyEarningModel);
-      }
-    }).catchError((error) {
-      log(error.toString());
-    });
+    }
     String? userId = await LoginController.getFirebaseId();
     await FireStoreUtils.getUserProfile(userId).then(
-      (value) {
+          (value) {
         if (value != null) {
           userModel.value = value;
         }
@@ -224,65 +210,47 @@ class WalletController extends GetxController {
     isLoading.value = false;
   }
 
+
   getPaymentMethod() async {
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.settings)
-        .doc("razorpaySettings")
-        .get()
-        .then((user) {
-      try {
-        razorPayModel.value = RazorPayModel.fromJson(user.data() ?? {});
-      } catch (e) {
-        debugPrint(
-            'FireStoreUtils.getUserByID failed to parse user object ${user.id}');
-      }
-    });
+    try {
+      final response = await http.get(Uri.parse('${Constant.baseUrl}settings/payment'));
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> res = json.decode(response.body);
+        if (res['success'] == true) {
+          final data = res['data'];
+          // COD
+          // codSettings.value = CODSettings.fromJson(data['CODSettings'] ?? {});
+          // Razorpay
+          razorPayModel.value =
+              RazorPayModel.fromJson(data['razorpaySettings'] ?? {});
 
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.settings)
-        .doc("paypalSettings")
-        .get()
-        .then((paypalData) {
-      try {
-        payPalModel.value = PayPalModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
+          // PayPal
+          payPalModel.value =
+              PayPalModel.fromJson(data['paypalSettings'] ?? {});
 
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.settings)
-        .doc("stripeSettings")
-        .get()
-        .then((paypalData) {
-      try {
-        stripeModel.value = StripeModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
+          // Stripe
+          stripeModel.value =
+              StripeModel.fromJson(data['stripeSettings'] ?? {});
 
-    await FireStoreUtils.fireStore
-        .collection(CollectionName.settings)
-        .doc("flutterWave")
-        .get()
-        .then((paypalData) {
-      try {
-        flutterWaveModel.value =
-            FlutterWaveModel.fromJson(paypalData.data() ?? {});
-      } catch (error) {
-        debugPrint(error.toString());
-      }
-    });
+          // FlutterWave
+          flutterWaveModel.value =
+              FlutterWaveModel.fromJson(data['flutterWave'] ?? {});
 
-    await FireStoreUtils.getWithdrawMethod().then(
-      (value) {
-        if (value != null) {
-          withdrawMethodModel.value = value;
+          // Withdraw methods
+          if (data['withdrawMethod'] != null) {
+            withdrawMethodModel.value =
+                WithdrawMethodModel.fromJson(data['withdrawMethod']);
+          }
         }
-      },
-    );
+      } else {
+        debugPrint('Failed to fetch payment settings: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error fetching payment methods: $e');
+    }
   }
+
+
 
   walletTopUp() async {
     print('💰 [Wallet Controller] Starting wallet top-up...');

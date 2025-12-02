@@ -62,9 +62,19 @@ class SignupController extends GetxController {
     }
 
     await FireStoreUtils.getZone().then((value) {
-      if (value != null) {
+      if (value != null && value.isNotEmpty) {
         zoneList.value = value;
+        print("FireStoreUtils.getZone ${value.length} zones loaded");
+        if (value.isNotEmpty) {
+          print("First zone: ${value[0].id} ${value[0].name}");
+        }
+      } else {
+        print("No zones found or error loading zones");
+        zoneList.value = [];
       }
+    }).catchError((error) {
+      print("Error getting zones: $error");
+      zoneList.value = [];
     });
   }
 

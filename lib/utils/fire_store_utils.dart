@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/app/chat_screens/ChatVideoContainer.dart';
 import 'package:jippydriver_driver/app/wallet_screen/screens/model/delivery_amount_model.dart';
-import 'package:jippydriver_driver/constant/collection_name.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/controllers/login_controller.dart';
@@ -101,18 +100,15 @@ class FireStoreUtils {
     UserModel? userModel;
     try {
       final response = await http.get(
-        Uri.parse('${Constant.baseUrl}users/$uuid'),
-      ).timeout(const Duration(seconds: 10), onTimeout: () {
+       Uri.parse('${Constant.baseUrl}users/$uuid'),
+       ).timeout(const Duration(seconds: 10), onTimeout: () {
         log("getUserProfile timeout");
         throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
       });
-      print("getUserProfile ${Constant.baseUrl}users/$uuid ");
+      print("getUserProfile ${Constant.baseUrl}users/$uuid");
       print("getUserProfile ${response.body} ");
-
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
-
-        // Check if the API call was successful and extract the user data
         if (data['success'] == true && data['data'] != null) {
           userModel = UserModel.fromJson(data['data']); // Pass only the 'data' part
         } else {
@@ -182,6 +178,7 @@ class FireStoreUtils {
   }
   static Future<bool> updateUser(UserModel userModel) async {
     try {
+      log("updateUser ${userModel.toJson()}");
       final response = await http.post(
         Uri.parse('${Constant.baseUrl}driver-sql/users/update'),
         headers: {
@@ -355,15 +352,15 @@ class FireStoreUtils {
     }
   }
 
-  getSettings() async {
+ static Future<void> getSettings() async {
     try {
+      print('getSettings ${Constant.baseUrl}driver-sql/settings');
       final response = await http.get(
         Uri.parse('${Constant.baseUrl}driver-sql/settings'),
       ).timeout(const Duration(seconds: 15), onTimeout: () {
         log("getSettings timeout for API call");
         throw TimeoutException('getSettings timeout', const Duration(seconds: 15));
       });
-
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
         if (jsonResponse['success'] == true) {
@@ -374,23 +371,19 @@ class FireStoreUtils {
             Constant.orderRingtoneUrl = globalSettings['order_ringtone_url'] ?? '';
             Constant.isSelfDeliveryFeature = globalSettings['isSelfDelivery'] ?? false;
             Preferences.setString(Preferences.orderRingtone, Constant.orderRingtoneUrl);
-
             final appDriverColor = globalSettings['app_driver_color'];
             if (appDriverColor != null) {
               AppThemeData.driverApp300 = Color(int.parse(appDriverColor.replaceFirst("#", "0xff")));
             }
-
             if (Constant.orderRingtoneUrl.isNotEmpty) {
               await AudioPlayerService.initAudio();
             }
           }
-
           // Process googleMapKey
           final googleMapKey = data['googleMapKey'];
           if (googleMapKey != null) {
             Constant.mapAPIKey = googleMapKey["key"] ?? '';
           }
-
           // Process notification_setting
           final notificationSetting = data['notification_setting'];
           if (notificationSetting != null) {
@@ -438,6 +431,7 @@ class FireStoreUtils {
           final docVerification = data['document_verification_settings'];
           if (docVerification != null) {
             Constant.isDriverVerification = docVerification['isDriverVerification'] ?? false;
+            print("Constant.isDriverVerification ${ docVerification['isDriverVerification']}  ${ Constant.isDriverVerification}");
           }
           // Process DriverNearBy
           final driverNearBy = data['DriverNearBy'];
@@ -465,35 +459,56 @@ class FireStoreUtils {
   static Future<List<ZoneModel>?> getZone() async {
     List<ZoneModel> zoneList = [];
     try {
+      print("getZone ") ;
       final response = await http.get(
         Uri.parse('${Constant.baseUrl}restaurant/zones'),
         headers: {
           'Content-Type': 'application/json',
         },
       );
+      print("getZone ${response.body}") ;
+
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
 
-        // Assuming the API returns a list directly or wrapped in a 'data' field
-        List<dynamic> zonesData = responseData['data'] ?? responseData;
+        // Check if response is successful
+        if (responseData['success'] != true) {
+          print("API returned unsuccessful response");
+          return [];
+        }
+
+        // Get the data array
+        List<dynamic> zonesData = responseData['data'] ?? [];
+
+        print("Found ${zonesData.length} zones in API response");
 
         for (var element in zonesData) {
-          // Filter for published zones if needed (equivalent to where('publish', isEqualTo: true))
-          if (element['publish'] == true) {
-            ZoneModel zoneModel = ZoneModel.fromJson(element);
-            zoneList.add(zoneModel);
+          try {
+            // Check if zone is published (handles both int and bool)
+            final publishValue = element['publish'];
+            final isPublished = publishValue == 1 || publishValue == true;
+
+            if (isPublished) {
+              ZoneModel zoneModel = ZoneModel.fromJson(element);
+              zoneList.add(zoneModel);
+              print("Added zone: ${zoneModel.name}");
+            }
+          } catch (e) {
+            print("Error parsing zone: $e");
           }
         }
       } else {
-        throw Exception('Failed to load zones: ${response.statusCode}');
+        print("Failed to load zones: ${response.statusCode}");
+        return [];
       }
     } catch (e, s) {
       log('APIUtils.getZone $e $s');
-      return null;
+      return [];
     }
+
+    print("Returning ${zoneList.length} zones");
     return zoneList;
   }
-
   static Future<List<WalletTransactionModel>?> getWalletTransaction() async {
     try {
       final String driverId = await FireStoreUtils.getCurrentUid();
@@ -830,33 +845,79 @@ class FireStoreUtils {
 
     return taxList;
   }
-
   static Future<bool?> setOrder(OrderModel orderModel) async {
     bool isAdded = false;
     try {
-      final Map<String, dynamic> data = orderModel.toJson()
-        ..removeWhere((key, value) => value == null);
+      log("setOrder ${orderModel.toJson()}");
+      final Map<String, dynamic> data = orderModel.toJson();
+      data.removeWhere((key, value) => value == null);
+      final sanitizedData = _sanitizeForJson(data);
+      log("Sending data: ${jsonEncode(sanitizedData)}");
       final response = await http.post(
         Uri.parse('${Constant.baseUrl}restaurant/orders'),
         headers: {
           'Content-Type': 'application/json',
         },
-        body: jsonEncode(data),
-      );
+        body: jsonEncode(sanitizedData),
+      ).timeout(const Duration(seconds: 30));
+      log("Response status: ${response.statusCode}");
+      log("Response body: ${response.body}");
+
       if (response.statusCode == 200 || response.statusCode == 201) {
         isAdded = true;
+        log("Order set successfully");
       } else {
         log("🔥 Failed to update or set order: ${response.statusCode} - ${response.body}");
         isAdded = false;
       }
+    } on TimeoutException catch (e) {
+      log("🔥 Timeout while setting order: $e");
+      isAdded = false;
     } catch (error) {
       log("🔥 Failed to update or set order: $error");
+      log("🔥 Stack trace: ${StackTrace.current}");
       isAdded = false;
     }
-
     return isAdded;
   }
+// Helper function to sanitize data for JSON encoding
+  static dynamic _sanitizeForJson(dynamic data) {
+    if (data == null) return null;
 
+    // Handle NaN values
+    if (data is double && data.isNaN) {
+      return 0.0; // or null, depending on your needs
+    }
+
+    if (data is Map<String, dynamic>) {
+      final Map<String, dynamic> result = {};
+      for (final key in data.keys) {
+        result[key] = _sanitizeForJson(data[key]);
+      }
+      return result;
+    } else if (data is List) {
+      return data.map((item) => _sanitizeForJson(item)).toList();
+    } else if (data is Timestamp) {
+      return data.millisecondsSinceEpoch;
+    } else if (data is DateTime) {
+      return data.millisecondsSinceEpoch;
+    } else if (data is GeoPoint) {
+      return {
+        'latitude': data.latitude,
+        'longitude': data.longitude,
+        '_type': 'geopoint'
+      };
+    } else if (data is num || data is String || data is bool) {
+      return data;
+    } else {
+      // Try to convert to string as fallback
+      try {
+        return data.toString();
+      } catch (e) {
+        return null;
+      }
+    }
+  }
   static Future<EmailTemplateModel?> getEmailTemplates(String type) async {
     EmailTemplateModel? emailTemplateModel;
     try {
@@ -1323,85 +1384,6 @@ class FireStoreUtils {
         await (await uploadTask.whenComplete(() {})).ref.getDownloadURL();
     return downloadUrl.toString();
   }
-  static Future<bool> uploadDriverDocument(Documents documents) async {
-    String? userId = await LoginController.getFirebaseId();
-    bool isAdded = false;
-
-    try {
-      // Create multipart request
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('${Constant.baseUrl}documents/driver/upload'),
-      );
-      // Add fields
-      request.fields['user_id'] = userId ?? '';
-      request.fields['documentId'] = documents.documentId.toString();
-      request.fields['type'] = 'driver';
-      request.fields['status'] = documents.status ?? '';
-
-      // Print request fields
-      print('=== REQUEST FIELDS ===');
-      request.fields.forEach((key, value) {
-        print('$key: $value');
-      });
-      print('=====================');
-
-      // Add image files if they exist
-      if (documents.frontImage != null && documents.frontImage!.isNotEmpty) {
-        var frontImageFile = File(documents.frontImage!);
-        if (await frontImageFile.exists()) {
-          var multipartFile = await http.MultipartFile.fromPath(
-            'front_image',
-            frontImageFile.path,
-          );
-          request.files.add(multipartFile);
-          print('Added front_image: ${frontImageFile.path}');
-        }
-      }
-      if (documents.backImage != null && documents.backImage!.isNotEmpty) {
-        var backImageFile = File(documents.backImage!);
-        if (await backImageFile.exists()) {
-          var multipartFile = await http.MultipartFile.fromPath(
-            'back_image',
-            backImageFile.path,
-          );
-          request.files.add(multipartFile);
-          print('Added back_image: ${backImageFile.path}');
-        }
-      }
-      // Print files info
-      print('=== REQUEST FILES ===');
-      for (var file in request.files) {
-        print('Field: ${file.field}, Filename: ${file.filename}');
-      }
-      print('====================');
-      // Print complete request details
-      print('=== COMPLETE REQUEST DETAILS ===');
-      print('URL: ${request.url}');
-      print('Method: ${request.method}');
-      print('Fields: ${request.fields}');
-      print('Files count: ${request.files.length}');
-      print('==============================');
-
-      // Send request
-      var response = await request.send();
-      var responseData = await response.stream.bytesToString();
-
-      if (response.statusCode == 200) {
-        var jsonResponse = json.decode(responseData);
-        isAdded = jsonResponse['success'] == true;
-      } else {
-        isAdded = false;
-        log('Error: ${response.statusCode} - $responseData');
-      }
-    } catch (error) {
-      isAdded = false;
-      log(error.toString());
-    }
-
-    return isAdded;
-  }
-
 
   static Future<WithdrawMethodModel?> getWithdrawMethod() async {
     try {

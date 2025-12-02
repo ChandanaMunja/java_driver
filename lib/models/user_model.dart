@@ -78,33 +78,106 @@ class UserModel {
     if (json['id'] != null) {
       id = json['id'].toString();
     }
-    firebaseId = json['id']?.toString(); // Map from 'id' instead of 'firebase_id'
+    firebaseId = json['id']?.toString();
     email = json['email'];
     firstName = json['firstName'];
     lastName = json['lastName'];
-    profilePictureURL = json['profile_pic']; // Map from 'profile_pic'
+    profilePictureURL = json['profile_pic'];
     fcmToken = json['fcmToken'];
     countryCode = json['countryCode'];
-    phoneNumber = json['phone']; // Map from 'phone' instead of 'phoneNumber'
+    phoneNumber = json['phone'];
     walletAmount = json['wallet_amount'] ?? 0;
     deliveryAmount = json['deliveryAmount'] ?? 0;
-    createdAt = json['createdAt'];
+
+    // Handle createdAt - check if it exists and convert if needed
+    if (json['createdAt'] != null) {
+      if (json['createdAt'] is Timestamp) {
+        createdAt = json['createdAt'];
+      } else if (json['createdAt'] is String) {
+        // Try to parse string to DateTime, then to Timestamp
+        try {
+          final dateTime = DateTime.parse(json['createdAt']);
+          createdAt = Timestamp.fromDate(dateTime);
+        } catch (e) {
+          createdAt = null;
+        }
+      } else if (json['createdAt'] is Map) {
+        // Handle Firestore timestamp format {seconds: ..., nanoseconds: ...}
+        try {
+          createdAt = Timestamp(
+            json['createdAt']['seconds'] ?? 0,
+            json['createdAt']['nanoseconds'] ?? 0,
+          );
+        } catch (e) {
+          createdAt = null;
+        }
+      }
+    } else {
+      createdAt = null;
+    }
+
     active = json['active'] == 1 || json['active'] == true;
     isActive = json['isActive'] == 1 || json['isActive'] == true;
     isDocumentVerify = json['isDocumentVerify'] == "1" || json['isDocumentVerify'] == true || json['isDocumentVerify'] == 1;
+    print("isDocumentVerify  ${isDocumentVerify}");
     role = json['role'] ?? 'user';
-    location = json['location'] != null
-        ? UserLocation.fromJson(json['location'])
-        : null;
-    userBankDetails = json['userBankDetails'] != null
-        ? UserBankDetails.fromJson(json['userBankDetails'])
-        : null;
 
+    // Fix for location handling
+    if (json['location'] != null && json['location'] is List) {
+      final locationList = json['location'] as List;
+      if (locationList.isNotEmpty) {
+        final firstItem = locationList.first;
+        if (firstItem is Map<String, dynamic>) {
+          location = UserLocation.fromJson(firstItem);
+        } else {
+          location = null;
+        }
+      } else {
+        location = null;
+      }
+    } else if (json['location'] != null && json['location'] is Map<String, dynamic>) {
+      location = UserLocation.fromJson(json['location'] as Map<String, dynamic>);
+    } else {
+      location = null;
+    }
+
+    // Fix for userBankDetails handling
+    if (json['userBankDetails'] != null && json['userBankDetails'] is List) {
+      final list = json['userBankDetails'] as List;
+      if (list.isNotEmpty) {
+        final firstItem = list.first;
+        if (firstItem is Map<String, dynamic>) {
+          userBankDetails = UserBankDetails.fromJson(firstItem);
+        } else {
+          userBankDetails = null;
+        }
+      } else {
+        userBankDetails = null;
+      }
+    } else if (json['userBankDetails'] != null && json['userBankDetails'] is Map<String, dynamic>) {
+      userBankDetails = UserBankDetails.fromJson(json['userBankDetails'] as Map<String, dynamic>);
+    } else {
+      userBankDetails = null;
+    }
+
+    // Fix for shippingAddress handling
     if (json['shippingAddress'] != null) {
-      shippingAddress = <ShippingAddress>[];
-      json['shippingAddress'].forEach((v) {
-        shippingAddress!.add(ShippingAddress.fromJson(v));
-      });
+      if (json['shippingAddress'] is List) {
+        final list = json['shippingAddress'] as List;
+        shippingAddress = <ShippingAddress>[];
+        for (var item in list) {
+          if (item is Map<String, dynamic>) {
+            shippingAddress!.add(ShippingAddress.fromJson(item));
+          }
+        }
+      } else if (json['shippingAddress'] is Map<String, dynamic>) {
+        shippingAddress = <ShippingAddress>[];
+        shippingAddress!.add(ShippingAddress.fromJson(json['shippingAddress'] as Map<String, dynamic>));
+      } else {
+        shippingAddress = null;
+      }
+    } else {
+      shippingAddress = null;
     }
 
     carName = json['carName'];
@@ -118,10 +191,49 @@ class UserModel {
     appIdentifier = json['appIdentifier'];
     provider = json['provider'];
     subscriptionPlanId = json['subscriptionPlanId'];
-    subscriptionExpiryDate = json['subscriptionExpiryDate'];
-    subscriptionPlan = json['subscription_plan'] != null
-        ? SubscriptionPlanModel.fromJson(json['subscription_plan'])
-        : null;
+
+    // Handle subscriptionExpiryDate
+    if (json['subscriptionExpiryDate'] != null) {
+      if (json['subscriptionExpiryDate'] is Timestamp) {
+        subscriptionExpiryDate = json['subscriptionExpiryDate'];
+      } else if (json['subscriptionExpiryDate'] is String) {
+        try {
+          final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
+          subscriptionExpiryDate = Timestamp.fromDate(dateTime);
+        } catch (e) {
+          subscriptionExpiryDate = null;
+        }
+      } else if (json['subscriptionExpiryDate'] is Map) {
+        try {
+          subscriptionExpiryDate = Timestamp(
+            json['subscriptionExpiryDate']['seconds'] ?? 0,
+            json['subscriptionExpiryDate']['nanoseconds'] ?? 0,
+          );
+        } catch (e) {
+          subscriptionExpiryDate = null;
+        }
+      }
+    } else {
+      subscriptionExpiryDate = null;
+    }
+
+    // Handle subscription_plan
+    if (json['subscription_plan'] != null) {
+      if (json['subscription_plan'] is Map<String, dynamic>) {
+        subscriptionPlan = SubscriptionPlanModel.fromJson(json['subscription_plan'] as Map<String, dynamic>);
+      } else if (json['subscription_plan'] is String) {
+        // If it's just a string, create a basic SubscriptionPlanModel
+        subscriptionPlan = SubscriptionPlanModel(
+          id: 'temp_id',
+          name: json['subscription_plan'] as String,
+          // Add other default values as needed
+        );
+      } else {
+        subscriptionPlan = null;
+      }
+    } else {
+      subscriptionPlan = null;
+    }
   }
 
   Map<String, dynamic> toJson() {
@@ -143,7 +255,6 @@ class UserModel {
     data['role'] = role;
     data['isDocumentVerify'] = isDocumentVerify;
     data['zoneId'] = zoneId;
-
     if (location != null) {
       data['location'] = location!.toJson();
     }

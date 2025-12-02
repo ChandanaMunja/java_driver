@@ -1,4 +1,6 @@
-import 'package:jippydriver_driver/constant/collection_name.dart';
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
@@ -23,47 +25,48 @@ class HomeScreenMultipleOrderController extends GetxController {
     getDriver();
     super.onInit();
   }
-
   getDriver() async {
-    String? userId = await LoginController.getFirebaseId();
-    FireStoreUtils.fireStore
-        .collection(CollectionName.users)
-        .doc(userId)
-        .snapshots()
-        .listen(
-          (event) async {
-        if (event.exists) {
-          driverModel.value = UserModel.fromJson(event.data()!);
+    try {
+      String? userId = await LoginController.getFirebaseId();
+
+      final response = await http.get(Uri.parse("${Constant.baseUrl}users/$userId"));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data["success"] == true && data["data"] != null) {
+          driverModel.value = UserModel.fromJson(data["data"]);
           Constant.userModel = driverModel.value;
           newOrder.clear();
           activeOrder.clear();
-          // Enforce one in-progress order at a time
+          /// ========= In-Progress Order Logic =========
           if (driverModel.value.inProgressOrderID != null &&
               driverModel.value.inProgressOrderID!.isNotEmpty &&
-              !(driverModel.value.inProgressOrderID!.length == 1 && driverModel.value.inProgressOrderID!.first == "")) {
-            // Only show the in-progress order
-            for (var element in driverModel.value.inProgressOrderID!) {
-              activeOrder.add(element);
-            }
-            // Do not show new order requests
+              !(driverModel.value.inProgressOrderID!.length == 1 &&
+                  driverModel.value.inProgressOrderID!.first == "")) {
+            activeOrder.addAll(driverModel.value.inProgressOrderID!);
             await AudioPlayerService.playSound(false);
             return;
           }
-          // If no in-progress order, show the first order request (if any)
-          if (driverModel.value.orderRequestData != null && driverModel.value.orderRequestData!.isNotEmpty) {
+
+          /// ========= New Order Request Logic =========
+          if (driverModel.value.orderRequestData != null &&
+              driverModel.value.orderRequestData!.isNotEmpty) {
             newOrder.add(driverModel.value.orderRequestData!.first);
           }
-          if (newOrder.isEmpty == true) {
+
+          if (newOrder.isEmpty) {
             await AudioPlayerService.playSound(false);
           }
-          if (newOrder.isNotEmpty) {
-            if (driverModel.value.vendorID?.isEmpty == true) {
-              await AudioPlayerService.playSound(true);
-            }
+
+          if (newOrder.isNotEmpty && (driverModel.value.vendorID?.isEmpty ?? true)) {
+            await AudioPlayerService.playSound(true);
           }
         }
-      },
-    );
+      }
+    } catch (e) {
+      print("Error fetching driver: $e");
+    }
+
     isLoading.value = false;
   }
 

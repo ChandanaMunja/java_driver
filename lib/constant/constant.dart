@@ -9,7 +9,7 @@ import 'package:jippydriver_driver/models/language_model.dart';
 import 'package:jippydriver_driver/models/mail_setting.dart';
 import 'package:jippydriver_driver/models/tax_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
-import 'package:jippydriver_driver/models/zone_model.dart';
+import 'package:jippydriver_driver/models/zone_model.dart' hide LatLng;
 import 'package:jippydriver_driver/themes/app_them_data.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
 import 'package:jippydriver_driver/widget/permission_dialog.dart';

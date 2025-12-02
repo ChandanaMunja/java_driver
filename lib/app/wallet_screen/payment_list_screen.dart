@@ -20,271 +20,273 @@ class PaymentListScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     AppLogger.log('PaymentListScreen build() called', tag: 'Screen');
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
-        init: WalletController(),
-        builder: (controller) {
-          return Scaffold(
-            appBar: AppBar(
-              backgroundColor: themeChange.getThem()
-                  ? AppThemeData.surfaceDark
-                  : AppThemeData.surface,
-              centerTitle: false,
-              titleSpacing: 0,
-              title: Text(
-                "Top up Wallet".tr,
-                style: TextStyle(
-                  fontSize: 16,
-                  color: themeChange.getThem()
-                      ? AppThemeData.grey50
-                      : AppThemeData.grey900,
-                  fontFamily: AppThemeData.medium,
-                  fontWeight: FontWeight.w500,
+    return SafeArea(
+      child: GetX(
+          init: WalletController(),
+          builder: (controller) {
+            return Scaffold(
+              appBar: AppBar(
+                backgroundColor: themeChange.getThem()
+                    ? AppThemeData.surfaceDark
+                    : AppThemeData.surface,
+                centerTitle: false,
+                titleSpacing: 0,
+                title: Text(
+                  "Top up Wallet".tr,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: themeChange.getThem()
+                        ? AppThemeData.grey50
+                        : AppThemeData.grey900,
+                    fontFamily: AppThemeData.medium,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-            body: SingleChildScrollView(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: TextFieldWidget(
-                      title: 'Amount'.tr,
-                      hintText: 'Enter Amount'.tr,
-                      controller: controller.topUpAmountController.value,
-                      textInputType: const TextInputType.numberWithOptions(
-                          decimal: true, signed: true),
-                      prefix: Padding(
-                        padding: const EdgeInsets.all(12.0),
-                        child: Text(Constant.currencyModel!.symbol.toString(),
-                            style: TextStyle(
-                                fontSize: 20,
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey50
-                                    : AppThemeData.grey900)),
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp('[0-9]')),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                          borderRadius:
-                              const BorderRadius.all(Radius.circular(20)),
-                          color: themeChange.getThem()
-                              ? AppThemeData.grey900
-                              : AppThemeData.grey50),
-                      child: Column(
-                        children: [
-                          Visibility(
-                            visible: false, // Stripe disabled - using Razorpay
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.stripe,
-                                themeChange,
-                                "assets/images/bank_transfer.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.paypal,
-                                themeChange,
-                                "assets/images/paypal.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.payStack,
-                                themeChange,
-                                "assets/images/paystack.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.mercadoPago,
-                                themeChange,
-                                "assets/images/mercado-pago.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.flutterWave,
-                                themeChange,
-                                "assets/images/flutterwave_logo.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.payFast,
-                                themeChange,
-                                "assets/images/payfast.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.paytm,
-                                themeChange,
-                                "assets/images/paytm.png"),
-                          ),
-                          Visibility(
-                            visible: true,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.razorpay,
-                                themeChange,
-                                "assets/images/razorpay.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.midTrans,
-                                themeChange,
-                                "assets/images/midtrans.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.orangeMoney,
-                                themeChange,
-                                "assets/images/orange_money.png"),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: cardDecoration(
-                                controller,
-                                PaymentGateway.xendit,
-                                themeChange,
-                                "assets/images/xendit.png"),
-                          ),
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextFieldWidget(
+                        title: 'Amount'.tr,
+                        hintText: 'Enter Amount'.tr,
+                        controller: controller.topUpAmountController.value,
+                        textInputType: const TextInputType.numberWithOptions(
+                            decimal: true, signed: true),
+                        prefix: Padding(
+                          padding: const EdgeInsets.all(12.0),
+                          child: Text(Constant.currencyModel!.symbol.toString(),
+                              style: TextStyle(
+                                  fontSize: 20,
+                                  color: themeChange.getThem()
+                                      ? AppThemeData.grey50
+                                      : AppThemeData.grey900)),
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp('[0-9]')),
                         ],
                       ),
                     ),
-                  )
-                ],
-              ),
-            ),
-            bottomNavigationBar: Container(
-              color: themeChange.getThem()
-                  ? AppThemeData.grey900
-                  : AppThemeData.grey50,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: RoundedButtonFill(
-                  title: "Top-up".tr,
-                  height: 5.5,
-                  color: AppThemeData.primary300,
-                  textColor: AppThemeData.grey50,
-                  fontSizes: 16,
-                  onPress: () async {
-                    if (controller.topUpAmountController.value.text.isEmpty) {
-                      ShowToastDialog.showToast(
-                          "${'Please Enter minimum amount of'} ${Constant.amountShow(amount: Constant.minimumAmountToDeposit)}"
-                              .tr);
-                    } else {
-                      if (double.parse(
-                              controller.topUpAmountController.value.text) >=
-                          double.parse(
-                              Constant.minimumAmountToDeposit.toString())) {
-                        if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.stripe.name) {
-                          // Stripe is disabled - using Razorpay instead
-                          ShowToastDialog.showToast("Stripe is not available. Please use Razorpay.".tr);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.paypal.name) {
-                          controller.paypalPaymentSheet(
-                              controller.topUpAmountController.value.text,
-                              context);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.payStack.name) {
-                          controller.payStackPayment(
-                              controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.mercadoPago.name) {
-                          controller.mercadoPagoMakePayment(
-                              context: context,
-                              amount:
-                                  controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.flutterWave.name) {
-                          controller.flutterWaveInitiatePayment(
-                              context: context,
-                              amount:
-                                  controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.payFast.name) {
-                          controller.payFastPayment(
-                              context: context,
-                              amount:
-                                  controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.paytm.name) {
-                          controller.getPaytmCheckSum(context,
-                              amount: double.parse(
-                                  controller.topUpAmountController.value.text));
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.midTrans.name) {
-                          controller.midtransMakePayment(
-                              context: context,
-                              amount:
-                                  controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.orangeMoney.name) {
-                          controller.orangeMakePayment(
-                              context: context,
-                              amount:
-                                  controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.xendit.name) {
-                          controller.xenditPayment(context,
-                              controller.topUpAmountController.value.text);
-                        } else if (controller.selectedPaymentMethod.value ==
-                            PaymentGateway.razorpay.name) {
-                          RazorPayController()
-                              .createOrderRazorPay(
-                                  amount: double.parse(controller
-                                      .topUpAmountController.value.text),
-                                  razorpayModel: controller.razorPayModel.value)
-                              .then((value) {
-                            if (value == null) {
-                              Get.back();
-                              ShowToastDialog.showToast(
-                                  "Something went wrong, please contact admin."
-                                      .tr);
-                            } else {
-                              CreateRazorPayOrderModel result = value;
-                              controller.openCheckout(
-                                  amount: controller
-                                      .topUpAmountController.value.text,
-                                  orderId: result.id);
-                            }
-                          });
-                        } else {
-                          ShowToastDialog.showToast(
-                              "Please select payment method".tr);
-                        }
-                      } else {
-                        ShowToastDialog.showToast(
-                            "${'Please Enter minimum amount of'.tr} ${Constant.amountShow(amount: Constant.minimumAmountToDeposit)}"
-                                .tr);
-                      }
-                    }
-                  },
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Container(
+                        decoration: BoxDecoration(
+                            borderRadius:
+                                const BorderRadius.all(Radius.circular(20)),
+                            color: themeChange.getThem()
+                                ? AppThemeData.grey900
+                                : AppThemeData.grey50),
+                        child: Column(
+                          children: [
+                            Visibility(
+                              visible: false, // Stripe disabled - using Razorpay
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.stripe,
+                                  themeChange,
+                                  "assets/images/bank_transfer.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.paypal,
+                                  themeChange,
+                                  "assets/images/paypal.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.payStack,
+                                  themeChange,
+                                  "assets/images/paystack.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.mercadoPago,
+                                  themeChange,
+                                  "assets/images/mercado-pago.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.flutterWave,
+                                  themeChange,
+                                  "assets/images/flutterwave_logo.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.payFast,
+                                  themeChange,
+                                  "assets/images/payfast.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.paytm,
+                                  themeChange,
+                                  "assets/images/paytm.png"),
+                            ),
+                            Visibility(
+                              visible: true,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.razorpay,
+                                  themeChange,
+                                  "assets/images/razorpay.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.midTrans,
+                                  themeChange,
+                                  "assets/images/midtrans.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.orangeMoney,
+                                  themeChange,
+                                  "assets/images/orange_money.png"),
+                            ),
+                            Visibility(
+                              visible: false,
+                              child: cardDecoration(
+                                  controller,
+                                  PaymentGateway.xendit,
+                                  themeChange,
+                                  "assets/images/xendit.png"),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  ],
                 ),
               ),
-            ),
-          );
-        });
+              bottomNavigationBar: Container(
+                color: themeChange.getThem()
+                    ? AppThemeData.grey900
+                    : AppThemeData.grey50,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: RoundedButtonFill(
+                    title: "Top-up".tr,
+                    height: 5.5,
+                    color: AppThemeData.primary300,
+                    textColor: AppThemeData.grey50,
+                    fontSizes: 16,
+                    onPress: () async {
+                      if (controller.topUpAmountController.value.text.isEmpty) {
+                        ShowToastDialog.showToast(
+                            "${'Please Enter minimum amount of'} ${Constant.amountShow(amount: Constant.minimumAmountToDeposit)}"
+                                .tr);
+                      } else {
+                        if (double.parse(
+                                controller.topUpAmountController.value.text) >=
+                            double.parse(
+                                Constant.minimumAmountToDeposit.toString())) {
+                          if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.stripe.name) {
+                            // Stripe is disabled - using Razorpay instead
+                            ShowToastDialog.showToast("Stripe is not available. Please use Razorpay.".tr);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.paypal.name) {
+                            controller.paypalPaymentSheet(
+                                controller.topUpAmountController.value.text,
+                                context);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.payStack.name) {
+                            controller.payStackPayment(
+                                controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.mercadoPago.name) {
+                            controller.mercadoPagoMakePayment(
+                                context: context,
+                                amount:
+                                    controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.flutterWave.name) {
+                            controller.flutterWaveInitiatePayment(
+                                context: context,
+                                amount:
+                                    controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.payFast.name) {
+                            controller.payFastPayment(
+                                context: context,
+                                amount:
+                                    controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.paytm.name) {
+                            controller.getPaytmCheckSum(context,
+                                amount: double.parse(
+                                    controller.topUpAmountController.value.text));
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.midTrans.name) {
+                            controller.midtransMakePayment(
+                                context: context,
+                                amount:
+                                    controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.orangeMoney.name) {
+                            controller.orangeMakePayment(
+                                context: context,
+                                amount:
+                                    controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.xendit.name) {
+                            controller.xenditPayment(context,
+                                controller.topUpAmountController.value.text);
+                          } else if (controller.selectedPaymentMethod.value ==
+                              PaymentGateway.razorpay.name) {
+                            RazorPayController()
+                                .createOrderRazorPay(
+                                    amount: double.parse(controller
+                                        .topUpAmountController.value.text),
+                                    razorpayModel: controller.razorPayModel.value)
+                                .then((value) {
+                              if (value == null) {
+                                Get.back();
+                                ShowToastDialog.showToast(
+                                    "Something went wrong, please contact admin."
+                                        .tr);
+                              } else {
+                                CreateRazorPayOrderModel result = value;
+                                controller.openCheckout(
+                                    amount: controller
+                                        .topUpAmountController.value.text,
+                                    orderId: result.id);
+                              }
+                            });
+                          } else {
+                            ShowToastDialog.showToast(
+                                "Please select payment method".tr);
+                          }
+                        } else {
+                          ShowToastDialog.showToast(
+                              "${'Please Enter minimum amount of'.tr} ${Constant.amountShow(amount: Constant.minimumAmountToDeposit)}"
+                                  .tr);
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ),
+            );
+          }),
+    );
   }
 
   cardDecoration(WalletController controller, PaymentGateway value, themeChange,

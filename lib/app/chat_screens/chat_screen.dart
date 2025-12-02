@@ -54,35 +54,28 @@ class ChatScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: () {
-                      FocusScope.of(context).unfocus();
-                    },
-                    child: FirestorePagination(
-                      controller: controller.scrollController,
-                      physics: const BouncingScrollPhysics(),
-                      itemBuilder: (context, documentSnapshots, index) {
-                        ConversationModel inboxModel =
-                            ConversationModel.fromJson(documentSnapshots[index]
-                                .data() as Map<String, dynamic>);
-                        return chatItemView(
-                            themeChange,
-                            inboxModel.senderId ==
-                                FireStoreUtils.getCurrentUid(),
-                            inboxModel);
-                      },
-                      onEmpty: Constant.showEmptyView(
-                          message: "No Conversion found".tr),
-                      // orderBy is compulsory to enable pagination
-                      query: FirebaseFirestore.instance
-                          .collection(controller.chatType.value == "Driver"
-                              ? 'chat_driver'
-                              : 'chat_restaurant')
-                          .doc(controller.orderId.value)
-                          .collection("thread")
-                          .orderBy('createdAt', descending: false),
-                      isLive: true,
-                      viewType: ViewType.list,
-                    ),
+                    onTap: () => FocusScope.of(context).unfocus(),
+                    child: Obx(() {
+                      if(controller.isLoading.value) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+
+                      if(controller.messages.isEmpty){
+                        return Constant.showEmptyView(message: "No Conversation found");
+                      }
+
+                      return ListView.builder(
+                        controller: controller.scrollController,
+                        itemCount: controller.messages.length,
+                        itemBuilder: (context, index) {
+                          return chatItemView(
+                              themeChange,
+                              controller.messages[index].senderId == controller.myId,
+                              controller.messages[index]
+                          );
+                        },
+                      );
+                    }),
                   ),
                 ),
                 Container(

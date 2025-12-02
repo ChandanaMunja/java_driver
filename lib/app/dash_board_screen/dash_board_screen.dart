@@ -148,7 +148,8 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
                   : const DrawerView(),
               body: controller.drawerIndex.value == 0
                   ? Constant.singleOrderReceive == true
-                      ? const HomeScreen(
+                      ?
+              const HomeScreen(
                           isAppBarShow: false,
                         )
                       : const HomeScreenMultipleOrder()

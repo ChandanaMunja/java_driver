@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:developer';
 
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/currency_model.dart';
@@ -8,33 +10,62 @@ import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart';
 import 'package:get/get.dart';
 
-import '../constant/collection_name.dart';
-
 class GlobalSettingController extends GetxController {
   @override
   void onInit() {
     notificationInit();
     getCurrentCurrency();
-
     super.onInit();
   }
 
-  getCurrentCurrency() async {
+  Future<void> getCurrentCurrency() async {
     try {
-      FireStoreUtils.fireStore.collection(CollectionName.currencies).where("isActive", isEqualTo: true).snapshots().listen((event) {
-        if (event.docs.isNotEmpty) {
-          Constant.currencyModel = CurrencyModel.fromJson(event.docs.first.data());
+      final uri = Uri.parse('${Constant.baseUrl}settings/getActiveCurrency');
+      final response = await http.get(uri).timeout(const Duration(seconds: 20), onTimeout: () {
+        log("getCurrentCurrency API request timed out");
+        throw Exception("Request timed out");
+      });
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          Constant.currencyModel = CurrencyModel.fromJson(responseData['data']);
         } else {
-          Constant.currencyModel = CurrencyModel(id: "", code: "USD", decimalDigits: 2, enable: true, name: "US Dollar", symbol: "\$", symbolAtRight: false);
+          // fallback currency
+          Constant.currencyModel = CurrencyModel(
+            id: "",
+            code: "INR",
+            decimalDigits: 2,
+            enable: true,
+            name: "Indian Rupee",
+            symbol: "₹",
+            symbolAtRight: false,
+          );
         }
-      });
-      
-      // Add timeout to getSettings
-      await FireStoreUtils().getSettings().timeout(const Duration(seconds: 20), onTimeout: () {
-        log("getSettings timeout in GlobalSettingController");
-      });
+      } else {
+        log("Failed to fetch currency: ${response.statusCode}");
+        // fallback currency
+        Constant.currencyModel = CurrencyModel(
+          id: "",
+          code: "INR",
+          decimalDigits: 2,
+          enable: true,
+          name: "Indian Rupee",
+          symbol: "₹",
+          symbolAtRight: false,
+        );
+      }
     } catch (e) {
       log("Error in getCurrentCurrency: $e");
+      // fallback currency
+      Constant.currencyModel = CurrencyModel(
+        id: "",
+        code: "INR",
+        decimalDigits: 2,
+        enable: true,
+        name: "Indian Rupee",
+        symbol: "₹",
+        symbolAtRight: false,
+      );
     }
   }
 

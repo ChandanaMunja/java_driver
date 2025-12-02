@@ -1,7 +1,7 @@
+import 'dart:convert';
 import 'dart:developer';
 
-import 'package:jippydriver_driver/app/home_screen/controller/home_controller.dart';
-import 'package:jippydriver_driver/constant/collection_name.dart';
+import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
@@ -59,49 +59,66 @@ class DeliverOrderController extends GetxController {
     }
     isLoading.value = false;
   }
+
+
   Future<int> getTodayCompletedOrdersCount() async {
     int todayCount = 0;
-
     try {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day); // today 00:00
-      final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59); // today 23:59:59
-
-      final querySnapshot = await FireStoreUtils.fireStore
-          .collection(CollectionName.restaurantOrders)
-          .where('driverID', isEqualTo: Constant.userModel!.id.toString())
-          .where('status', isEqualTo: Constant.orderCompleted)
-          .where('createdAt', isGreaterThanOrEqualTo: startOfDay)
-          .where('createdAt', isLessThanOrEqualTo: endOfDay)
-          .get();
-
-      todayCount = querySnapshot.docs.length;
+      // 确保用户已登录
+      if (Constant.userModel == null || Constant.userModel!.id == null) {
+        log("User not logged in");
+        return 0;
+      }
+      final driverID = Constant.userModel!.id.toString();
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}orders/completed/today/$driverID'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        if (data['success'] == true) {
+          todayCount = data['count'] ?? 0;
+        } else {
+          log("API returned error: ${data['message'] ?? 'Unknown error'}");
+        }
+      } else {
+        log("API request failed with status: ${response.statusCode}");
+      }
     } catch (e) {
       log("Error getting today's completed orders: $e");
     }
-
     return todayCount;
   }
+
+
   Future<Map<String, dynamic>?> getZoneBonusByZoneId(String zoneId) async {
     try {
-      final querySnapshot = await FireStoreUtils.fireStore
-          .collection(CollectionName.zoneBonusSettings)
-          .where('zoneId', isEqualTo: zoneId)
-          .limit(1) // Only fetch one document
-          .get();
+      final response = await http.post(
+        Uri.parse("${Constant.baseUrl}zone/bonus/byZoneId"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"zone_id": zoneId}),
+      );
+      if (response.statusCode == 200) {
+        final res = jsonDecode(response.body);
 
-      if (querySnapshot.docs.isEmpty) {
-        print("No document found for zoneId: $zoneId");
-        return null; // Return null if no doc
+        if (res['success'] == true && res['data'] != null) {
+          return res['data'];
+        } else {
+          print("No bonus found for zone id: $zoneId");
+          return null;
+        }
+      } else {
+        print("API Error: ${response.statusCode}");
+        return null;
       }
-
-      // Return the first document's data
-      return querySnapshot.docs.first.data();
     } catch (e) {
-      print("Error fetching document: $e");
-      return null; // Return null on error
+      print("Error fetching zone bonus: $e");
+      return null;
     }
   }
+
 
 
   WalletController walletController =
@@ -166,6 +183,26 @@ class DeliverOrderController extends GetxController {
     }
   }
 
+  Future<double?> fetchToPay(String orderId) async {
+    final url = Uri.parse('${Constant.baseUrl}mobile/orders/$orderId/billing/to-pay');
+
+    try {
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> jsonResponse = json.decode(response.body);
+        if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
+          return (jsonResponse['data']['to_pay'] as num).toDouble();
+        }
+      }
+
+      return null;
+    } catch (e) {
+      print("Error fetching toPay: $e");
+      return null;
+    }
+  }
+
   completedOrder() async {
     ShowToastDialog.showLoader("Please wait".tr);
     try {
@@ -196,14 +233,9 @@ class DeliverOrderController extends GetxController {
       }
 
       print("[DeliverOrderController] Updating wallet amount");
-      // Fetch ToPay from order_Billing collection before wallet deduction
       try {
-        final billingDoc = await FirebaseFirestore.instance
-            .collection('order_Billing')
-            .doc(orderModel.value.id)
-            .get();
 
-        final toPay = billingDoc.data()?['ToPay'];
+        final toPay = await fetchToPay(orderModel.value.id??'0');
         if (toPay == null) {
           print('[DeliverOrderController][ERROR] ToPay is null in order_Billing for order: ${orderModel.value.id}');
           ShowToastDialog.closeLoader();
