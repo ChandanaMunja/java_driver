@@ -494,6 +494,18 @@ Obx(
         controller.currentOrder.value.vendor != null &&
         controller.currentOrder.value.address != null;
     
+    // Log UI state for debugging (only when order exists)
+    if (controller.currentOrder.value.id != null) {
+      AppLogger.log(
+          'UI State - OrderID: ${controller.currentOrder.value.id}, '
+          'Status: ${controller.currentOrder.value.status}, '
+          'DriverID: ${controller.currentOrder.value.driverID}, '
+          'CurrentDriverID: ${Constant.userModel?.id}, '
+          'isOrderInRequestData: $isOrderInRequestData, '
+          'shouldShowAcceptReject: $shouldShowAcceptReject',
+          tag: 'UI');
+    }
+    
     return    hideUI?SizedBox():  shouldShowAcceptReject
         ?
     showDriverBottomSheet(themeChange, controller)
@@ -505,7 +517,7 @@ Obx(
             Constant.userModel?.id)
         ? (() {
       AppLogger.log(
-          'Showing buildOrderActionsCard: currentDriverId=${Constant.userModel?.id}, orderDriverId=${controller.currentOrder.value.driverID}',
+          'Showing buildOrderActionsCard: currentDriverId=${Constant.userModel?.id}, orderDriverId=${controller.currentOrder.value.driverID}, status=${controller.currentOrder.value.status}',
           tag: 'UI');
       return
         buildOrderActionsCard(
@@ -518,6 +530,11 @@ Obx(
           Constant.userModel?.id) {
         controller.clearMap();
       }
+      AppLogger.log(
+          'Not showing order card - OrderID: ${controller.currentOrder.value.id}, '
+          'Status: ${controller.currentOrder.value.status}, '
+          'DriverID match: ${controller.currentOrder.value.driverID == Constant.userModel?.id}',
+          tag: 'UI');
       return SafeArea(
         child: Center(
           // child: Text(
@@ -729,6 +746,11 @@ Obx(
 
 
   showDriverBottomSheet(themeChange, HomeController controller) {
+    // Ensure charges are calculated when showing bottom sheet
+    if (controller.currentOrder.value.id != null) {
+      controller.calculateOrderChargesInitial();
+    }
+    
     // Add null checks before calculating distance
     final vendor = controller.currentOrder.value.vendor;
     final address = controller.currentOrder.value.address;
@@ -944,7 +966,7 @@ Obx(
                         children: [
                           Expanded(
                             child: Text(
-                              "Trip Distance  ${controller.currentOrder.value.id}".tr,
+                              "Trip Distance".tr,
                               textAlign: TextAlign.start,
                               style: TextStyle(
                                 fontFamily: AppThemeData.regular,
@@ -1084,7 +1106,10 @@ Obx(
                                 ),
                               ),
                               Text(
-                                "${controller.driverToRestaurantCharge.value.toInt()} + ${controller.restaurantToCustomerCharge.value.toInt()} = ${controller.totalCalculatedCharge.value.toInt()}",
+                                controller.totalCalculatedCharge.value > 0
+                                    ? "${controller.driverToRestaurantCharge.value.toInt()} + ${controller.restaurantToCustomerCharge.value.toInt()} = ${controller.totalCalculatedCharge.value.toInt()}"
+                                    : Constant.amountShow(
+                                        amount: controller.currentOrder.value.deliveryCharge ?? "0.0"),
                                 textAlign: TextAlign.start,
                                 style: TextStyle(
                                   fontFamily: AppThemeData.semiBold,
@@ -1187,8 +1212,10 @@ Obx(
                                     ),
                                   ),
                                   Text(
-                                    "${(double.parse(controller.currentOrder.value.tipAmount.toString())
-                                        + controller.totalCalculatedCharge.value
+                                    "${(double.tryParse(controller.currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0
+                                        + (controller.totalCalculatedCharge.value > 0 
+                                            ? controller.totalCalculatedCharge.value 
+                                            : double.tryParse(controller.currentOrder.value.deliveryCharge?.toString() ?? '0') ?? 0.0)
                                         + surgeFee).toInt()}",
                                     textAlign: TextAlign.start,
                                     style: TextStyle(
@@ -1298,7 +1325,6 @@ Obx(
                           AppLogger.log('User clicked Accept Order button',
                               tag: 'UserAction');
                           await controller.acceptOrder();
-                          // Manual refresh: fetch latest order and update controller
                           if (controller.currentOrder.value.id != null) {
                             final updatedOrder =
                                 await FireStoreUtils.getOrderById(

@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSergeFee, fetchOrderSurgeFee;
+import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSurgeFee;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
@@ -351,9 +350,13 @@ if(arrowDrop.value){
     }
     update();
   }
+
   getCurrentOrder() async {
     AppLogger.log('getCurrentOrder() called', tag: 'Function');
-    // Clear currentOrder if it's not in any driver lists
+    AppLogger.log('inProgressOrderID: ${driverModel.value.inProgressOrderID}', tag: 'Function');
+    AppLogger.log('orderRequestData: ${driverModel.value.orderRequestData}', tag: 'Function');
+    AppLogger.log('currentOrder.id: ${currentOrder.value.id}', tag: 'Function');
+    
     if (currentOrder.value.id != null &&
         !(driverModel.value.orderRequestData?.contains(currentOrder.value.id) ?? false) &&
         !(driverModel.value.inProgressOrderID?.contains(currentOrder.value.id) ?? false)) {
@@ -371,11 +374,14 @@ if(arrowDrop.value){
     if (Constant.singleOrderReceive == true) {
       if (inProgress != null && inProgress.isNotEmpty) {
         firstOrderId = inProgress.first;
+        AppLogger.log('Using inProgressOrderID first order: $firstOrderId', tag: 'Function');
       } else if (orderRequest != null && orderRequest.isNotEmpty) {
         firstOrderId = orderRequest.first;
+        AppLogger.log('Using orderRequestData first order: $firstOrderId', tag: 'Function');
       }
     } else if (orderModel.value.id != null) {
       firstOrderId = orderModel.value.id.toString();
+      AppLogger.log('Using orderModel.id: $firstOrderId', tag: 'Function');
     }
     if (firstOrderId == null || firstOrderId.isEmpty) {
       AppLogger.log('No valid firstOrderId found, exiting getCurrentOrder()', tag: 'UI');
@@ -387,9 +393,12 @@ if(arrowDrop.value){
         : 'Order Cancelled,Driver Rejected';
     final uri = Uri.parse(
         '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$firstOrderId&exclude_statuses=$excludeStatuses');
-   log("getCurrentOrder $uri");
+    AppLogger.log('getCurrentOrder API URL: $uri', tag: 'API');
     try {
       final response = await http.get(uri);
+      AppLogger.log('getCurrentOrder API response status: ${response.statusCode}', tag: 'API');
+      AppLogger.log('getCurrentOrder API response body: ${response.body}', tag: 'API');
+      
       if (response.statusCode != 200) {
         AppLogger.log('API call failed with status: ${response.statusCode}', tag: 'API');
         return;
@@ -397,13 +406,16 @@ if(arrowDrop.value){
       final data = jsonDecode(response.body);
       if (data['success'] == true && data['order'] != null) {
         currentOrder.value = OrderModel.fromJson(data['order']);
+        AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'API');
         calculateOrderChargesInitial();
         if ((inProgress?.contains(currentOrder.value.id) ?? false) ||
             (orderRequest?.contains(currentOrder.value.id) ?? false)) {
           changeData();
-          AppLogger.log('Fetched order: $firstOrderId via API', tag: 'API');
+          AppLogger.log('Fetched order: $firstOrderId via API and called changeData()', tag: 'API');
         }
+        update(); // Ensure UI updates after fetching order
       } else {
+        AppLogger.log('API returned success=false or order=null. Response: $data', tag: 'API');
         // Remove missing/completed order from driver lists
         if (inProgress?.contains(firstOrderId) ?? false) {
           inProgress!.remove(firstOrderId);
@@ -420,8 +432,9 @@ if(arrowDrop.value){
         update();
         AppLogger.log('No order found, cleared map and stopped sound', tag: 'UI');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       AppLogger.log('Error fetching order via API: $e', tag: 'API');
+      AppLogger.log('Stack trace: $stackTrace', tag: 'API');
     }
   }
 

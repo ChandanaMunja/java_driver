@@ -1110,8 +1110,10 @@ class FireStoreUtils {
   static Future<NotificationModel?> getNotificationContent(String type) async {
     NotificationModel? notificationModel;
     try {
+      String url = '${Constant.baseUrl}firestore/notifications/$type';
+      print("getNotificationContent ${url}");
       final response = await http.get(
-        Uri.parse('${Constant.baseUrl}firestore/notifications/$type'),
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
         },
