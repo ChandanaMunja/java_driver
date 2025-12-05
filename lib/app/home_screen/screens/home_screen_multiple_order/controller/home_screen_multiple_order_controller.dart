@@ -12,7 +12,7 @@ import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:get/get.dart';
 
 class HomeScreenMultipleOrderController extends GetxController {
-  Rx<UserModel> driverModel = Constant.userModel!.obs;
+  Rx<UserModel> driverModel =Constant.userModel!.obs;
   RxBool isLoading = true.obs;
   RxInt selectedTabIndex = 0.obs;
 

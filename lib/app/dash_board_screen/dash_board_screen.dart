@@ -28,10 +28,8 @@ import 'package:get/get.dart';
 import 'package:in_app_review/in_app_review.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-
 import '../../main.dart';
 import '../wallet_screen/screens/delivery_amount_wallet_screen/delivery_amount_wallet_screen.dart';
-
 // class DashBoardScreen extends StatelessWidget {
 //   const DashBoardScreen({super.key});
 class DashBoardScreen extends StatefulWidget {
@@ -74,7 +72,7 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
                       ),
                     ),
                     Text(
-                      '${Constant.userModel!.fullName()}'.tr,
+                      '${Constant.userModel?.fullName()}'.tr,
                       style: TextStyle(
                         color: themeChange.getThem()
                             ? AppThemeData.grey50

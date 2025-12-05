@@ -21,7 +21,6 @@ class LoginController extends GetxController {
       TextEditingController().obs;
   Rx<TextEditingController> passwordEditingController =
       TextEditingController().obs;
-
   RxBool passwordVisible = true.obs;
 
   @override

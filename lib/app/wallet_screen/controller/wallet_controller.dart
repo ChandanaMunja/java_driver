@@ -864,7 +864,7 @@ class WalletController extends GetxController {
     var options = {
       'key': razorPayModel.value.razorpayKey,
       'amount': amount * 100,
-      'name': 'GoRide',
+      'name': 'Jippy Mart',
       'order_id': orderId,
       "currency": "INR",
       'description': 'wallet Topup',

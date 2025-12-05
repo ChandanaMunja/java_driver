@@ -435,6 +435,12 @@ if(arrowDrop.value){
     } catch (e, stackTrace) {
       AppLogger.log('Error fetching order via API: $e', tag: 'API');
       AppLogger.log('Stack trace: $stackTrace', tag: 'API');
+      // If there's an error parsing, clear current order to prevent stale data
+      if (currentOrder.value.id == firstOrderId) {
+        currentOrder.value = OrderModel();
+        await clearMap();
+        update();
+      }
     }
   }
 

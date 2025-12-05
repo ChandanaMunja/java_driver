@@ -21,11 +21,29 @@ Future<double?> fetchToPayForOrder(String orderId) async {
   final url = Uri.parse('${Constant.baseUrl}mobile/orders/$orderId/billing/to-pay');
   try {
     final response = await http.get(url);
+    
+    // Check if response is successful
     if (response.statusCode == 200) {
-      final Map<String, dynamic> jsonResponse = json.decode(response.body);
-      if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
-        return (jsonResponse['data']['to_pay'] as num).toDouble();
+      // Check if response body is valid JSON (not HTML)
+      final responseBody = response.body.trim();
+      if (responseBody.startsWith('<!') || responseBody.startsWith('<html')) {
+        print("Error fetching toPay: API returned HTML instead of JSON. Status: ${response.statusCode}");
+        return null;
       }
+
+      try {
+        final Map<String, dynamic> jsonResponse = json.decode(responseBody);
+        if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
+          return (jsonResponse['data']['to_pay'] as num).toDouble();
+        }
+      } catch (jsonError) {
+        print("Error parsing toPay JSON: $jsonError");
+        print("Response body: ${responseBody.substring(0, responseBody.length > 200 ? 200 : responseBody.length)}");
+        return null;
+      }
+    } else {
+      print("Error fetching toPay: API returned status ${response.statusCode}");
+      print("Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}");
     }
 
     return null;

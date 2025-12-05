@@ -189,11 +189,28 @@ class DeliverOrderController extends GetxController {
     try {
       final response = await http.get(url);
 
+      // Check if response is successful
       if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-        if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
-          return (jsonResponse['data']['to_pay'] as num).toDouble();
+        // Check if response body is valid JSON (not HTML)
+        final responseBody = response.body.trim();
+        if (responseBody.startsWith('<!') || responseBody.startsWith('<html')) {
+          print("Error fetching toPay: API returned HTML instead of JSON. Status: ${response.statusCode}");
+          return null;
         }
+
+        try {
+          final Map<String, dynamic> jsonResponse = json.decode(responseBody);
+          if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
+            return (jsonResponse['data']['to_pay'] as num).toDouble();
+          }
+        } catch (jsonError) {
+          print("Error parsing toPay JSON: $jsonError");
+          print("Response body: ${responseBody.substring(0, responseBody.length > 200 ? 200 : responseBody.length)}");
+          return null;
+        }
+      } else {
+        print("Error fetching toPay: API returned status ${response.statusCode}");
+        print("Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}");
       }
 
       return null;
@@ -234,18 +251,31 @@ class DeliverOrderController extends GetxController {
 
       print("[DeliverOrderController] Updating wallet amount");
       try {
-
-        final toPay = await fetchToPay(orderModel.value.id??'0');
+        // Try to fetch toPay from API, but fallback to order model value if available
+        double? toPay = await fetchToPay(orderModel.value.id ?? '0');
+        
+        // If API fetch failed, try to use existing toPay value from order model
+        if (toPay == null && orderModel.value.toPay != null && orderModel.value.toPay!.isNotEmpty) {
+          try {
+            toPay = double.tryParse(orderModel.value.toPay!);
+            print('[DeliverOrderController] Using existing ToPay from order model: $toPay');
+          } catch (e) {
+            print('[DeliverOrderController] Failed to parse existing ToPay: ${orderModel.value.toPay}');
+          }
+        }
+        
         if (toPay == null) {
           print('[DeliverOrderController][ERROR] ToPay is null in order_Billing for order: ${orderModel.value.id}');
+          print('[DeliverOrderController] Order model toPay value: ${orderModel.value.toPay}');
           ShowToastDialog.closeLoader();
           ShowToastDialog.showToast("Order billing info missing. Cannot complete order.");
           return;
         }
+        
         orderModel.value.toPay = toPay.toString();
-        print('[DeliverOrderController] Set ToPay from order_Billing: ${orderModel.value.toPay}');
+        print('[DeliverOrderController] Set ToPay: ${orderModel.value.toPay}');
       } catch (e) {
-        print('[DeliverOrderController][ERROR] Failed to fetch ToPay from order_Billing: ${e}');
+        print('[DeliverOrderController][ERROR] Failed to fetch ToPay from order_Billing: $e');
         ShowToastDialog.closeLoader();
         ShowToastDialog.showToast("Failed to fetch billing info. Cannot complete order.");
         return;

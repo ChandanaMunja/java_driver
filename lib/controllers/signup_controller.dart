@@ -104,7 +104,7 @@ class SignupController extends GetxController {
       await FireStoreUtils.updateUser(userModel.value).then(
             (value) {
           if (Constant.autoApproveDriver == true) {
-            Get.offAll(const DashBoardScreen());
+            Get.offAll(const LoginScreen());
             ShowToastDialog.showToast("Account create successfully".tr);
           } else {
             ShowToastDialog.showToast(
@@ -166,7 +166,7 @@ print("signupsignup ${response.body}");
             await FireStoreUtils.updateUser(userModel.value).then(
                   (value) async {
                 if (Constant.autoApproveDriver == true) {
-                  Get.offAll(const DashBoardScreen());
+                  Get.offAll(const LoginScreen());
                 } else {
                   ShowToastDialog.showToast(
                       "Thank you for sign up, your application is under approval so please wait till that approve."

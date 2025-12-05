@@ -69,7 +69,26 @@ class OrderModel {
   });
 
   OrderModel.fromJson(Map<String, dynamic> json) {
-    address = json['address'] != null ? ShippingAddress.fromJson(json['address']) : null;
+    // Handle address coming as Map or JSON string
+    if (json['address'] != null) {
+      if (json['address'] is Map) {
+        address = ShippingAddress.fromJson(Map<String, dynamic>.from(json['address']));
+      } else if (json['address'] is String) {
+        try {
+          final addressJson = jsonDecode(json['address']);
+          if (addressJson is Map) {
+            address = ShippingAddress.fromJson(Map<String, dynamic>.from(addressJson));
+          }
+        } catch (e) {
+          print('Error decoding address JSON string: $e');
+          address = null;
+        }
+      } else {
+        address = null;
+      }
+    } else {
+      address = null;
+    }
     status = json['status'];
     couponId = json['couponId'];
     vendorID = json['vendorID']?.toString();
@@ -96,17 +115,48 @@ class OrderModel {
       });
     }
     adminCommissionType = json['adminCommissionType'];
-    // vendor = json['vendor'] != null ? VendorModel.fromJson(json['vendor']) : null;
-    if (json['vendor'] is Map<String, dynamic>) {
-      vendor = VendorModel.fromJson(json['vendor']);
-    } else {
-      vendorID = json['vendor']?.toString();
-      vendor = null;
+    // Handle vendor coming as Map or JSON string
+    if (json['vendor'] != null) {
+      if (json['vendor'] is Map) {
+        vendor = VendorModel.fromJson(Map<String, dynamic>.from(json['vendor']));
+      } else if (json['vendor'] is String) {
+        try {
+          final vendorJson = jsonDecode(json['vendor']);
+          if (vendorJson is Map) {
+            vendor = VendorModel.fromJson(Map<String, dynamic>.from(vendorJson));
+          } else {
+            vendorID = json['vendor']?.toString();
+            vendor = null;
+          }
+        } catch (e) {
+          print('Error decoding vendor JSON string: $e');
+          vendorID = json['vendor']?.toString();
+          vendor = null;
+        }
+      } else {
+        vendorID = json['vendor']?.toString();
+        vendor = null;
+      }
     }
     id = json['id']?.toString();
     adminCommission = json['adminCommission']?.toString();
     couponCode = json['couponCode']?.toString();
-    specialDiscount = json['specialDiscount'];
+    // Handle specialDiscount coming as Map or JSON string
+    if (json['specialDiscount'] != null) {
+      if (json['specialDiscount'] is Map) {
+        specialDiscount = Map<String, dynamic>.from(json['specialDiscount']);
+      } else if (json['specialDiscount'] is String) {
+        try {
+          final specialDiscountJson = jsonDecode(json['specialDiscount']);
+          if (specialDiscountJson is Map) {
+            specialDiscount = Map<String, dynamic>.from(specialDiscountJson);
+          }
+        } catch (e) {
+          print('Error decoding specialDiscount JSON string: $e');
+          specialDiscount = null;
+        }
+      }
+    }
     // Safely parse deliveryCharge (can be num, string, null)
     deliveryCharge = _parseNum(json['deliveryCharge'])?.toString() ?? '0.0';
     // Handle scheduleTime from Timestamp or milliseconds
@@ -114,14 +164,57 @@ class OrderModel {
     // Safely parse tip amount (can be num, string, null)
     tipAmount = _parseNum(json['tip_amount'])?.toString() ?? '0.0';
     notes = json['notes'];
-    author = json['author'] != null ? UserModel.fromJson(json['author']) : null;
-    driver = json['driver'] != null ? UserModel.fromJson(json['driver']) : null;
+    // Handle author coming as Map or JSON string
+    if (json['author'] != null) {
+      if (json['author'] is Map) {
+        author = UserModel.fromJson(Map<String, dynamic>.from(json['author']));
+      } else if (json['author'] is String) {
+        try {
+          final authorJson = jsonDecode(json['author']);
+          if (authorJson is Map) {
+            author = UserModel.fromJson(Map<String, dynamic>.from(authorJson));
+          }
+        } catch (e) {
+          print('Error decoding author JSON string: $e');
+          author = null;
+        }
+      }
+    }
+    // Handle driver coming as Map or JSON string
+    if (json['driver'] != null) {
+      if (json['driver'] is Map) {
+        driver = UserModel.fromJson(Map<String, dynamic>.from(json['driver']));
+      } else if (json['driver'] is String) {
+        try {
+          final driverJson = jsonDecode(json['driver']);
+          if (driverJson is Map) {
+            driver = UserModel.fromJson(Map<String, dynamic>.from(driverJson));
+          }
+        } catch (e) {
+          print('Error decoding driver JSON string: $e');
+          driver = null;
+        }
+      }
+    }
     takeAway = _parseBool(json['takeAway']);
     rejectedByDrivers = _parseList(json['rejectedByDrivers']);
     toPay = json['ToPay']?.toString();
-    calculatedCharges = json['calculatedCharges'] != null
-        ? Map<String, dynamic>.from(json['calculatedCharges'])
-        : null;
+    // Handle calculatedCharges coming as Map or JSON string
+    if (json['calculatedCharges'] != null) {
+      if (json['calculatedCharges'] is Map) {
+        calculatedCharges = Map<String, dynamic>.from(json['calculatedCharges']);
+      } else if (json['calculatedCharges'] is String) {
+        try {
+          final calculatedChargesJson = jsonDecode(json['calculatedCharges']);
+          if (calculatedChargesJson is Map) {
+            calculatedCharges = Map<String, dynamic>.from(calculatedChargesJson);
+          }
+        } catch (e) {
+          print('Error decoding calculatedCharges JSON string: $e');
+          calculatedCharges = null;
+        }
+      }
+    }
   }
   bool? _parseBool(dynamic value) {
     if (value == null) return null;
