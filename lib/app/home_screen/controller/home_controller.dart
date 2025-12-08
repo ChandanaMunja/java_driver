@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:developer';
+import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
+import 'package:cloud_firestore/cloud_firestore.dart' show FieldValue;
 import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSurgeFee;
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
@@ -21,8 +23,11 @@ import 'package:get/get.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:latlong2/latlong.dart' as location;
 import '../../../models/order_model.dart';
+import '../../../models/vendor_model.dart';
 import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/utils/app_logger.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:typed_data';
 // import '../services/order_service.dart';
 // import 'package:jippydriver_driver/services/order_service.dart';
 class HomeController extends GetxController {
@@ -48,22 +53,33 @@ if(arrowDrop.value){
   RxDouble restaurantToCustomerCharge = 0.0.obs;
   RxDouble totalCalculatedCharge = 0.0.obs;
   void driverChargeAdd()async{
-    // final charges = await FireStoreUtils().getDriverCharges();
-    // print(" Pickup: ${charges["pickup_charges"]}");
-    // print("Delivery: ${charges["user_delivery_charge"]}");
-    // DRIVER_TO_RESTAURANT_RATE_PER_KM =double.parse(charges["pickup_charges"]);
-    // RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.parse(charges["user_delivery_charge"]);; // ₹7 per km
-    print(" Pickup: ${editProfileController.selectedZone.value.pickupCharges}");
-    print("Delivery: ${editProfileController.selectedZone.value.userDeliveryCharge}");
-    DRIVER_TO_RESTAURANT_RATE_PER_KM =double.parse(editProfileController.selectedZone.value.pickupCharges??'2');
-    RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.parse(editProfileController.selectedZone.value.userDeliveryCharge??"7");; // ₹7 per
+    try {
+      final charges = await FireStoreUtils.getDriverCharges();
+      print("✅ Pickup charges from API: ${charges["pickup_charges"]}");
+      print("✅ Delivery charges from API: ${charges["user_delivery_charge"]}");
+      // Use API charges, fallback to zone data, then default to 2 for pickup and 7 for delivery
+      DRIVER_TO_RESTAURANT_RATE_PER_KM = double.tryParse(charges["pickup_charges"]?.toString() ?? '') ?? 
+                                         double.tryParse(editProfileController.selectedZone.value.pickupCharges ?? '') ?? 
+                                         2.0;
+      RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.tryParse(charges["user_delivery_charge"]?.toString() ?? '') ?? 
+                                           double.tryParse(editProfileController.selectedZone.value.userDeliveryCharge ?? '') ?? 
+                                           7.0;
+      print("✅ Final Pickup Rate: $DRIVER_TO_RESTAURANT_RATE_PER_KM per km");
+      print("✅ Final Delivery Rate: $RESTAURANT_TO_CUSTOMER_RATE_PER_KM per km");
     print(" ${driverToRestaurantCharge.value} driverToRestaurantCharge ");
     update();
+    } catch (e) {
+      print("❌ Error fetching driver charges from API: $e");
+      // Fallback to zone data or defaults
+      DRIVER_TO_RESTAURANT_RATE_PER_KM = double.tryParse(editProfileController.selectedZone.value.pickupCharges ?? '') ?? 2.0;
+      RESTAURANT_TO_CUSTOMER_RATE_PER_KM = double.tryParse(editProfileController.selectedZone.value.userDeliveryCharge ?? '') ?? 7.0;
+      print("⚠️ Using fallback rates - Pickup: $DRIVER_TO_RESTAURANT_RATE_PER_KM, Delivery: $RESTAURANT_TO_CUSTOMER_RATE_PER_KM");
+      update();
+    }
   }
 // Pricing constants
   double DRIVER_TO_RESTAURANT_RATE_PER_KM = 0.0; // ₹2 per km
   double RESTAURANT_TO_CUSTOMER_RATE_PER_KM = 0.0; // ₹7 per km
-
   // Calculate distances and charges when order is accepted
   Future<void> calculateOrderChargesInitial() async {
     print(" calculateOrderChargesId ${currentOrder.value.id} ");
@@ -107,12 +123,28 @@ if(arrowDrop.value){
 
   Future<void> calculateDriverToRestaurantDetails() async {
     print(" ${driverToRestaurantCharge.value} driverToRestaurantCharge ");
-    double distanceInMeters = Geolocator.distanceBetween(
-      driverModel.value.location!.latitude!,
-      driverModel.value.location!.longitude!,
-      currentOrder.value.vendor!.latitude ?? 0.0,
-      currentOrder.value.vendor!.longitude ?? 0.0,
-    );
+    print(" ${driverToRestaurantCharge.value} driverToRestaurantCharge ");
+    VendorModel? vendorModels = await getVendorById(
+        currentOrder.value.vendorID.toString());
+    double distanceInMeters = 0.0;
+    print(" ${distanceInMeters} calculateDriverToRestaurantDetailscalculateDriverToRestaurantDetails zero ");
+    if(vendorModels==null){
+      distanceInMeters =   Geolocator.distanceBetween(
+        driverModel.value.location!.latitude!,
+        driverModel.value.location!.longitude!,
+        currentOrder.value.vendor!.latitude ?? 0.0,
+        currentOrder.value.vendor!.longitude ?? 0.0,
+      );
+      print(" ${distanceInMeters} calculateDriverToRestaurantDetailscalculateDriverToRestaurantDetails one ");
+    }else{
+      distanceInMeters =   Geolocator.distanceBetween(
+        driverModel.value.location!.latitude!,
+        driverModel.value.location!.longitude!,
+        currentOrder.value.vendor!.latitude ?? 0.0,
+        currentOrder.value.vendor!.longitude ?? 0.0,
+      );
+      print(" ${distanceInMeters} calculateDriverToRestaurantDetailscalculateDriverToRestaurantDetails two ");
+    }
     // Convert to kilometers
     driverToRestaurantDistance.value = distanceInMeters / 1000;
     // Calculate duration (assuming average speed of 30 km/h)
@@ -126,14 +158,39 @@ if(arrowDrop.value){
     print(" ${distanceInMeters}  distanceInMeters ");
     update();
   }
-
-
+  static Future<VendorModel?> getVendorById(String vendorId) async {
+    VendorModel? vendorModel;
+    try {
+      String? url = '${Constant.baseUrl}restaurant/vendors/$vendorId';
+      print("getVendorById $url ");
+      if (vendorId.isNotEmpty) {
+        final response = await http.get(
+          Uri.parse(url),
+          headers: {'Content-Type': 'application/json'},
+        );
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> responseData = jsonDecode(response.body);
+          if (responseData['success'] == true && responseData['data'] != null) {
+            vendorModel = VendorModel.fromJson(responseData['data']);
+          }
+        } else if (response.statusCode == 404) {
+          return null;
+        } else {
+          throw Exception('Failed to load vendor: ${response.statusCode}');
+        }
+      }
+    } catch (e, s) {
+      log('getVendorById error: $e $s');
+      return null;
+    }
+    return vendorModel;
+  }
   Future<void> calculateRestaurantToCustomerDetails() async {
     double distanceInMeters = Geolocator.distanceBetween(
-      currentOrder.value.vendor!.latitude ?? 0.0,
-      currentOrder.value.vendor!.longitude ?? 0.0,
-      currentOrder.value.address!.location!.latitude ?? 0.0,
-      currentOrder.value.address!.location!.longitude ?? 0.0,
+      currentOrder.value.vendor?.latitude ?? 0.0,
+      currentOrder.value.vendor?.longitude ?? 0.0,
+      currentOrder.value.address?.location!.latitude ?? 0.0,
+      currentOrder.value.address?.location!.longitude ?? 0.0,
     );
     // Convert to kilometers
     restaurantToCustomerDistance.value = distanceInMeters / 1000;
@@ -171,29 +228,363 @@ if(arrowDrop.value){
       'calculatedAt': FieldValue.serverTimestamp(),
     };
     print( "${calculatedCharges} calculatedCharges");
-
     currentOrder.value.calculatedCharges = calculatedCharges;
   }
-
   // Get calculated charges for display
   Map<String, dynamic>? getCalculatedCharges() {
     return currentOrder.value.calculatedCharges;
   }
-
-
   //NEW FUNCTION IN DRIVER APPLICATION
   RxBool isLoading = true.obs;
   flutterMap.MapController osmMapController = flutterMap.MapController();
   RxList<flutterMap.Marker> osmMarkers = <flutterMap.Marker>[].obs;
+  
+  // Timer for automatic order polling
+  Timer? _orderPollingTimer;
+  bool _isPolling = false;
+  bool _isRefreshing = false; // Flag to prevent multiple simultaneous refreshes
+  
+  // Local notifications plugin for manual order updates
+  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
   @override
   void onInit() {
     getArgument();
     setIcons();
+    _initializeLocalNotifications();
     getDriver();
     driverChargeAdd();
+    // Start automatic polling for new orders every 3 seconds
+    _startOrderPolling();
     super.onInit();
   }
+  
+  /// Initialize local notifications for manual order updates
+  Future<void> _initializeLocalNotifications() async {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const DarwinInitializationSettings iosInitializationSettings = DarwinInitializationSettings();
+    final InitializationSettings initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: iosInitializationSettings,
+    );
+    await _localNotifications.initialize(initializationSettings);
+    AppLogger.log('Local notifications initialized', tag: 'Notifications');
+  }
+  
+  /// Show local notification when new orders are detected (for manual updates)
+  Future<void> _showNewOrderNotification(String orderId) async {
+    try {
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'manual_order_channel',
+        'Manual Order Notifications',
+        description: 'Notifications for manually inserted orders',
+        importance: Importance.high,
+        playSound: true,
+        sound: RawResourceAndroidNotificationSound('order_ringtone'),
+      );
+      
+      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        'manual_order_channel',
+        'Manual Order Notifications',
+        channelDescription: 'Notifications for manually inserted orders',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+        sound: channel.sound,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([1000, 1000, 1000, 1000]),
+        timeoutAfter: 30000, // 30 seconds
+      );
+      
+      const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      );
+      
+      final NotificationDetails notificationDetails = NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      );
+      
+      await _localNotifications.show(
+        DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        'New Order Received',
+        'You have a new order: $orderId. Please accept it soon!',
+        notificationDetails,
+        payload: orderId,
+      );
+      
+      AppLogger.log('✅ Local notification shown for order: $orderId', tag: 'Notifications');
+    } catch (e) {
+      AppLogger.log('Error showing local notification: $e', tag: 'Notifications');
+    }
+  }
+  
+  /// Show popup dialog when new orders are detected
+  Future<void> _showNewOrderDialog(String orderId) async {
+    try {
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.notifications_active, color: Colors.orange, size: 28),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'New Order Received!',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'You have received a new order:',
+                style: TextStyle(fontSize: 16),
+              ),
+              SizedBox(height: 10),
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long, color: Colors.orange, size: 24),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        orderId,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 15),
+              Text(
+                'The order will appear on your screen shortly. Please check and accept it!',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade700),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                Get.back();
+                AppLogger.log('View Order clicked for: $orderId', tag: 'UserAction');
+                // Force fetch this specific order
+                await _forceFetchOrderById(orderId);
+              },
+              child: Text(
+                'View Order',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text(
+                'OK',
+                style: TextStyle(fontSize: 16),
+              ),
+            ),
+          ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+        ),
+        barrierDismissible: false,
+      );
+      
+      AppLogger.log('✅ Popup dialog shown for order: $orderId', tag: 'Notifications');
+    } catch (e) {
+      AppLogger.log('Error showing popup dialog: $e', tag: 'Notifications');
+    }
+  }
+  
+  /// Force fetch a specific order by ID and display it
+  Future<void> _forceFetchOrderById(String orderId) async {
+    AppLogger.log('Force fetching order: $orderId', tag: 'Function');
+    try {
+      // Try primary endpoint first
+      final excludeStatuses = 'Order Cancelled,Driver Rejected,Order Completed';
+      final primaryUri = Uri.parse(
+          '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$orderId&exclude_statuses=$excludeStatuses');
+      
+      bool orderFetched = false;
+      
+      try {
+        final response = await http.get(
+          primaryUri,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ).timeout(Duration(seconds: 10));
+        
+        if (response.statusCode == 200) {
+          if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
+            try {
+              final data = jsonDecode(response.body);
+              if (data['success'] == true && data['order'] != null) {
+                currentOrder.value = OrderModel.fromJson(data['order']);
+                AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+                orderFetched = true;
+              }
+            } catch (e) {
+              AppLogger.log('Error parsing primary API response: $e', tag: 'API');
+            }
+          }
+        }
+      } catch (e) {
+        AppLogger.log('Primary API failed: $e - will try fallback', tag: 'API');
+      }
+      
+      // Try fallback endpoint if primary failed
+      if (!orderFetched) {
+        AppLogger.log('Trying FALLBACK endpoint for order: $orderId', tag: 'API');
+        try {
+          final fallbackUri = Uri.parse('${Constant.baseUrl}restaurant/orders/$orderId');
+          final response = await http.get(
+            fallbackUri,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(Duration(seconds: 10));
+          
+          if (response.statusCode == 200) {
+            if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
+              try {
+                final data = jsonDecode(response.body);
+                if (data['success'] == true && data['data'] != null) {
+                  currentOrder.value = OrderModel.fromJson(data['data']);
+                  AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+                  orderFetched = true;
+                }
+              } catch (e) {
+                AppLogger.log('Error parsing fallback API response: $e', tag: 'API');
+              }
+            }
+          }
+        } catch (e) {
+          AppLogger.log('Fallback API also failed: $e', tag: 'API');
+        }
+      }
+      
+      // Process the fetched order
+      if (orderFetched && currentOrder.value.id != null) {
+        try {
+          AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
+          
+          // Ensure order status is set correctly for accept/reject buttons to show
+          // If order is in orderRequestData, set status to Driver Pending if not already set
+          if (driverModel.value.orderRequestData?.contains(orderId) ?? false) {
+            if (currentOrder.value.status != Constant.driverPending && 
+                (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+              currentOrder.value.status = Constant.driverPending;
+              AppLogger.log('✅ Set order status to Driver Pending for accept/reject buttons', tag: 'UI');
+            }
+          }
+          
+          // Log order details for debugging
+          AppLogger.log('Order Details - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'UI');
+          AppLogger.log('Order Details - Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
+          
+          // If vendor is missing but vendorID exists, try to fetch vendor data
+          if (currentOrder.value.vendor == null && 
+              currentOrder.value.vendorID != null && 
+              currentOrder.value.vendorID!.isNotEmpty) {
+            AppLogger.log('Vendor missing, fetching vendor data for vendorID: ${currentOrder.value.vendorID}', tag: 'API');
+            await _fetchVendorData(currentOrder.value.vendorID!);
+          }
+      
+          calculateOrderChargesInitial();
+          changeData();
+          update(); // Force UI update
+          AppLogger.log('✅ Order displayed successfully - Accept/Reject buttons should now work', tag: 'UI');
+          AppLogger.log('Order Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}, Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
+        } catch (e) {
+          AppLogger.log('Error processing fetched order: $e', tag: 'Error');
+          ShowToastDialog.showToast('Error processing order data. Please try again.');
+        }
+      } else {
+        AppLogger.log('❌ Failed to fetch order: $orderId', tag: 'Error');
+        ShowToastDialog.showToast('Failed to load order. Please try again.');
+      }
+    } catch (e) {
+      AppLogger.log('Exception in _forceFetchOrderById: $e', tag: 'Error');
+      ShowToastDialog.showToast('Error loading order. Please try again.');
+    }
+  }
+  
+  @override
+  void onClose() {
+    // Cancel polling timer when controller is disposed
+    _orderPollingTimer?.cancel();
+    super.onClose();
+  }
+  
+  /// Start automatic polling for new orders
+  void _startOrderPolling() {
+    if (_isPolling) return;
+    _isPolling = true;
+    AppLogger.log('Starting automatic order polling every 5 seconds', tag: 'Polling');
+
+    _orderPollingTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
+      // Prevent multiple simultaneous refreshes
+      if (_isRefreshing) {
+        AppLogger.log('Skipping refresh - already in progress', tag: 'Polling');
+        return;
+      }
+      
+      try {
+        // Refresh driver data to get latest orderRequestData
+        await refreshHomeScreen();
+        AppLogger.log('Periodic order check completed', tag: 'Polling');
+      } catch (e) {
+        AppLogger.log('Error in periodic order check: $e', tag: 'Polling');
+        // Continue polling even on error - don't let temporary errors stop the timer
+      }
+    });
+  }
+  
+  /// Manually trigger an immediate order refresh (called on app resume, pull-to-refresh, etc.)
+  Future<void> forceRefreshOrders() async {
+    // Prevent multiple simultaneous refreshes
+    if (_isRefreshing) {
+      AppLogger.log('Force refresh skipped - already in progress', tag: 'Polling');
+      return;
+    }
+    
+    AppLogger.log('Force refresh orders triggered', tag: 'Polling');
+    try {
+      await refreshHomeScreen();
+      AppLogger.log('Force refresh completed', tag: 'Polling');
+    } catch (e) {
+      AppLogger.log('Error in force refresh: $e', tag: 'Polling');
+    }
+  }
+  
 
   Rx<OrderModel> orderModel = OrderModel().obs;
   Rx<OrderModel> currentOrder = OrderModel().obs;
@@ -211,37 +602,113 @@ if(arrowDrop.value){
   Future<void> acceptOrder() async {
     AppLogger.log('acceptOrder() called', tag: 'Function');
     AppLogger.log('Current Order ID: ${currentOrder.value.id}', tag: 'Function');
+    AppLogger.log('Driver ID: ${driverModel.value.id}', tag: 'Function');
+    AppLogger.log('Order Status: ${currentOrder.value.status}', tag: 'Function');
+    AppLogger.log('Order Vendor: ${currentOrder.value.vendor != null}', tag: 'Function');
+    AppLogger.log('Order Address: ${currentOrder.value.address != null}', tag: 'Function');
+    
     await AudioPlayerService.playSound(false);
     AppLogger.log('Sound played for acceptOrder()', tag: 'Audio');
     ShowToastDialog.showLoader("Please wait".tr);
     try {
-      if (currentOrder.value.id == null || driverModel.value.id == null) {
+      // Validate order and driver IDs
+      if (currentOrder.value.id == null || currentOrder.value.id!.isEmpty) {
         ShowToastDialog.closeLoader();
-        ShowToastDialog.showToast("Order or driver ID is missing!".tr);
-        AppLogger.log('Order or driver ID is missing!', tag: 'Error');
+        ShowToastDialog.showToast("Order ID is missing!".tr);
+        AppLogger.log('❌ Order ID is missing! currentOrder.value.id: ${currentOrder.value.id}', tag: 'Error');
+        // Try to refresh driver data and get order again
+        await refreshHomeScreen();
+        await getCurrentOrder();
+        return;
+      }
+      
+      if (driverModel.value.id == null || driverModel.value.id!.isEmpty) {
+        ShowToastDialog.closeLoader();
+        ShowToastDialog.showToast("Driver ID is missing!".tr);
+        AppLogger.log('❌ Driver ID is missing! driverModel.value.id: ${driverModel.value.id}', tag: 'Error');
+        // Try to refresh driver data
+        await getDriver();
         return;
       }
       AppLogger.log('Attempting to assign order to driver', tag: 'Firestore');
       // Calculate charges before accepting
-      bool success = await FireStoreUtils.assignOrderToDriverFCFS(
+      final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
         orderId: currentOrder.value.id!,
         driverId: driverModel.value.id!,
         driverModel: driverModel.value,
       );
-      AppLogger.log('assignOrderToDriverFCFS result: $success', tag: 'Firestore');
-      if (success) {
+      AppLogger.log('assignOrderToDriverFCFS result: $assignResult', tag: 'Firestore');
+      
+      // Handle rate limiting (429)
+      if (assignResult == null) {
+        ShowToastDialog.closeLoader();
+        Get.snackbar(
+          "Rate Limited",
+          "Too many requests. Please wait a moment and try again.",
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 3),
+        );
+        AppLogger.log('Rate limited (429) - order not cleared, user can retry', tag: 'Error');
+        await AudioPlayerService.playSound(false); // Stop sound
+        return; // Don't clear order, allow retry
+      }
+      
+      if (assignResult == true) {
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
         driverModel.value.inProgressOrderID ??= [];
         driverModel.value.inProgressOrderID?.add(currentOrder.value.id!);
         await FireStoreUtils.updateUser(driverModel.value);
         AppLogger.log('Driver updated in Firestore after accept', tag: 'Firestore');
+        
+        // Update order status and driver info
         currentOrder.value.status = Constant.driverAccepted;
         currentOrder.value.driverID = driverModel.value.id;
         currentOrder.value.driver = driverModel.value;
+        
+        // Calculate charges before saving
         await calculateOrderCharges();
+        
+        // Save order to Firestore
         await FireStoreUtils.setOrder(currentOrder.value);
         AppLogger.log('Order updated in Firestore after accept', tag: 'Firestore');
+        
+        // Refresh order from API to get complete details (vendor address, etc.)
+        AppLogger.log('Refreshing order from API to get complete details', tag: 'API');
+        try {
+          final refreshResponse = await http.get(
+            Uri.parse("${Constant.baseUrl}restaurant/orders/${currentOrder.value.id}"),
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          ).timeout(Duration(seconds: 10));
+          
+          if (refreshResponse.statusCode == 200) {
+            if (!refreshResponse.body.trim().startsWith('<!') && !refreshResponse.body.trim().startsWith('<html')) {
+              try {
+                final refreshData = jsonDecode(refreshResponse.body);
+                if (refreshData['success'] == true && refreshData['data'] != null) {
+                  currentOrder.value = OrderModel.fromJson(refreshData['data']);
+                  AppLogger.log('✅ Order refreshed after accept - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
+                  AppLogger.log('Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'API');
+                  
+                  // Recalculate charges with fresh data
+                  await calculateOrderChargesInitial();
+                  changeData(); // Update map and directions
+                }
+              } catch (e) {
+                AppLogger.log('Error parsing refreshed order: $e', tag: 'API');
+              }
+            }
+          }
+        } catch (e) {
+          AppLogger.log('Error refreshing order after accept: $e', tag: 'API');
+          // Continue even if refresh fails - order is already accepted
+        }
+        
         ShowToastDialog.closeLoader();
+        
+        // Send notifications
         if (currentOrder.value.author?.fcmToken != null) {
           await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,
               currentOrder.value.author!.fcmToken.toString(), {});
@@ -252,8 +719,11 @@ if(arrowDrop.value){
               currentOrder.value.vendor!.fcmToken.toString(), {});
           AppLogger.log('Notification sent to vendor', tag: 'CloudFunction');
         }
+        
         ShowToastDialog.showToast("Order accepted successfully!".tr);
-        AppLogger.log('Order accepted successfully', tag: 'UI');
+        AppLogger.log('✅ Order accepted successfully - Showing vendor address and full details', tag: 'UI');
+        await AudioPlayerService.playSound(false); // Stop sound after accept
+        update(); // Force UI update after accepting
       } else {
         ShowToastDialog.closeLoader();
         Get.snackbar(
@@ -263,6 +733,14 @@ if(arrowDrop.value){
           duration: Duration(seconds: 3),
         );
         AppLogger.log('Order already accepted by another driver', tag: 'Error');
+        await AudioPlayerService.playSound(false); // Stop sound
+        // Remove from orderRequestData since it's no longer available
+        driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+        await FireStoreUtils.updateUser(driverModel.value);
+        // Clear current order since it's no longer available
+        currentOrder.value = OrderModel();
+        await clearMap();
+        update();
       }
     } catch (e) {
       ShowToastDialog.closeLoader();
@@ -301,7 +779,7 @@ if(arrowDrop.value){
     AppLogger.log('rejectOrder() called', tag: 'Function');
     AppLogger.log('Current Order ID:  [${currentOrder.value.id}', tag: 'Function');
     await AudioPlayerService.playSound(false);
-    AppLogger.log('Sound played for rejectOrder()', tag: 'Audio');
+    AppLogger.log('Sound stopped for rejectOrder()', tag: 'Audio');
     currentOrder.value.rejectedByDrivers ??= [];
     AppLogger.log('Rejected drivers list initialized or used', tag: 'Firestore');
     if (driverModel.value.id != null) {
@@ -314,8 +792,9 @@ if(arrowDrop.value){
     await FireStoreUtils.updateUser(driverModel.value);
     AppLogger.log('Driver updated in Firestore with removed orderRequestData', tag: 'Firestore');
     currentOrder.value = OrderModel();
-    clearMap();
+    await clearMap();
     AppLogger.log('Map cleared and current order reset', tag: 'UI');
+    update(); // Force UI update after rejecting
     if (Constant.singleOrderReceive == false) {
       Get.back();
       AppLogger.log('Navigated back after rejection (multi order allowed)', tag: 'Navigation');
@@ -346,17 +825,15 @@ if(arrowDrop.value){
     } else {
       osmMarkers.clear();
       routePoints.clear();
-      // osmMapController = flutterMap.MapController();
     }
     update();
   }
-
   getCurrentOrder() async {
     AppLogger.log('getCurrentOrder() called', tag: 'Function');
     AppLogger.log('inProgressOrderID: ${driverModel.value.inProgressOrderID}', tag: 'Function');
     AppLogger.log('orderRequestData: ${driverModel.value.orderRequestData}', tag: 'Function');
     AppLogger.log('currentOrder.id: ${currentOrder.value.id}', tag: 'Function');
-    
+    // Clear current order if it's no longer in driver's lists (unless it's in progress)
     if (currentOrder.value.id != null &&
         !(driverModel.value.orderRequestData?.contains(currentOrder.value.id) ?? false) &&
         !(driverModel.value.inProgressOrderID?.contains(currentOrder.value.id) ?? false)) {
@@ -364,82 +841,198 @@ if(arrowDrop.value){
       await clearMap();
       await AudioPlayerService.playSound(false);
       AppLogger.log('No current order, cleared map and stopped sound', tag: 'UI');
-      return;
+      // Don't return here - continue to check for new orders
     }
-
-    // Determine firstOrderId
+    // Determine firstOrderId - prioritize inProgress orders
     String? firstOrderId;
     final inProgress = driverModel.value.inProgressOrderID;
     final orderRequest = driverModel.value.orderRequestData;
     if (Constant.singleOrderReceive == true) {
+      // Priority 1: In-progress orders
       if (inProgress != null && inProgress.isNotEmpty) {
-        firstOrderId = inProgress.first;
+        // Filter out empty strings
+        final validInProgress = inProgress.where((id) => id.isNotEmpty).toList();
+        if (validInProgress.isNotEmpty) {
+          firstOrderId = validInProgress.first;
         AppLogger.log('Using inProgressOrderID first order: $firstOrderId', tag: 'Function');
-      } else if (orderRequest != null && orderRequest.isNotEmpty) {
-        firstOrderId = orderRequest.first;
+        }
+      }
+      // Priority 2: Pending order requests
+      if (firstOrderId == null && orderRequest != null && orderRequest.isNotEmpty) {
+        // Filter out empty strings and already displayed orders
+        final validOrderRequests = orderRequest.where((id) => 
+          id.isNotEmpty && id != currentOrder.value.id).toList();
+        if (validOrderRequests.isNotEmpty) {
+          firstOrderId = validOrderRequests.first;
         AppLogger.log('Using orderRequestData first order: $firstOrderId', tag: 'Function');
+        }
       }
     } else if (orderModel.value.id != null) {
       firstOrderId = orderModel.value.id.toString();
       AppLogger.log('Using orderModel.id: $firstOrderId', tag: 'Function');
     }
+    // If we have a current order that's still valid, keep it
     if (firstOrderId == null || firstOrderId.isEmpty) {
+      // If we already have a valid current order, keep it
+      if (currentOrder.value.id != null && 
+          ((inProgress?.contains(currentOrder.value.id) ?? false) ||
+           (orderRequest?.contains(currentOrder.value.id) ?? false))) {
+        AppLogger.log('Keeping existing current order: ${currentOrder.value.id}', tag: 'Function');
+        return;
+      }
       AppLogger.log('No valid firstOrderId found, exiting getCurrentOrder()', tag: 'UI');
       return;
     }
-    // Construct API URL
+    // If the firstOrderId is the same as current order and it's still valid, skip API call
+    if (currentOrder.value.id == firstOrderId) {
+      AppLogger.log('Order $firstOrderId already displayed, skipping API call', tag: 'Function');
+      return;
+    }
+    // Try to fetch order with fallback mechanism
+    bool orderFetched = false;
+    // METHOD 1: Try primary endpoint first
     final excludeStatuses = (inProgress?.contains(firstOrderId) ?? false)
         ? 'Order Cancelled,Driver Rejected,Order Completed'
         : 'Order Cancelled,Driver Rejected';
-    final uri = Uri.parse(
+    final primaryUri = Uri.parse(
         '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$firstOrderId&exclude_statuses=$excludeStatuses');
-    AppLogger.log('getCurrentOrder API URL: $uri', tag: 'API');
+    AppLogger.log('getCurrentOrder - Trying primary API: $primaryUri', tag: 'API');
     try {
-      final response = await http.get(uri);
-      AppLogger.log('getCurrentOrder API response status: ${response.statusCode}', tag: 'API');
-      AppLogger.log('getCurrentOrder API response body: ${response.body}', tag: 'API');
+      final response = await http.get(
+        primaryUri,
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 10));
       
-      if (response.statusCode != 200) {
-        AppLogger.log('API call failed with status: ${response.statusCode}', tag: 'API');
-        return;
-      }
+      AppLogger.log('Primary API response status: ${response.statusCode}', tag: 'API');
+      
+      if (response.statusCode == 200) {
+        // Check for HTML responses (error pages)
+        if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
+          try {
       final data = jsonDecode(response.body);
       if (data['success'] == true && data['order'] != null) {
         currentOrder.value = OrderModel.fromJson(data['order']);
-        AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'API');
-        calculateOrderChargesInitial();
+              AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+              orderFetched = true;
+            }
+          } catch (e) {
+            AppLogger.log('Error parsing primary API response: $e', tag: 'API');
+          }
+        }
+      } else if (response.statusCode == 500) {
+        AppLogger.log('🚨 Primary API returned 500 - will try fallback endpoint', tag: 'API');
+      }
+    } catch (e) {
+      AppLogger.log('Primary API failed: $e - will try fallback', tag: 'API');
+    }
+    
+    // METHOD 2: Fallback to restaurant/orders endpoint if primary failed
+    if (!orderFetched) {
+      AppLogger.log('Trying FALLBACK endpoint: restaurant/orders/$firstOrderId', tag: 'API');
+      try {
+        final fallbackUri = Uri.parse('${Constant.baseUrl}restaurant/orders/$firstOrderId');
+        final response = await http.get(
+          fallbackUri,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ).timeout(Duration(seconds: 10));
+        
+        AppLogger.log('Fallback API response status: ${response.statusCode}', tag: 'API');
+        
+        if (response.statusCode == 200) {
+          // Check for HTML responses
+          if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
+            try {
+              final data = jsonDecode(response.body);
+              if (data['success'] == true && data['data'] != null) {
+                currentOrder.value = OrderModel.fromJson(data['data']);
+                AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+                orderFetched = true;
+              }
+            } catch (e) {
+              AppLogger.log('Error parsing fallback API response: $e', tag: 'API');
+            }
+          }
+        }
+      } catch (e) {
+        AppLogger.log('Fallback API also failed: $e', tag: 'API');
+      }
+    }
+    
+    // If order was successfully fetched, process it
+    if (orderFetched && currentOrder.value.id != null) {
+      try {
+        AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
+        
+        // Ensure order status is set correctly for accept/reject buttons to show
+        // If order is in orderRequestData, set status to Driver Pending if not already set
+        if (orderRequest?.contains(currentOrder.value.id) ?? false) {
+          if (currentOrder.value.status != Constant.driverPending && 
+              (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+            currentOrder.value.status = Constant.driverPending;
+            AppLogger.log('✅ Set order status to Driver Pending for accept/reject buttons', tag: 'UI');
+          }
+        }
+        
+        // Log order details before processing
+        AppLogger.log('Order Details - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'UI');
+        AppLogger.log('Order Details - Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
+        
+        // If vendor is missing but vendorID exists, try to fetch vendor data
+        if (currentOrder.value.vendor == null && 
+            currentOrder.value.vendorID != null && 
+            currentOrder.value.vendorID!.isNotEmpty) {
+          AppLogger.log('Vendor missing, fetching vendor data for vendorID: ${currentOrder.value.vendorID}', tag: 'API');
+          await _fetchVendorData(currentOrder.value.vendorID!);
+        }
+        
+        // Calculate charges early based on location (if vendor and address are available)
+        if (currentOrder.value.vendor != null && 
+            (driverModel.value.location != null || currentOrder.value.address?.location != null)) {
+          AppLogger.log('Calculating charges early based on location', tag: 'Function');
+          await calculateOrderChargesInitial();
+        }
+        
         if ((inProgress?.contains(currentOrder.value.id) ?? false) ||
             (orderRequest?.contains(currentOrder.value.id) ?? false)) {
           changeData();
-          AppLogger.log('Fetched order: $firstOrderId via API and called changeData()', tag: 'API');
+          AppLogger.log('Order processed and displayed', tag: 'API');
         }
         update(); // Ensure UI updates after fetching order
+        AppLogger.log('✅ Order Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}, Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
+      } catch (parseError) {
+        AppLogger.log('Error processing fetched order: $parseError', tag: 'API');
+        currentOrder.value = OrderModel();
+        await clearMap();
+        update();
+      }
       } else {
-        AppLogger.log('API returned success=false or order=null. Response: $data', tag: 'API');
+      // Order not found in either endpoint
+      AppLogger.log('Order not found in any endpoint. Order ID: $firstOrderId', tag: 'API');
+      
         // Remove missing/completed order from driver lists
         if (inProgress?.contains(firstOrderId) ?? false) {
           inProgress!.remove(firstOrderId);
           await FireStoreUtils.updateUser(driverModel.value);
-          AppLogger.log('Removed completed order from inProgressOrderID', tag: 'API');
+        AppLogger.log('Removed missing order from inProgressOrderID', tag: 'API');
         } else if (orderRequest?.contains(firstOrderId) ?? false) {
           orderRequest!.remove(firstOrderId);
           await FireStoreUtils.updateUser(driverModel.value);
           AppLogger.log('Removed missing order from orderRequestData', tag: 'API');
         }
+      
+      // Only clear if this was the current order
+      if (currentOrder.value.id == firstOrderId) {
         currentOrder.value = OrderModel();
         await clearMap();
         await AudioPlayerService.playSound(false);
         update();
         AppLogger.log('No order found, cleared map and stopped sound', tag: 'UI');
-      }
-    } catch (e, stackTrace) {
-      AppLogger.log('Error fetching order via API: $e', tag: 'API');
-      AppLogger.log('Stack trace: $stackTrace', tag: 'API');
-      // If there's an error parsing, clear current order to prevent stale data
-      if (currentOrder.value.id == firstOrderId) {
-        currentOrder.value = OrderModel();
-        await clearMap();
-        update();
       }
     }
   }
@@ -524,19 +1117,68 @@ if(arrowDrop.value){
     String? userId = await LoginController.getFirebaseId();
     AppLogger.log('getDriver() API called', tag: 'Function');
     try {
-      var response = await http.get(Uri.parse("${Constant.baseUrl}users/$userId"));
+      var response = await http.get(
+        Uri.parse("${Constant.baseUrl}users/$userId"),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 10));
+      
       if (response.statusCode == 200) {
         var jsonResponse = jsonDecode(response.body);
         if (jsonResponse["success"] == true && jsonResponse["data"] != null) {
+          final previousOrderRequestData = driverModel.value.orderRequestData?.toList();
           driverModel.value = UserModel.fromJson(jsonResponse["data"]);
           if (driverModel.value.id != null) {
             isLoading.value = false;
             update();
             changeData();
-            getCurrentOrder();
+            
+            // Check if orderRequestData has changed and fetch orders immediately
+            final currentOrderRequestData = driverModel.value.orderRequestData?.toList();
+            final hasNewOrders = (currentOrderRequestData?.isNotEmpty ?? false) &&
+                (previousOrderRequestData == null || 
+                 currentOrderRequestData.toString() != previousOrderRequestData.toString());
+            
+            if (hasNewOrders) {
+              AppLogger.log('🆕 NEW ORDERS DETECTED in orderRequestData: $currentOrderRequestData', tag: 'Function');
+              
+              // Find which orders are new
+              final newOrderIds = currentOrderRequestData?.where((orderId) => 
+                previousOrderRequestData == null || 
+                !previousOrderRequestData.contains(orderId)
+              ).toList() ?? [];
+              
+              // Show notification, popup, and play sound for each new order
+              for (final orderId in newOrderIds) {
+                if (orderId.isNotEmpty) {
+                  AppLogger.log('📢 Showing notification for new order: $orderId', tag: 'Notifications');
+                  await _showNewOrderNotification(orderId);
+                  await AudioPlayerService.playSound(true);
+                  AppLogger.log('🔊 Sound played for new order: $orderId', tag: 'Audio');
+                }
+              }
+              // Wait a bit for dialog to show, then fetch orders immediately
+              await Future.delayed(Duration(milliseconds: 500));
+              await getCurrentOrder();
+              // Force UI update to show the order
+              update();
+              AppLogger.log('✅ Order fetching completed after new order detection', tag: 'Function');
+            } else if (driverModel.value.orderRequestData?.isNotEmpty ?? false) {
+              // If orders exist, fetch them even if not new
+              AppLogger.log('Existing orders in orderRequestData, fetching...', tag: 'Function');
+              await getCurrentOrder();
+            } else {
+              // If no orders, still check in case we have inProgressOrderID
+              await getCurrentOrder();
+            }
             AppLogger.log("Driver profile fetched & order flow executed", tag: "API");
           }
         }
+      } else if (response.statusCode == 429) {
+        AppLogger.log("Rate limited (429) - will retry on next poll", tag: "API");
+        // Don't throw error, just log - will retry on next poll
       } else {
         AppLogger.log("API failed: ${response.statusCode}", tag: "API");
       }
@@ -908,8 +1550,29 @@ if(arrowDrop.value){
                 "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
                 tag: "API"
             );
+            
+            // Ensure order status is set correctly for accept/reject buttons
+            // If order is in orderRequestData and no driver assigned, set status to Driver Pending
+            if (driverModel.value.orderRequestData?.contains(currentOrder.value.id) ?? false) {
+              if (currentOrder.value.status != Constant.driverPending && 
+                  (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+                currentOrder.value.status = Constant.driverPending;
+                AppLogger.log('✅ Set order status to Driver Pending after refresh', tag: 'UI');
+              }
+            }
+            
+            AppLogger.log('Order Details - Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
+            
+            // If vendor is missing but vendorID exists, try to fetch vendor data
+            if (currentOrder.value.vendor == null && 
+                currentOrder.value.vendorID != null && 
+                currentOrder.value.vendorID!.isNotEmpty) {
+              AppLogger.log('Vendor missing, fetching vendor data for vendorID: ${currentOrder.value.vendorID}', tag: 'API');
+              await _fetchVendorData(currentOrder.value.vendorID!);
+            }
 
             changeData();
+            update(); // Force UI update
           } else {
             AppLogger.log("Order not found - clearing", tag: "API");
             currentOrder.value = OrderModel();
@@ -926,10 +1589,21 @@ if(arrowDrop.value){
   }
 
   Future<void> refreshHomeScreen() async {
+    // Prevent multiple simultaneous refreshes
+    if (_isRefreshing) {
+      AppLogger.log('refreshHomeScreen() skipped - already in progress', tag: 'Function');
+      return;
+    }
+    
+    _isRefreshing = true;
     AppLogger.log('refreshHomeScreen() called', tag: 'Function');
 
     try {
       String? userId = await LoginController.getFirebaseId();
+      
+      // Store previous orderRequestData to detect changes
+      final previousOrderRequestData = driverModel.value.orderRequestData?.toList();
+      
       /// API CALL instead of Firestore
       final response = await http.get(
         Uri.parse("${Constant.baseUrl}users/$userId"),
@@ -946,25 +1620,143 @@ if(arrowDrop.value){
           /// Convert to UserModel from response.data
           driverModel.value = UserModel.fromJson(responseData['data']);
           AppLogger.log("Driver data refreshed from API", tag: "API");
+          AppLogger.log("orderRequestData: ${driverModel.value.orderRequestData}", tag: "API");
+          AppLogger.log("inProgressOrderID: ${driverModel.value.inProgressOrderID}", tag: "API");
+          
+          // Check if orderRequestData has changed (new orders detected)
+          final currentOrderRequestData = driverModel.value.orderRequestData?.toList();
+          final hasNewOrders = (currentOrderRequestData?.isNotEmpty ?? false) &&
+              (previousOrderRequestData == null || 
+               currentOrderRequestData.toString() != previousOrderRequestData.toString());
+          
+          if (hasNewOrders) {
+            AppLogger.log('🆕 NEW ORDERS DETECTED! Fetching immediately...', tag: 'API');
+            
+            // Find which orders are new
+            final newOrderIds = currentOrderRequestData?.where((orderId) => 
+              previousOrderRequestData == null || 
+              !previousOrderRequestData.contains(orderId)
+            ).toList() ?? [];
+            
+            // Show notification, popup, and play sound for each new order
+            for (final orderId in newOrderIds) {
+              if (orderId.isNotEmpty) {
+                AppLogger.log('📢 Showing notification for new order: $orderId', tag: 'Notifications');
+                await _showNewOrderNotification(orderId);
+                // await _showNewOrderDialog(orderId);
+                await AudioPlayerService.playSound(true);
+                AppLogger.log('🔊 Sound played for new order: $orderId', tag: 'Audio');
+              }
+            }
+            
+            // Wait a bit for dialog to show, then fetch orders immediately
+            await Future.delayed(Duration(milliseconds: 500));
+            await getCurrentOrder();
+            // Force UI update to show the order
+            update();
+            AppLogger.log('✅ Order fetching completed after new order detection', tag: 'API');
+          }
         }
+      } else if (response.statusCode == 429) {
+        AppLogger.log("Rate limited (429) - will retry on next poll", tag: "API");
+        // Don't throw error, just log - will retry on next poll
       } else {
         AppLogger.log("Failed to get user | Code: ${response.statusCode}",
             tag: "API");
       }
 
-      /// Refresh existing order
+      /// Refresh existing order if we have one
       if (currentOrder.value.id != null) {
-        await refreshCurrentOrder(); // convert this also later
+        await refreshCurrentOrder();
+      } else {
+        // If no current order, check for new orders from orderRequestData
+        await getCurrentOrder();
       }
-
-      /// Setup order listeners again (convert later)
-      getCurrentOrder();
 
       update();
       AppLogger.log('Home screen refresh completed', tag: 'UI');
 
     } catch (e) {
       AppLogger.log('Error refreshing home screen: $e', tag: 'Error');
+      // Even on error, try to fetch current order
+      await getCurrentOrder();
+    } finally {
+      // Always reset the refresh flag
+      _isRefreshing = false;
+    }
+  }
+
+  /// Fetch vendor data by vendorID if missing from order
+  Future<void> _fetchVendorData(String vendorID) async {
+    try {
+      AppLogger.log('Fetching vendor data for vendorID: $vendorID', tag: 'API');
+      
+      // Try API endpoint first
+      final response = await http.get(
+        Uri.parse("${Constant.baseUrl}restaurant/vendors/$vendorID"),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(Duration(seconds: 10));
+      
+      if (response.statusCode == 200) {
+        if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
+          try {
+            final data = jsonDecode(response.body);
+            if (data['success'] == true && data['data'] != null) {
+              try {
+                // Handle case where data['data'] might be a String (JSON string) or Map
+                dynamic vendorData = data['data'];
+                if (vendorData is String) {
+                  // If it's a JSON string, parse it first
+                  vendorData = jsonDecode(vendorData);
+                }
+                if (vendorData is Map<String, dynamic>) {
+                  currentOrder.value.vendor = VendorModel.fromJson(vendorData);
+                  AppLogger.log('✅ Vendor data fetched successfully', tag: 'API');
+                  update(); // Update UI
+                  return;
+                } else {
+                  AppLogger.log('Vendor data is not a Map: ${vendorData.runtimeType}', tag: 'API');
+                }
+              } catch (parseError) {
+                AppLogger.log('Error creating VendorModel from API data: $parseError', tag: 'API');
+                AppLogger.log('Vendor data type: ${data['data'].runtimeType}', tag: 'API');
+              }
+            }
+          } catch (e) {
+            AppLogger.log('Error parsing vendor API response: $e', tag: 'API');
+          }
+        }
+      }
+      
+      // Fallback: Try Firestore
+      AppLogger.log('API failed, trying Firestore for vendor: $vendorID', tag: 'API');
+      try {
+        final vendorDoc = await firestore.FirebaseFirestore.instance.collection('vendors').doc(vendorID).get();
+        if (vendorDoc.exists) {
+          final vendorData = vendorDoc.data();
+          if (vendorData != null) {
+            try {
+              currentOrder.value.vendor = VendorModel.fromJson(Map<String, dynamic>.from(vendorData));
+              AppLogger.log('✅ Vendor data fetched from Firestore', tag: 'API');
+              update(); // Update UI
+            } catch (parseError) {
+              AppLogger.log('Error creating VendorModel from Firestore data: $parseError', tag: 'API');
+              AppLogger.log('Vendor data: $vendorData', tag: 'API');
+            }
+          } else {
+            AppLogger.log('❌ Vendor document exists but data is null', tag: 'API');
+          }
+        } else {
+          AppLogger.log('❌ Vendor not found in Firestore', tag: 'API');
+        }
+      } catch (firestoreError) {
+        AppLogger.log('Firestore error: $firestoreError', tag: 'API');
+      }
+    } catch (e) {
+      AppLogger.log('Error fetching vendor data: $e', tag: 'API');
     }
   }
 

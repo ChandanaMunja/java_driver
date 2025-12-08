@@ -94,7 +94,8 @@ class VendorModel {
 
   VendorModel.fromJson(Map<String, dynamic> json) {
     author = json['author'];
-    dineInActive = json['dine_in_active'];
+    // Handle dine_in_active: can be bool, int (0/1), or null
+    dineInActive = _parseBool(json['dine_in_active']);
     openDineTime = json['openDineTime'];
     categoryID = _parseList(json['categoryID']);
     id = json['id'];
@@ -109,8 +110,10 @@ class VendorModel {
     location = json['location'];
     fcmToken = json['fcmToken'];
     g = json['g'] != null ? G.fromJson(json['g']) : null;
-    hidephotos = json['hidephotos'];
-    reststatus = json['reststatus'];
+    // Handle hidephotos: can be bool, int (0/1), or null
+    hidephotos = _parseBool(json['hidephotos']);
+    // Handle reststatus: can be bool, int (0/1), or null
+    reststatus = _parseBool(json['reststatus']);
     filters =
         json['filters'] != null ? Filters.fromJson(json['filters']) : null;
     reviewsCount = json['reviewsCount'] ?? 0.0;
@@ -120,12 +123,22 @@ class VendorModel {
     closeDineTime = json['closeDineTime'];
     zoneId = json['zoneId'];
     createdAt = _parseTimestamp(json['createdAt']);
-    longitude = double.parse(json['longitude'].toString());
-    enabledDiveInFuture = json['enabledDiveInFuture'];
+    // Safely parse longitude - handle null values
+    if (json['longitude'] != null) {
+      if (json['longitude'] is double) {
+        longitude = json['longitude'] as double;
+      } else {
+        longitude = double.tryParse(json['longitude'].toString());
+      }
+    } else {
+      longitude = null;
+    }
+    // Handle enabledDiveInFuture: can be bool, int (0/1), or null
+    enabledDiveInFuture = _parseBool(json['enabledDiveInFuture']);
     restaurantCost = json['restaurantCost']?.toString();
-    deliveryCharge = json['DeliveryCharge'] != null
-        ? DeliveryCharge.fromJson(json['DeliveryCharge'])
-        : null;
+    // deliveryCharge = json['DeliveryCharge'] != null
+    //     ? DeliveryCharge.fromJson(json['DeliveryCharge'])
+    //     : null;
     adminCommission = json['adminCommission'] != null
         ? AdminCommission.fromJson(json['adminCommission'])
         : null;
@@ -138,7 +151,8 @@ class VendorModel {
         specialDiscount!.add(SpecialDiscount.fromJson(v));
       });
     }
-    specialDiscountEnable = json['specialDiscountEnable'];
+    // Handle specialDiscountEnable: can be bool, int (0/1), or null
+    specialDiscountEnable = _parseBool(json['specialDiscountEnable']);
     // Handle coordinates coming as Map or GeoPoint
     if (json['coordinates'] != null) {
       if (json['coordinates'] is GeoPoint) {
@@ -158,14 +172,24 @@ class VendorModel {
     reviewsSum = json['reviewsSum'] ?? 0.0;
     photos = _parseList(json['photos']);
     title = json['title'];
-    latitude = double.parse(json['latitude'].toString());
+    // Safely parse latitude - handle null values
+    if (json['latitude'] != null) {
+      if (json['latitude'] is double) {
+        latitude = json['latitude'] as double;
+      } else {
+        latitude = double.tryParse(json['latitude'].toString());
+      }
+    } else {
+      latitude = null;
+    }
     subscriptionPlanId = json['subscriptionPlanId'];
     subscriptionExpiryDate = _parseTimestamp(json['subscriptionExpiryDate']);
     subscriptionPlan = json['subscription_plan'] != null
         ? SubscriptionPlanModel.fromJson(json['subscription_plan'])
         : null;
     subscriptionTotalOrders = json['subscriptionTotalOrders'];
-    isSelfDelivery = json['isSelfDelivery'];
+    // Handle isSelfDelivery: can be bool, int (0/1), or null
+    isSelfDelivery = _parseBool(json['isSelfDelivery']);
     // Handle categoryTitle - can be String or List
     categoryTitle = _parseList(json['categoryTitle']);
   }
@@ -220,6 +244,23 @@ class VendorModel {
       }
     }
     return [];
+  }
+
+  /// Safely parse a boolean that may come as:
+  /// - bool
+  /// - int (0 = false, 1 = true)
+  /// - String ("true"/"false", "0"/"1")
+  /// - or null
+  bool? _parseBool(dynamic value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is int) return value != 0;
+    if (value is String) {
+      final lower = value.toLowerCase().trim();
+      if (lower == 'true' || lower == '1') return true;
+      if (lower == 'false' || lower == '0') return false;
+    }
+    return null;
   }
 
   Map<String, dynamic> toJson() {

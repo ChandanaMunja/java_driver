@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "jippydriver_driver",
-      "version": "2.2.2+10",
+      "version": "2.2.3+11",
       "dependencies": [
         "android_pip",
         "audioplayers",

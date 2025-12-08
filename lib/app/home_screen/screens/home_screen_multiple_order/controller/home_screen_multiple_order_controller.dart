@@ -84,24 +84,30 @@ class HomeScreenMultipleOrderController extends GetxController {
     }
     await AudioPlayerService.playSound(false);
     ShowToastDialog.showLoader("Please wait".tr);
-
     // Try to atomically assign the order
-    bool success = await FireStoreUtils.assignOrderToDriverFCFS(
+    final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
       orderId: currentOrder.id!,
       driverId: driverModel.value.id!,
       driverModel: driverModel.value,
     );
-
     ShowToastDialog.closeLoader();
-
-    if (success) {
+    // Handle rate limiting (429)
+    if (assignResult == null) {
+      Get.snackbar(
+        "Rate Limited",
+        "Too many requests. Please wait a moment and try again.",
+        snackPosition: SnackPosition.BOTTOM,
+        duration: Duration(seconds: 3),
+      );
+      return; // Don't clear order, allow retry
+    }
+    if (assignResult == true) {
       // Update driver's order lists
       driverModel.value.orderRequestData?.remove(currentOrder.id);
       driverModel.value.inProgressOrderID ??= [];
       driverModel.value.inProgressOrderID!.add(currentOrder.id!);
 
       await FireStoreUtils.updateUser(driverModel.value);
-
       // Optionally: send notifications
       if (currentOrder.author?.fcmToken != null) {
         await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,

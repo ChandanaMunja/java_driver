@@ -28,7 +28,8 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.0.126:8000/api/";
+  // static String baseUrl  = "http://192.168.0.126:8000/api/";
+  static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
@@ -101,7 +102,7 @@ class Constant {
     if (currencyModel!.symbolAtRight == true) {
       return "${double.parse(amount.toString()).toStringAsFixed(currencyModel!.decimalDigits ?? 0)} ${currencyModel!.symbol.toString()}";
     } else {
-      return "${currencyModel!.symbol.toString()} ${amount == null || amount.isEmpty ? "0.0" : double.parse(amount.toString()).toStringAsFixed(currencyModel!.decimalDigits ?? 0)}";
+      return "${currencyModel!.symbol.toString()} ${amount == null || amount.isEmpty ? "0.0" : double.parse(amount.toString()).toStringAsFixed(currencyModel?.decimalDigits ?? 0)}";
     }
   }
 

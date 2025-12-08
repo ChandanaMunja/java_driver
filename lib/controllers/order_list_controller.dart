@@ -22,11 +22,7 @@ class OrderListController extends GetxController{
     AppLogger.log('OrderListController onClose() called', tag: 'Controller');
     super.onClose();
   }
-
   RxList<OrderModel> orderList = <OrderModel>[].obs;
-
-
-
   getOrder() async {
     try {
       isLoading.value = true;
@@ -61,10 +57,8 @@ class OrderListController extends GetxController{
           //   Constant.orderCompleted,
           //   Constant.orderCancelled,
           // ];
-
           for (var element in data['orders']) {
             OrderModel order = OrderModel.fromJson(element);
-
             // Only add orders that match driverID and active status
             // if (order.driverID == Constant.userModel!.id &&
             //     activeStatuses.contains(order.status)) {

@@ -62,10 +62,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = Get.find<HomeController>();
+    
     if ((state == AppLifecycleState.paused || state == AppLifecycleState.inactive)
         && ModalRoute.of(context)?.isCurrent == true) {
       // Only enter PiP if this screen is currently visible
       enterPipMode();
+    } else if (state == AppLifecycleState.resumed && ModalRoute.of(context)?.isCurrent == true) {
+      // When app resumes, immediately refresh orders
+      isInPipMode.value = false;
+      AppLogger.log('App resumed - triggering immediate order refresh', tag: 'Lifecycle');
+      controller.forceRefreshOrders();
     } else {
       isInPipMode.value = false;
     }
@@ -485,14 +492,17 @@ Obx(
     // 1. Order exists
     // 2. Order is in orderRequestData OR status is Driver Pending
     // 3. No driver assigned yet
-    // 4. Vendor and address are not null (required for bottom sheet)
+    // 4. Address is not null (required for bottom sheet)
+    // 5. Vendor exists OR vendorID exists (vendor can be fetched if missing)
     final shouldShowAcceptReject = controller.currentOrder.value.id != null &&
         (isOrderInRequestData || 
          controller.currentOrder.value.status == Constant.driverPending) &&
         (controller.currentOrder.value.driverID == null ||
             controller.currentOrder.value.driverID?.isEmpty == true) &&
-        controller.currentOrder.value.vendor != null &&
-        controller.currentOrder.value.address != null;
+        controller.currentOrder.value.address != null &&
+        (controller.currentOrder.value.vendor != null ||
+         (controller.currentOrder.value.vendorID != null && 
+          controller.currentOrder.value.vendorID!.isNotEmpty));
     
     // Log UI state for debugging (only when order exists)
     if (controller.currentOrder.value.id != null) {
@@ -1106,10 +1116,16 @@ Obx(
                                 ),
                               ),
                               Text(
-                                controller.totalCalculatedCharge.value > 0
-                                    ? "${controller.driverToRestaurantCharge.value.toInt()} + ${controller.restaurantToCustomerCharge.value.toInt()} = ${controller.totalCalculatedCharge.value.toInt()}"
-                                    : Constant.amountShow(
-                                        amount: controller.currentOrder.value.deliveryCharge ?? "0.0"),
+                                // controller.totalCalculatedCharge.value > 0
+                                //     ?
+                                "${controller.driverToRestaurantCharge.value.toInt()} + ${controller.restaurantToCustomerCharge.value.toInt()} = ${controller.totalCalculatedCharge.value.toInt()}",
+                                    // : Constant.amountShow(
+                                    //     amount: (controller.currentOrder.value.deliveryCharge != null &&
+                                    //             controller.currentOrder.value.deliveryCharge!.isNotEmpty &&
+                                    //             double.tryParse(controller.currentOrder.value.deliveryCharge!) != null &&
+                                    //             double.tryParse(controller.currentOrder.value.deliveryCharge!)! > 0)
+                                    //         ? controller.currentOrder.value.deliveryCharge!
+                                    //         : "0.0"),
                                 textAlign: TextAlign.start,
                                 style: TextStyle(
                                   fontFamily: AppThemeData.semiBold,
@@ -1124,7 +1140,6 @@ Obx(
                           const SizedBox(height: 8),
                         ]),
                       ),
-
                       if (hasSurge)
                       Container(
                         padding: const EdgeInsets.symmetric(
@@ -1212,11 +1227,26 @@ Obx(
                                     ),
                                   ),
                                   Text(
-                                    "${(double.tryParse(controller.currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0
-                                        + (controller.totalCalculatedCharge.value > 0 
-                                            ? controller.totalCalculatedCharge.value 
-                                            : double.tryParse(controller.currentOrder.value.deliveryCharge?.toString() ?? '0') ?? 0.0)
-                                        + surgeFee).toInt()}",
+                                    "${(
+                                        (double.tryParse(controller.currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0)
+                                            +
+                                            (controller.totalCalculatedCharge.value > 0
+                                                ? controller.totalCalculatedCharge.value
+                                                : 0.0)
+                                            +
+                                            surgeFee
+                                    ).toInt()}",
+                                    // "${((double.tryParse(controller.currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0) +
+                                    //     (controller.totalCalculatedCharge.value > 0
+                                    //         ? controller.totalCalculatedCharge.value
+                                    //         :
+                                    //     (controller.currentOrder.value.deliveryCharge != null &&
+                                    //            controller.currentOrder.value.deliveryCharge!.isNotEmpty &&
+                                    //            double.tryParse(controller.currentOrder.value.deliveryCharge!) != null)
+                                    //             ? double.tryParse(controller.currentOrder.value.deliveryCharge!)!
+                                    //             : 0.0)
+                                    //     +
+                                    //     surgeFee).toInt()}",
                                     textAlign: TextAlign.start,
                                     style: TextStyle(
                                       fontFamily: AppThemeData.bold,

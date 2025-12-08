@@ -33,9 +33,9 @@ Future<double?> fetchToPayForOrder(String orderId) async {
 
       try {
         final Map<String, dynamic> jsonResponse = json.decode(responseBody);
-        if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
-          return (jsonResponse['data']['to_pay'] as num).toDouble();
-        }
+      if (jsonResponse['success'] == true && jsonResponse['data'] != null && jsonResponse['data']['found'] == true) {
+        return (jsonResponse['data']['to_pay'] as num).toDouble();
+      }
       } catch (jsonError) {
         print("Error parsing toPay JSON: $jsonError");
         print("Response body: ${responseBody.substring(0, responseBody.length > 200 ? 200 : responseBody.length)}");

@@ -323,7 +323,7 @@ class FireStoreUtils {
       return false;
     }
   }
-  Future<Map<String, dynamic>> getDriverCharges() async {
+  static Future<Map<String, dynamic>> getDriverCharges() async {
     try {
       final response = await http.get(
         Uri.parse('${Constant.baseUrl}driver-sql/charges'),
@@ -851,6 +851,12 @@ class FireStoreUtils {
       log("setOrder ${orderModel.toJson()}");
       final Map<String, dynamic> data = orderModel.toJson();
       data.removeWhere((key, value) => value == null);
+      // Don't modify createdAt when updating orders - exclude it from updates
+      // Only include createdAt if this is a new order (id is null or empty)
+      if (orderModel.id != null && orderModel.id!.isNotEmpty) {
+        data.remove('createdAt');
+        log("Excluded createdAt from order update to prevent modification");
+      }
       final sanitizedData = _sanitizeForJson(data);
       log("Sending data: ${jsonEncode(sanitizedData)}");
       final response = await http.post(
@@ -862,7 +868,6 @@ class FireStoreUtils {
       ).timeout(const Duration(seconds: 30));
       log("Response status: ${response.statusCode}");
       log("Response body: ${response.body}");
-
       if (response.statusCode == 200 || response.statusCode == 201) {
         isAdded = true;
         log("Order set successfully");
@@ -1607,7 +1612,8 @@ class FireStoreUtils {
     }
 
   /// Atomically assign an order to a driver using Firestore transaction (FCFS locking)
-  static Future<bool> assignOrderToDriverFCFS({
+  /// Returns: true on success, false on failure, null on rate limit (429)
+  static Future<bool?> assignOrderToDriverFCFS({
     required String orderId,
     required String driverId,
     required UserModel driverModel,
@@ -1620,10 +1626,15 @@ class FireStoreUtils {
           'driver_id': driverId,
           'order_id': orderId,
         }),
-      );
+      ).timeout(Duration(seconds: 10));
+      
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
         return jsonResponse['success'] == true;
+      } else if (response.statusCode == 429) {
+        // Rate limit - return null to indicate retry needed
+        print('API Rate Limited (429): Too many requests');
+        return null;
       } else {
         print('API Error: ${response.statusCode}');
         return false;

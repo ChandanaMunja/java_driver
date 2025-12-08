@@ -133,9 +133,9 @@ class OrderModel {
           vendorID = json['vendor']?.toString();
           vendor = null;
         }
-      } else {
-        vendorID = json['vendor']?.toString();
-        vendor = null;
+    } else {
+      vendorID = json['vendor']?.toString();
+      vendor = null;
       }
     }
     id = json['id']?.toString();
@@ -255,7 +255,6 @@ class OrderModel {
       if (milliseconds != null) {
         return Timestamp.fromMillisecondsSinceEpoch(milliseconds);
       }
-      // Try parsing as ISO8601 string
       try {
         final dt = DateTime.tryParse(value);
         if (dt != null) {
@@ -292,7 +291,6 @@ class OrderModel {
 
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
-
     if (address != null) {
       data['address'] = address!.toJson();
     }
@@ -320,24 +318,17 @@ class OrderModel {
     }
 
     data['adminCommissionType'] = adminCommissionType;
-
     if (vendor != null) {
-      // Get vendor JSON and handle GeoPoint serialization
       final vendorJson = vendor!.toJson();
-
-      // Convert any GeoPoint objects in vendor JSON
       _convertGeoPointsInMap(vendorJson);
       data['vendor'] = vendorJson;
     }
-
     data['id'] = id;
     data['adminCommission'] = adminCommission;
     data['couponCode'] = couponCode;
     data['specialDiscount'] = specialDiscount;
     data['deliveryCharge'] = deliveryCharge;
-
-    // Convert scheduleTime to milliseconds
-    data['scheduleTime'] = scheduleTime?.millisecondsSinceEpoch;
+    // data['scheduleTime'] = scheduleTime;
 
     data['tip_amount'] = tipAmount;
     data['notes'] = notes;
