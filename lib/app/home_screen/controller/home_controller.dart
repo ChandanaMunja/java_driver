@@ -681,6 +681,14 @@ if(arrowDrop.value){
                   AppLogger.log('✅ Order refreshed after accept - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
                   AppLogger.log('Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'API');
                   
+                  // If vendor is missing but vendorID exists, fetch vendor data
+                  if (currentOrder.value.vendor == null && 
+                      currentOrder.value.vendorID != null && 
+                      currentOrder.value.vendorID!.isNotEmpty) {
+                    AppLogger.log('Vendor missing after refresh, fetching vendor data for vendorID: ${currentOrder.value.vendorID}', tag: 'API');
+                    await _fetchVendorData(currentOrder.value.vendorID!);
+                  }
+                  
                   // Recalculate charges with fresh data
                   await calculateOrderChargesInitial();
                   changeData(); // Update map and directions
@@ -1240,7 +1248,8 @@ if(arrowDrop.value){
   getDirections() async {
     if (currentOrder.value.id != null) {
       if (currentOrder.value.status != Constant.driverPending) {
-        if (currentOrder.value.status == Constant.orderShipped) {
+        if (currentOrder.value.status == Constant.orderShipped || 
+            currentOrder.value.status == Constant.driverAccepted) {
           List<LatLng> polylineCoordinates = [];
 
           PolylineResult result = await polylinePoints.value
@@ -1469,7 +1478,8 @@ if(arrowDrop.value){
         if (currentOrder.value.status != Constant.driverPending) {
           print(
               "Order Status :: ${currentOrder.value.status} :: OrderId :: ${currentOrder.value.id}} ::");
-          if (currentOrder.value.status == Constant.orderShipped) {
+          if (currentOrder.value.status == Constant.orderShipped || 
+              currentOrder.value.status == Constant.driverAccepted) {
             current.value = location.LatLng(
                 driverModel.value.location?.latitude ?? 0.0,
                 driverModel.value.location?.longitude ?? 0.0);
