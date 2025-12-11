@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/models/subscription_plan_model.dart';
@@ -75,39 +76,209 @@ class UserModel {
     return "${firstName ?? ''} ${lastName ?? ''}";
   }
 
+  // UserModel.fromJson(Map<String, dynamic> json) {
+  //   if (json['id'] != null) {
+  //     id = json['id'].toString();
+  //   }
+  //   firebaseId = json['id']?.toString();
+  //   email = json['email'];
+  //   firstName = json['firstName'];
+  //   lastName = json['lastName'];
+  //   profilePictureURL = json['profile_pic'];
+  //   fcmToken = json['fcmToken'];
+  //   countryCode = json['countryCode'];
+  //   phoneNumber = json['phone'];
+  //   walletAmount = json['wallet_amount'] ?? 0;
+  //   deliveryAmount = json['deliveryAmount'] ?? 0;
+  //   if (json['createdAt'] != null) {
+  //     if (json['createdAt'] is Timestamp) {
+  //       createdAt = json['createdAt'];
+  //     } else if (json['createdAt'] is String) {
+  //       try {
+  //         final dateTime = DateTime.parse(json['createdAt']);
+  //         createdAt = Timestamp.fromDate(dateTime);
+  //       } catch (e) {
+  //         createdAt = null;
+  //       }
+  //     } else if (json['createdAt'] is Map) {
+  //       try {
+  //         createdAt = Timestamp(
+  //           json['createdAt']['seconds'] ?? 0,
+  //           json['createdAt']['nanoseconds'] ?? 0,
+  //         );
+  //       } catch (e) {
+  //         createdAt = null;
+  //       }
+  //     }
+  //   } else {
+  //     createdAt = null;
+  //   }
+  //
+  //   active = json['active'] == 1 || json['active'] == true;
+  //   isActive = json['isActive'] == 1 || json['isActive'] == true;
+  //   isDocumentVerify = json['isDocumentVerify'] == "1" || json['isDocumentVerify'] == true || json['isDocumentVerify'] == 1;
+  //   print("isDocumentVerify  ${isDocumentVerify}");
+  //   role = json['role'] ?? 'user';
+  //
+  //   // Fix for location handling
+  //   if (json['location'] != null && json['location'] is List) {
+  //     final locationList = json['location'] as List;
+  //     if (locationList.isNotEmpty) {
+  //       final firstItem = locationList.first;
+  //       if (firstItem is Map<String, dynamic>) {
+  //         location = UserLocation.fromJson(firstItem);
+  //       } else {
+  //         location = null;
+  //       }
+  //     } else {
+  //       location = null;
+  //     }
+  //   } else if (json['location'] != null && json['location'] is Map<String, dynamic>) {
+  //     location = UserLocation.fromJson(json['location'] as Map<String, dynamic>);
+  //   } else {
+  //     location = null;
+  //   }
+  //
+  //   // Fix for userBankDetails handling
+  //   if (json['userBankDetails'] != null && json['userBankDetails'] is List) {
+  //     final list = json['userBankDetails'] as List;
+  //     if (list.isNotEmpty) {
+  //       final firstItem = list.first;
+  //       if (firstItem is Map<String, dynamic>) {
+  //         userBankDetails = UserBankDetails.fromJson(firstItem);
+  //       } else {
+  //         userBankDetails = null;
+  //       }
+  //     } else {
+  //       userBankDetails = null;
+  //     }
+  //   } else if (json['userBankDetails'] != null && json['userBankDetails'] is Map<String, dynamic>) {
+  //     userBankDetails = UserBankDetails.fromJson(json['userBankDetails'] as Map<String, dynamic>);
+  //   } else {
+  //     userBankDetails = null;
+  //   }
+  //
+  //   // Fix for shippingAddress handling
+  //   if (json['shippingAddress'] != null) {
+  //     if (json['shippingAddress'] is List) {
+  //       final list = json['shippingAddress'] as List;
+  //       shippingAddress = <ShippingAddress>[];
+  //       for (var item in list) {
+  //         if (item is Map<String, dynamic>) {
+  //           shippingAddress!.add(ShippingAddress.fromJson(item));
+  //         }
+  //       }
+  //     } else if (json['shippingAddress'] is Map<String, dynamic>) {
+  //       shippingAddress = <ShippingAddress>[];
+  //       shippingAddress!.add(ShippingAddress.fromJson(json['shippingAddress'] as Map<String, dynamic>));
+  //     } else {
+  //       shippingAddress = null;
+  //     }
+  //   } else {
+  //     shippingAddress = null;
+  //   }
+  //
+  //   carName = json['carName'];
+  //   carNumber = json['carNumber'];
+  //   carPictureURL = json['carPictureURL'];
+  //   inProgressOrderID = json['inProgressOrderID'] ?? [];
+  //   orderRequestData = json['orderRequestData'] ?? [];
+  //   vendorID = json['vendorID'] ?? '';
+  //   zoneId = json['zoneId'] ?? '';
+  //   rotation = json['rotation'];
+  //   appIdentifier = json['appIdentifier'];
+  //   provider = json['provider'];
+  //   subscriptionPlanId = json['subscriptionPlanId'];
+  //
+  //   // Handle subscriptionExpiryDate
+  //   if (json['subscriptionExpiryDate'] != null) {
+  //     if (json['subscriptionExpiryDate'] is Timestamp) {
+  //       subscriptionExpiryDate = json['subscriptionExpiryDate'];
+  //     } else if (json['subscriptionExpiryDate'] is String) {
+  //       try {
+  //         final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
+  //         subscriptionExpiryDate = Timestamp.fromDate(dateTime);
+  //       } catch (e) {
+  //         subscriptionExpiryDate = null;
+  //       }
+  //     } else if (json['subscriptionExpiryDate'] is Map) {
+  //       try {
+  //         subscriptionExpiryDate = Timestamp(
+  //           json['subscriptionExpiryDate']['seconds'] ?? 0,
+  //           json['subscriptionExpiryDate']['nanoseconds'] ?? 0,
+  //         );
+  //       } catch (e) {
+  //         subscriptionExpiryDate = null;
+  //       }
+  //     }
+  //   } else {
+  //     subscriptionExpiryDate = null;
+  //   }
+  //
+  //   // Handle subscription_plan
+  //   if (json['subscription_plan'] != null) {
+  //     if (json['subscription_plan'] is Map<String, dynamic>) {
+  //       subscriptionPlan = SubscriptionPlanModel.fromJson(json['subscription_plan'] as Map<String, dynamic>);
+  //     } else if (json['subscription_plan'] is String) {
+  //       // If it's just a string, create a basic SubscriptionPlanModel
+  //       subscriptionPlan = SubscriptionPlanModel(
+  //         id: 'temp_id',
+  //         name: json['subscription_plan'] as String,
+  //         // Add other default values as needed
+  //       );
+  //     } else {
+  //       subscriptionPlan = null;
+  //     }
+  //   } else {
+  //     subscriptionPlan = null;
+  //   }
+  // }
   UserModel.fromJson(Map<String, dynamic> json) {
-    // Safely convert id from int or String to String?
     if (json['id'] != null) {
-      id = json['id'] is String ? json['id'] : json['id'].toString();
+      id = json['id'].toString();
     }
     firebaseId = json['firebase_id']?.toString() ?? json['id']?.toString();
     email = json['email'];
     firstName = json['firstName'];
     lastName = json['lastName'];
-    profilePictureURL = json['profile_pic'];
+    profilePictureURL = json['profilePictureURL'] ?? json['profile_pic'];
     fcmToken = json['fcmToken'];
     countryCode = json['countryCode'];
-    phoneNumber = (json['phoneNumber'] ?? json['phone'])?.toString();
-    walletAmount = json['wallet_amount'] ?? 0;
-    deliveryAmount = json['deliveryAmount'] ?? 0;
+    if (json['phoneNumber'] != null) {
+      if (json['phoneNumber'] is int) {
+        phoneNumber = json['phoneNumber'].toString();
+      } else if (json['phoneNumber'] is String) {
+        phoneNumber = json['phoneNumber'];
+      } else {
+        phoneNumber = json['phoneNumber']?.toString();
+      }
+    } else if (json['phone'] != null) {
+      // Fallback to 'phone' field if 'phoneNumber' doesn't exist
+      if (json['phone'] is int) {
+        phoneNumber = json['phone'].toString();
+      } else if (json['phone'] is String) {
+        phoneNumber = json['phone'];
+      } else {
+        phoneNumber = json['phone']?.toString();
+      }
+    }
+    walletAmount = json['wallet_amount'] is String
+        ? double.tryParse(json['wallet_amount']) ?? 0
+        : (json['wallet_amount'] ?? 0);
+    deliveryAmount = json['deliveryAmount'] is String
+        ? double.tryParse(json['deliveryAmount']) ?? 0
+        : (json['deliveryAmount'] ?? 0);
+
+    // Handle createdAt
     if (json['createdAt'] != null) {
       if (json['createdAt'] is Timestamp) {
         createdAt = json['createdAt'];
-      } else if (json['createdAt'] is int) {
-        createdAt = Timestamp.fromMillisecondsSinceEpoch(json['createdAt']);
       } else if (json['createdAt'] is String) {
-        // Try parsing as milliseconds string first (e.g., "1764675379043")
-        final milliseconds = int.tryParse(json['createdAt']);
-        if (milliseconds != null) {
-          createdAt = Timestamp.fromMillisecondsSinceEpoch(milliseconds);
-        } else {
-          // Try parsing as ISO8601 string
-          try {
-            final dateTime = DateTime.parse(json['createdAt']);
-            createdAt = Timestamp.fromDate(dateTime);
-          } catch (e) {
-            createdAt = null;
-          }
+        try {
+          final dateTime = DateTime.parse(json['createdAt']);
+          createdAt = Timestamp.fromDate(dateTime);
+        } catch (e) {
+          createdAt = null;
         }
       } else if (json['createdAt'] is Map) {
         try {
@@ -118,6 +289,8 @@ class UserModel {
         } catch (e) {
           createdAt = null;
         }
+      } else if (json['createdAt'] is int) {
+        createdAt = Timestamp.fromMillisecondsSinceEpoch(json['createdAt']);
       }
     } else {
       createdAt = null;
@@ -125,61 +298,115 @@ class UserModel {
 
     active = json['active'] == 1 || json['active'] == true;
     isActive = json['isActive'] == 1 || json['isActive'] == true;
-    isDocumentVerify = json['isDocumentVerify'] == "1" || json['isDocumentVerify'] == true || json['isDocumentVerify'] == 1;
-    print("isDocumentVerify  ${isDocumentVerify}");
+    isDocumentVerify = json['isDocumentVerify'] == "1" ||
+        json['isDocumentVerify'] == true ||
+        json['isDocumentVerify'] == 1;
+    print("isDocumentVerify  $isDocumentVerify");
     role = json['role'] ?? 'user';
 
-    // Fix for location handling
-    if (json['location'] != null && json['location'] is List) {
-      final locationList = json['location'] as List;
-      if (locationList.isNotEmpty) {
-        final firstItem = locationList.first;
-        if (firstItem is Map<String, dynamic>) {
-          location = UserLocation.fromJson(firstItem);
+    // Fix for location handling - check if it's a string that needs parsing
+    if (json['location'] != null) {
+      dynamic locationData = json['location'];
+
+      if (locationData is String) {
+        try {
+          final parsed = jsonDecode(locationData);
+          if (parsed is Map<String, dynamic>) {
+            location = UserLocation.fromJson(parsed);
+          }
+        } catch (e) {
+          print('Error parsing location string: $e');
+          location = null;
+        }
+      } else if (locationData is List) {
+        final locationList = locationData as List;
+        if (locationList.isNotEmpty) {
+          final firstItem = locationList.first;
+          if (firstItem is Map<String, dynamic>) {
+            location = UserLocation.fromJson(firstItem);
+          } else {
+            location = null;
+          }
         } else {
           location = null;
         }
+      } else if (locationData is Map<String, dynamic>) {
+        location = UserLocation.fromJson(locationData as Map<String, dynamic>);
       } else {
         location = null;
       }
-    } else if (json['location'] != null && json['location'] is Map<String, dynamic>) {
-      location = UserLocation.fromJson(json['location'] as Map<String, dynamic>);
     } else {
       location = null;
     }
 
-    // Fix for userBankDetails handling
-    if (json['userBankDetails'] != null && json['userBankDetails'] is List) {
-      final list = json['userBankDetails'] as List;
-      if (list.isNotEmpty) {
-        final firstItem = list.first;
-        if (firstItem is Map<String, dynamic>) {
-          userBankDetails = UserBankDetails.fromJson(firstItem);
+    // Fix for userBankDetails handling - check if it's a string that needs parsing
+    if (json['userBankDetails'] != null) {
+      dynamic bankDetailsData = json['userBankDetails'];
+
+      if (bankDetailsData is String) {
+        try {
+          final parsed = jsonDecode(bankDetailsData);
+          if (parsed is Map<String, dynamic>) {
+            userBankDetails = UserBankDetails.fromJson(parsed);
+          }
+        } catch (e) {
+          print('Error parsing userBankDetails string: $e');
+          userBankDetails = null;
+        }
+      } else if (bankDetailsData is List) {
+        final list = bankDetailsData as List;
+        if (list.isNotEmpty) {
+          final firstItem = list.first;
+          if (firstItem is Map<String, dynamic>) {
+            userBankDetails = UserBankDetails.fromJson(firstItem);
+          } else {
+            userBankDetails = null;
+          }
         } else {
           userBankDetails = null;
         }
+      } else if (bankDetailsData is Map<String, dynamic>) {
+        userBankDetails = UserBankDetails.fromJson(bankDetailsData as Map<String, dynamic>);
       } else {
         userBankDetails = null;
       }
-    } else if (json['userBankDetails'] != null && json['userBankDetails'] is Map<String, dynamic>) {
-      userBankDetails = UserBankDetails.fromJson(json['userBankDetails'] as Map<String, dynamic>);
     } else {
       userBankDetails = null;
     }
 
-    // Fix for shippingAddress handling
+    // Fix for shippingAddress handling - check if it's a string that needs parsing
     if (json['shippingAddress'] != null) {
-      if (json['shippingAddress'] is List) {
-        final list = json['shippingAddress'] as List;
+      dynamic shippingData = json['shippingAddress'];
+
+      if (shippingData is String) {
+        try {
+          final parsed = jsonDecode(shippingData);
+          if (parsed is List) {
+            shippingAddress = <ShippingAddress>[];
+            for (var item in parsed) {
+              if (item is Map<String, dynamic>) {
+                shippingAddress!.add(ShippingAddress.fromJson(item));
+              }
+            }
+          } else if (parsed is Map<String, dynamic>) {
+            shippingAddress = <ShippingAddress>[];
+            shippingAddress!.add(ShippingAddress.fromJson(parsed));
+          }
+        } catch (e) {
+          print('Error parsing shippingAddress string: $e');
+          shippingAddress = null;
+        }
+      } else if (shippingData is List) {
+        final list = shippingData as List;
         shippingAddress = <ShippingAddress>[];
         for (var item in list) {
           if (item is Map<String, dynamic>) {
             shippingAddress!.add(ShippingAddress.fromJson(item));
           }
         }
-      } else if (json['shippingAddress'] is Map<String, dynamic>) {
+      } else if (shippingData is Map<String, dynamic>) {
         shippingAddress = <ShippingAddress>[];
-        shippingAddress!.add(ShippingAddress.fromJson(json['shippingAddress'] as Map<String, dynamic>));
+        shippingAddress!.add(ShippingAddress.fromJson(shippingData as Map<String, dynamic>));
       } else {
         shippingAddress = null;
       }
@@ -190,11 +417,60 @@ class UserModel {
     carName = json['carName'];
     carNumber = json['carNumber'];
     carPictureURL = json['carPictureURL'];
-    inProgressOrderID = _parseList(json['inProgressOrderID']);
-    orderRequestData = _parseList(json['orderRequestData']);
+
+    // Fix for inProgressOrderID - check if it's a string that needs parsing
+    if (json['inProgressOrderID'] != null) {
+      dynamic orderIdData = json['inProgressOrderID'];
+      if (orderIdData is String) {
+        try {
+          final parsed = jsonDecode(orderIdData);
+          if (parsed is List) {
+            inProgressOrderID = parsed;
+          } else {
+            inProgressOrderID = [];
+          }
+        } catch (e) {
+          print('Error parsing inProgressOrderID string: $e');
+          inProgressOrderID = [];
+        }
+      } else if (orderIdData is List) {
+        inProgressOrderID = orderIdData;
+      } else {
+        inProgressOrderID = [];
+      }
+    } else {
+      inProgressOrderID = [];
+    }
+
+    // Fix for orderRequestData - check if it's a string that needs parsing
+    if (json['orderRequestData'] != null) {
+      dynamic orderRequestDataJson = json['orderRequestData'];
+      if (orderRequestDataJson is String) {
+        try {
+          final parsed = jsonDecode(orderRequestDataJson);
+          if (parsed is List) {
+            orderRequestData = parsed;
+          } else {
+            orderRequestData = [];
+          }
+        } catch (e) {
+          print('Error parsing orderRequestData string: $e');
+          orderRequestData = [];
+        }
+      } else if (orderRequestDataJson is List) {
+        orderRequestData = orderRequestDataJson;
+      } else {
+        orderRequestData = [];
+      }
+    } else {
+      orderRequestData = [];
+    }
+
     vendorID = json['vendorID'] ?? '';
     zoneId = json['zoneId'] ?? '';
-    rotation = json['rotation'];
+    rotation = json['rotation'] is String
+        ? double.tryParse(json['rotation']) ?? 0
+        : (json['rotation'] ?? 0);
     appIdentifier = json['appIdentifier'];
     provider = json['provider'];
     subscriptionPlanId = json['subscriptionPlanId'];
@@ -203,21 +479,12 @@ class UserModel {
     if (json['subscriptionExpiryDate'] != null) {
       if (json['subscriptionExpiryDate'] is Timestamp) {
         subscriptionExpiryDate = json['subscriptionExpiryDate'];
-      } else if (json['subscriptionExpiryDate'] is int) {
-        subscriptionExpiryDate = Timestamp.fromMillisecondsSinceEpoch(json['subscriptionExpiryDate']);
       } else if (json['subscriptionExpiryDate'] is String) {
-        // Try parsing as milliseconds string first (e.g., "1764675379043")
-        final milliseconds = int.tryParse(json['subscriptionExpiryDate']);
-        if (milliseconds != null) {
-          subscriptionExpiryDate = Timestamp.fromMillisecondsSinceEpoch(milliseconds);
-        } else {
-          // Try parsing as ISO8601 string
-          try {
-            final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
-            subscriptionExpiryDate = Timestamp.fromDate(dateTime);
-          } catch (e) {
-            subscriptionExpiryDate = null;
-          }
+        try {
+          final dateTime = DateTime.parse(json['subscriptionExpiryDate']);
+          subscriptionExpiryDate = Timestamp.fromDate(dateTime);
+        } catch (e) {
+          subscriptionExpiryDate = null;
         }
       } else if (json['subscriptionExpiryDate'] is Map) {
         try {
@@ -228,22 +495,33 @@ class UserModel {
         } catch (e) {
           subscriptionExpiryDate = null;
         }
+      } else if (json['subscriptionExpiryDate'] is int) {
+        subscriptionExpiryDate = Timestamp.fromMillisecondsSinceEpoch(json['subscriptionExpiryDate']);
       }
     } else {
       subscriptionExpiryDate = null;
     }
 
-    // Handle subscription_plan
     if (json['subscription_plan'] != null) {
       if (json['subscription_plan'] is Map<String, dynamic>) {
         subscriptionPlan = SubscriptionPlanModel.fromJson(json['subscription_plan'] as Map<String, dynamic>);
       } else if (json['subscription_plan'] is String) {
-        // If it's just a string, create a basic SubscriptionPlanModel
-        subscriptionPlan = SubscriptionPlanModel(
-          id: 'temp_id',
-          name: json['subscription_plan'] as String,
-          // Add other default values as needed
-        );
+        try {
+          final parsed = jsonDecode(json['subscription_plan']);
+          if (parsed is Map<String, dynamic>) {
+            subscriptionPlan = SubscriptionPlanModel.fromJson(parsed);
+          } else {
+            subscriptionPlan = SubscriptionPlanModel(
+              id: 'temp_id',
+              name: json['subscription_plan'] as String,
+            );
+          }
+        } catch (e) {
+          subscriptionPlan = SubscriptionPlanModel(
+            id: 'temp_id',
+            name: json['subscription_plan'] as String,
+          );
+        }
       } else {
         subscriptionPlan = null;
       }
@@ -251,29 +529,6 @@ class UserModel {
       subscriptionPlan = null;
     }
   }
-
-  /// Safely parse a list that may come as:
-  /// - List
-  /// - JSON String (e.g., "[]" or "[1,2,3]")
-  /// - or null
-  List<dynamic>? _parseList(dynamic value) {
-    if (value == null) return [];
-    if (value is List) return value;
-    if (value is String) {
-      try {
-        // Try to parse as JSON string
-        final decoded = jsonDecode(value);
-        if (decoded is List) {
-          return decoded;
-        }
-      } catch (_) {
-        // If parsing fails, return empty list
-        return [];
-      }
-    }
-    return [];
-  }
-
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
@@ -368,11 +623,25 @@ class ShippingAddress {
   });
 
   ShippingAddress.fromJson(Map<String, dynamic> json) {
-    id = json['id']?.toString();
+    id = json['id'];
     address = json['address'];
     landmark = json['landmark'];
     locality = json['locality'];
-    isDefault = json['isDefault'];
+
+    // Handle isDefault that could be bool, int, or string
+    if (json['isDefault'] != null) {
+      if (json['isDefault'] is bool) {
+        isDefault = json['isDefault'];
+      } else if (json['isDefault'] is int) {
+        isDefault = json['isDefault'] == 1;
+      } else if (json['isDefault'] is String) {
+        isDefault = json['isDefault'] == '1' || json['isDefault'].toLowerCase() == 'true';
+      } else {
+        isDefault = null;
+      }
+    } else {
+      isDefault = null;
+    }
     addressAs = json['addressAs'];
     location = json['location'] == null
         ? null

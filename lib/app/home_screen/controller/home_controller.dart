@@ -429,9 +429,7 @@ if(arrowDrop.value){
       final excludeStatuses = 'Order Cancelled,Driver Rejected,Order Completed';
       final primaryUri = Uri.parse(
           '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$orderId&exclude_statuses=$excludeStatuses');
-      
       bool orderFetched = false;
-      
       try {
         final response = await http.get(
           primaryUri,
@@ -833,14 +831,25 @@ if(arrowDrop.value){
     AppLogger.log('inProgressOrderID: ${driverModel.value.inProgressOrderID}', tag: 'Function');
     AppLogger.log('orderRequestData: ${driverModel.value.orderRequestData}', tag: 'Function');
     AppLogger.log('currentOrder.id: ${currentOrder.value.id}', tag: 'Function');
-    // Clear current order if it's no longer in driver's lists (unless it's in progress)
+    // Clear current order if it's no longer in driver's lists (unless it's in progress or pending)
+    // BUT: Keep it if it has Driver Pending status with no driver assigned (handles timing issues)
     if (currentOrder.value.id != null &&
         !(driverModel.value.orderRequestData?.contains(currentOrder.value.id) ?? false) &&
         !(driverModel.value.inProgressOrderID?.contains(currentOrder.value.id) ?? false)) {
-      currentOrder.value = OrderModel();
-      await clearMap();
-      await AudioPlayerService.playSound(false);
-      AppLogger.log('No current order, cleared map and stopped sound', tag: 'UI');
+      // Don't clear if order is still pending and has no driver (might be timing issue)
+      final isPendingWithNoDriver = (currentOrder.value.status == Constant.driverPending ||
+                                      currentOrder.value.status == Constant.orderAccepted ||
+                                      currentOrder.value.status == "Order Accepted") &&
+                                     (currentOrder.value.driverID == null || 
+                                      currentOrder.value.driverID?.isEmpty == true);
+      if (!isPendingWithNoDriver) {
+        currentOrder.value = OrderModel();
+        await clearMap();
+        await AudioPlayerService.playSound(false);
+        AppLogger.log('No current order, cleared map and stopped sound', tag: 'UI');
+      } else {
+        AppLogger.log('Keeping pending order despite not being in arrays (timing issue): ${currentOrder.value.id}', tag: 'UI');
+      }
       // Don't return here - continue to check for new orders
     }
     // Determine firstOrderId - prioritize inProgress orders
@@ -880,6 +889,22 @@ if(arrowDrop.value){
         AppLogger.log('Keeping existing current order: ${currentOrder.value.id}', tag: 'Function');
         return;
       }
+      
+      // FALLBACK: Check if we have a current order that should still be displayed
+      // (e.g., order was just created but not yet in orderRequestData due to Cloud Function delay)
+      if (currentOrder.value.id != null && 
+          currentOrder.value.status == Constant.driverPending &&
+          (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+        AppLogger.log('Keeping current order (Driver Pending, no driver assigned): ${currentOrder.value.id}', tag: 'Function');
+        // Ensure it's processed and displayed
+        if (currentOrder.value.vendor != null && currentOrder.value.address != null) {
+          await calculateOrderChargesInitial();
+          changeData();
+          update();
+        }
+        return;
+      }
+      
       AppLogger.log('No valid firstOrderId found, exiting getCurrentOrder()', tag: 'UI');
       return;
     }
@@ -928,7 +953,6 @@ if(arrowDrop.value){
     } catch (e) {
       AppLogger.log('Primary API failed: $e - will try fallback', tag: 'API');
     }
-    
     // METHOD 2: Fallback to restaurant/orders endpoint if primary failed
     if (!orderFetched) {
       AppLogger.log('Trying FALLBACK endpoint: restaurant/orders/$firstOrderId', tag: 'API');
@@ -968,17 +992,28 @@ if(arrowDrop.value){
     if (orderFetched && currentOrder.value.id != null) {
       try {
         AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
-        
         // Ensure order status is set correctly for accept/reject buttons to show
-        // If order is in orderRequestData, set status to Driver Pending if not already set
-        if (orderRequest?.contains(currentOrder.value.id) ?? false) {
-          if (currentOrder.value.status != Constant.driverPending && 
+        // If order is in orderRequestData OR has no driver assigned, set status to Driver Pending if needed
+        if ((orderRequest?.contains(currentOrder.value.id) ?? false) ||
+            (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+          // Set to Driver Pending if status is Order Accepted (restaurant accepted, waiting for driver)
+          // or if status is not set and no driver assigned
+          if ((currentOrder.value.status == Constant.orderAccepted || 
+               currentOrder.value.status == "Order Accepted") &&
               (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true)) {
+            // Keep Order Accepted status - UI will handle it
+            AppLogger.log('Order has Order Accepted status, will show accept/reject buttons', tag: 'UI');
+          } else if (currentOrder.value.status != Constant.driverPending && 
+              currentOrder.value.status != Constant.driverAccepted &&
+              currentOrder.value.status != Constant.orderShipped &&
+              currentOrder.value.status != Constant.orderInTransit &&
+              currentOrder.value.status != Constant.orderCompleted &&
+              currentOrder.value.status != Constant.orderAccepted &&
+              currentOrder.value.status != "Order Accepted") {
             currentOrder.value.status = Constant.driverPending;
             AppLogger.log('✅ Set order status to Driver Pending for accept/reject buttons', tag: 'UI');
           }
         }
-        
         // Log order details before processing
         AppLogger.log('Order Details - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'UI');
         AppLogger.log('Order Details - Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
@@ -998,8 +1033,13 @@ if(arrowDrop.value){
           await calculateOrderChargesInitial();
         }
         
+        // Process and display order if:
+        // 1. It's in inProgressOrderID or orderRequestData, OR
+        // 2. It has Driver Pending status with no driver assigned (fallback for timing issues)
         if ((inProgress?.contains(currentOrder.value.id) ?? false) ||
-            (orderRequest?.contains(currentOrder.value.id) ?? false)) {
+            (orderRequest?.contains(currentOrder.value.id) ?? false) ||
+            (currentOrder.value.status == Constant.driverPending &&
+             (currentOrder.value.driverID == null || currentOrder.value.driverID?.isEmpty == true))) {
           changeData();
           AppLogger.log('Order processed and displayed', tag: 'API');
         }
@@ -1014,7 +1054,6 @@ if(arrowDrop.value){
       } else {
       // Order not found in either endpoint
       AppLogger.log('Order not found in any endpoint. Order ID: $firstOrderId', tag: 'API');
-      
         // Remove missing/completed order from driver lists
         if (inProgress?.contains(firstOrderId) ?? false) {
           inProgress!.remove(firstOrderId);
@@ -1671,6 +1710,17 @@ if(arrowDrop.value){
       } else {
         // If no current order, check for new orders from orderRequestData
         await getCurrentOrder();
+        
+        // FALLBACK: If still no order but orderRequestData is empty, 
+        // check if there's a pending order that should be displayed
+        // (handles case where order was created but Cloud Function hasn't updated orderRequestData yet)
+        if (currentOrder.value.id == null && 
+            (driverModel.value.orderRequestData?.isEmpty ?? true) &&
+            (driverModel.value.inProgressOrderID?.isEmpty ?? true)) {
+          AppLogger.log('No orders in arrays, checking for pending orders via API fallback', tag: 'Function');
+          // This is handled by the periodic polling, so we don't need to do anything here
+          // The next poll will catch it once Cloud Function updates orderRequestData
+        }
       }
 
       update();

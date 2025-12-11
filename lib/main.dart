@@ -94,7 +94,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   DarkThemeProvider themeChangeProvider = DarkThemeProvider();
-
   @override
   void initState() {
     super.initState();
@@ -114,12 +113,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       }
     });
   }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      // Re-init if needed
       AudioPlayerService.initAudio();
     } else if (state == AppLifecycleState.detached) {
       AudioPlayerService.playSound(false);
@@ -128,7 +125,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
     getCurrentAppTheme();
   }
-
   // @override
   // void didChangeAppLifecycleState(AppLifecycleState state) {
   //   if (state == AppLifecycleState.paused ||
@@ -140,7 +136,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   //   }
   //   getCurrentAppTheme();
   // }
-
   // Future<void> enterPipMode() async {
   //   try {
   //     await AndroidPIP().enterPipMode(aspectRatio: [7, 9]);

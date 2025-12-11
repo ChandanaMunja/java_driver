@@ -59,11 +59,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
   WidgetsBinding.instance.removeObserver(this);
   super.dispose();
   }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = Get.find<HomeController>();
-    
     if ((state == AppLifecycleState.paused || state == AppLifecycleState.inactive)
         && ModalRoute.of(context)?.isCurrent == true) {
       // Only enter PiP if this screen is currently visible
@@ -490,13 +488,19 @@ Obx(
         ?.contains(controller.currentOrder.value.id) ?? false;
     // Show accept/reject bottom sheet if:
     // 1. Order exists
-    // 2. Order is in orderRequestData OR status is Driver Pending
+    // 2. Order is in orderRequestData OR status is Driver Pending (even if not in array yet - handles timing issues)
     // 3. No driver assigned yet
     // 4. Address is not null (required for bottom sheet)
     // 5. Vendor exists OR vendorID exists (vendor can be fetched if missing)
+    // IMPORTANT: Also show if order has "Order Accepted" or "Driver Pending" status with no driver
+    // This handles timing issues where order exists but Cloud Function hasn't updated orderRequestData yet
+    final orderStatus = controller.currentOrder.value.status;
+    final hasDriverPendingStatus = orderStatus == Constant.driverPending;
+    final hasOrderAcceptedStatus = orderStatus == Constant.orderAccepted || orderStatus == "Order Accepted";
     final shouldShowAcceptReject = controller.currentOrder.value.id != null &&
         (isOrderInRequestData || 
-         controller.currentOrder.value.status == Constant.driverPending) &&
+         hasDriverPendingStatus ||
+         (hasOrderAcceptedStatus && (controller.currentOrder.value.driverID == null || controller.currentOrder.value.driverID?.isEmpty == true))) &&
         (controller.currentOrder.value.driverID == null ||
             controller.currentOrder.value.driverID?.isEmpty == true) &&
         controller.currentOrder.value.address != null &&
@@ -1471,7 +1475,7 @@ Obx(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  "${controller.currentOrder.value.vendor!.title}",
+                                  "${controller.currentOrder.value.vendor?.title}",
                                   textAlign: TextAlign.start,
                                   style: TextStyle(
                                     fontFamily: AppThemeData.semiBold,
@@ -1482,7 +1486,7 @@ Obx(
                                   ),
                                 ),
                                 Text(
-                                  "${controller.currentOrder.value.vendor!.location}",
+                                  "${controller.currentOrder.value.vendor?.location}",
                                   textAlign: TextAlign.start,
                                   style: TextStyle(
                                     fontFamily: AppThemeData.medium,

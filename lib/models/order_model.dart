@@ -93,7 +93,6 @@ class OrderModel {
     couponId = json['couponId'];
     vendorID = json['vendorID']?.toString();
     driverID = json['driverID']?.toString();
-    // Handle discount coming as string, int, double or null from API
     discount = _parseNum(json['discount']);
     authorID = json['authorID']?.toString();
     estimatedTimeToPrepare = json['estimatedTimeToPrepare'];
