@@ -261,32 +261,62 @@ class DrawerView extends StatelessWidget {
                             if (Constant.isDriverVerification == true) {
                               if (controller.userModel.value.isDocumentVerify ==
                                   true) {
-                                controller.userModel.value.isActive = value;
-                                controller.userModel.value.inProgressOrderID =
+                                // Create a copy and update it to trigger GetX reactivity
+                                UserModel updatedUser = UserModel.fromJson(
+                                    controller.userModel.value.toJson());
+                                updatedUser.isActive = value;
+                                updatedUser.inProgressOrderID =
                                     Constant.userModel!.inProgressOrderID;
-                                controller.userModel.value.orderRequestData =
+                                updatedUser.orderRequestData =
                                     Constant.userModel!.orderRequestData;
-                                if (controller.userModel.value.isActive == true) {
+                                
+                                // Update the reactive variable by reassigning
+                                controller.userModel.value = updatedUser;
+                                
+                                if (updatedUser.isActive == true) {
                                   controller.updateCurrentLocation();
                                 }
-                                await FireStoreUtils.updateUser(
-                                    controller.userModel.value);
+                                
+                                bool success = await FireStoreUtils.updateUser(
+                                    updatedUser);
+                                
+                                if (success) {
+                                  // Update Constant.userModel to keep it in sync
+                                  Constant.userModel = updatedUser;
+                                  // Trigger refresh to ensure UI updates
+                                  controller.userModel.refresh();
+                                }
                               } else {
                                 ShowToastDialog.showToast(
                                     "Document verification is pending. Please proceed to set up your document verification."
                                         .tr);
                               }
                             } else {
-                              controller.userModel.value.isActive = value;
-                              controller.userModel.value.inProgressOrderID =
+                              // Create a copy and update it to trigger GetX reactivity
+                              UserModel updatedUser = UserModel.fromJson(
+                                  controller.userModel.value.toJson());
+                              updatedUser.isActive = value;
+                              updatedUser.inProgressOrderID =
                                   Constant.userModel!.inProgressOrderID;
-                              controller.userModel.value.orderRequestData =
+                              updatedUser.orderRequestData =
                                   Constant.userModel!.orderRequestData;
-                              if (controller.userModel.value.isActive == true) {
+                              
+                              // Update the reactive variable by reassigning
+                              controller.userModel.value = updatedUser;
+                              
+                              if (updatedUser.isActive == true) {
                                 controller.updateCurrentLocation();
                               }
-                              await FireStoreUtils.updateUser(
-                                  controller.userModel.value);
+                              
+                              bool success = await FireStoreUtils.updateUser(
+                                  updatedUser);
+                              
+                              if (success) {
+                                // Update Constant.userModel to keep it in sync
+                                Constant.userModel = updatedUser;
+                                // Trigger refresh to ensure UI updates
+                                controller.userModel.refresh();
+                              }
                             }
                           },
                         ),

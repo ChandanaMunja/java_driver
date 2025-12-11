@@ -70,9 +70,7 @@ class LoginController extends GetxController {
       }
     } catch (e) {
       log(' [31m$fromScreen -> Error in redirectScreen: $e [0m');
-      // Fallback to login screen on any error
       try {
-        // LoginController.logout();
       } catch (signOutError) {
         log(' [31m$fromScreen -> Error signing out: $signOutError [0m');
       }

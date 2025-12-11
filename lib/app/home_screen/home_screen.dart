@@ -279,8 +279,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                                 );
                               }
                             },
-
-                            // onMapCreated: (mapController) {
+                             // onMapCreated: (mapController) {
                                       //   controller.mapController =
                                       //       mapController;
                                       //   controller.mapController!.animateCamera(

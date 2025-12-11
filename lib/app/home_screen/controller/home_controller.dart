@@ -604,7 +604,6 @@ if(arrowDrop.value){
     AppLogger.log('Order Status: ${currentOrder.value.status}', tag: 'Function');
     AppLogger.log('Order Vendor: ${currentOrder.value.vendor != null}', tag: 'Function');
     AppLogger.log('Order Address: ${currentOrder.value.address != null}', tag: 'Function');
-    
     await AudioPlayerService.playSound(false);
     AppLogger.log('Sound played for acceptOrder()', tag: 'Audio');
     ShowToastDialog.showLoader("Please wait".tr);
@@ -629,14 +628,12 @@ if(arrowDrop.value){
         return;
       }
       AppLogger.log('Attempting to assign order to driver', tag: 'Firestore');
-      // Calculate charges before accepting
       final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
         orderId: currentOrder.value.id!,
         driverId: driverModel.value.id!,
         driverModel: driverModel.value,
       );
       AppLogger.log('assignOrderToDriverFCFS result: $assignResult', tag: 'Firestore');
-      
       // Handle rate limiting (429)
       if (assignResult == null) {
         ShowToastDialog.closeLoader();
@@ -650,26 +647,21 @@ if(arrowDrop.value){
         await AudioPlayerService.playSound(false); // Stop sound
         return; // Don't clear order, allow retry
       }
-      
       if (assignResult == true) {
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
         driverModel.value.inProgressOrderID ??= [];
         driverModel.value.inProgressOrderID?.add(currentOrder.value.id!);
         await FireStoreUtils.updateUser(driverModel.value);
         AppLogger.log('Driver updated in Firestore after accept', tag: 'Firestore');
-        
         // Update order status and driver info
         currentOrder.value.status = Constant.driverAccepted;
         currentOrder.value.driverID = driverModel.value.id;
         currentOrder.value.driver = driverModel.value;
-        
         // Calculate charges before saving
         await calculateOrderCharges();
-        
         // Save order to Firestore
         await FireStoreUtils.setOrder(currentOrder.value);
         AppLogger.log('Order updated in Firestore after accept', tag: 'Firestore');
-        
         // Refresh order from API to get complete details (vendor address, etc.)
         AppLogger.log('Refreshing order from API to get complete details', tag: 'API');
         try {
@@ -680,7 +672,6 @@ if(arrowDrop.value){
               'Content-Type': 'application/json',
             },
           ).timeout(Duration(seconds: 10));
-          
           if (refreshResponse.statusCode == 200) {
             if (!refreshResponse.body.trim().startsWith('<!') && !refreshResponse.body.trim().startsWith('<html')) {
               try {
@@ -703,9 +694,7 @@ if(arrowDrop.value){
           AppLogger.log('Error refreshing order after accept: $e', tag: 'API');
           // Continue even if refresh fails - order is already accepted
         }
-        
         ShowToastDialog.closeLoader();
-        
         // Send notifications
         if (currentOrder.value.author?.fcmToken != null) {
           await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,
@@ -717,7 +706,6 @@ if(arrowDrop.value){
               currentOrder.value.vendor!.fcmToken.toString(), {});
           AppLogger.log('Notification sent to vendor', tag: 'CloudFunction');
         }
-        
         ShowToastDialog.showToast("Order accepted successfully!".tr);
         AppLogger.log('✅ Order accepted successfully - Showing vendor address and full details', tag: 'UI');
         await AudioPlayerService.playSound(false); // Stop sound after accept
@@ -732,10 +720,8 @@ if(arrowDrop.value){
         );
         AppLogger.log('Order already accepted by another driver', tag: 'Error');
         await AudioPlayerService.playSound(false); // Stop sound
-        // Remove from orderRequestData since it's no longer available
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
         await FireStoreUtils.updateUser(driverModel.value);
-        // Clear current order since it's no longer available
         currentOrder.value = OrderModel();
         await clearMap();
         update();
@@ -751,8 +737,6 @@ if(arrowDrop.value){
       AppLogger.log('Exception in acceptOrder: $e', tag: 'Error');
     }
   }
-
-
   // acceptOrder() async {
   //   await AudioPlayerService.playSound(false);
   //   ShowToastDialog.showLoader("Please wait".tr);
