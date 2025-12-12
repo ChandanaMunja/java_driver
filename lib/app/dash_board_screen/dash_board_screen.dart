@@ -144,13 +144,13 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
               drawer:hideUI
                   ? null
                   : const DrawerView(),
-              body: controller.drawerIndex.value == 0
-                  ? Constant.singleOrderReceive == true
-                      ?
+              body: controller.drawerIndex.value == 0?
+                  // ? Constant.singleOrderReceive == true
+                  //     ?
               const HomeScreen(
                           isAppBarShow: false,
                         )
-                      : const HomeScreenMultipleOrder()
+                      // : const HomeScreenMultipleOrder()
                   : controller.drawerIndex.value == 1
                       ? const OrderListScreen()
                       : controller.drawerIndex.value == 2

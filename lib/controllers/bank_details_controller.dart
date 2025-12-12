@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
+import 'package:jippydriver_driver/controllers/dash_board_controller.dart';
 import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
@@ -22,6 +23,7 @@ class BankDetailsController extends GetxController {
     getCurrentUser();
     super.onInit();
   }
+  final DashBoardController dashBoardController = Get.find<DashBoardController>();
 
   saveBank() async {
     ShowToastDialog.showLoader("Please wait".tr);
@@ -35,13 +37,13 @@ class BankDetailsController extends GetxController {
         holderNameController.value.text;
     userModel.value.userBankDetails!.otherDetails =
         otherInfoController.value.text;
-
     await FireStoreUtils.updateUser(userModel.value).then(
       (value) {
         ShowToastDialog.closeLoader();
         Get.back();
       },
     );
+    dashBoardController.getUser();
   }
 
   getCurrentUser() async {

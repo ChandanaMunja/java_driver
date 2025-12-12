@@ -114,9 +114,10 @@ class LoginController extends GetxController {
           await _saveUserToSharedPreferences(userData);
           if (userModel.role == Constant.userRoleDriver) {
             if (userModel.active == true || userModel.isActive == true) {
-              userModel.fcmToken = await NotificationService.getToken();
-              await FireStoreUtils.updateUser(userModel);
-              Get.offAll(const DashBoardScreen());
+              // userModel.fcmToken = await NotificationService.getToken();
+              // await FireStoreUtils.updateUser(userModel);
+              redirectScreen();
+              // Get.offAll(const DashBoardScreen());
               log('\u001b[32mLoginScreen -> DashBoardScreen\u001b[0m');
             } else {
               ShowToastDialog.showToast(

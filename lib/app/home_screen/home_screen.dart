@@ -118,14 +118,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
               ? Constant.loader()
               : Constant.userModel?.vendorID?.isEmpty == true &&
                       Constant.isDriverVerification == true &&
-                      Constant.userModel!.isDocumentVerify == false
+                      Constant.userModel?.isDocumentVerify == false
                   ? Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-
                           Container(
                             decoration: ShapeDecoration(
                               color: themeChange.getThem()
