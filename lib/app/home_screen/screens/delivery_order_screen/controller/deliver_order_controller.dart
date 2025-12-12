@@ -282,7 +282,6 @@ class DeliverOrderController extends GetxController {
           ShowToastDialog.showToast("Order billing info missing. Cannot complete order.");
           return;
         }
-        
         orderModel.value.toPay = toPay.toString();
         print('[DeliverOrderController] Set ToPay: ${orderModel.value.toPay}');
       } catch (e) {

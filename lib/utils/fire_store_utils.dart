@@ -148,7 +148,6 @@ class FireStoreUtils {
       );
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        // Assuming API returns success status
         return responseData['success'] ?? true;
       } else {
         // Handle error response
@@ -1009,14 +1008,12 @@ class FireStoreUtils {
       print('[Wallet Deduction][COD] Order: ${orderModel.id}, ToPay: ${orderModel.toPay}, Deducting from wallet: -${orderModel.toPay}');
       driverAmount += -double.parse(orderModel.toPay.toString());
     }
-
     // Debug print: show deduction info
     final userId = orderModel.driverID!;
     final userProfile = await getUserProfile(userId);
     final oldWallet = userProfile?.walletAmount ?? 0.0;
     final newWallet = oldWallet + double.parse(driverAmount.toString());
     print('[Wallet Deduction] Order: ${orderModel.id}, Driver: $userId, Old Wallet: $oldWallet, Change: ${driverAmount.toString()}, New Wallet: $newWallet');
-
     await FireStoreUtils.updateUserWallet(
         userId: userId, amount: driverAmount.toString());
   }

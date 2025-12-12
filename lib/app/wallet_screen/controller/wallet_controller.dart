@@ -286,7 +286,6 @@ class WalletController extends GetxController {
         isTopup: true,
         note: "Wallet Top-up",
         paymentStatus: "success");
-
     await FireStoreUtils.setWalletTransaction(transactionModel)
         .then((value) async {
       if (value == true) {
@@ -300,7 +299,6 @@ class WalletController extends GetxController {
         });
       }
     });
-
     ShowToastDialog.showToast("Amount Top-up successfully".tr);
   }
   // {

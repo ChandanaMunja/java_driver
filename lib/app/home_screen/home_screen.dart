@@ -264,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                             onMapCreated: (mapController) async {
                               controller.mapController = mapController;
                               // Wait a bit to ensure map fully loads
-                              await Future.delayed(const Duration(milliseconds: 500));
+                              await Future.delayed(const Duration(seconds: 1));
                               // If location is available, move camera there
                               final location = Constant.locationDataFinal;
                               if (location != null) {

@@ -142,7 +142,6 @@ class ChatController extends GetxController {
   RxString restaurantName = "".obs;
   RxString restaurantProfileImage = "".obs;
   RxString token = "".obs;
-
   getArgument() {
     dynamic argumentData = Get.arguments;
     if (argumentData != null) {
