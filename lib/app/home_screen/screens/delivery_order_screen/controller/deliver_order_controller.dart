@@ -251,7 +251,7 @@ class DeliverOrderController extends GetxController {
         parsedCharge = num.tryParse(chargeValue.toString());
       }
       orderModel.value.deliveryCharge = parsedCharge?.toString() ?? '0';
-      print("[DeliverOrderController] Set orderModel.deliveryCharge: ${orderModel.value.deliveryCharge}");
+      print("[DeliverOrderController] Set orderModel.deliveryCharge: ${orderModel.value.deliveryCharge}  ${orderModel.value.toPay} ");
       print("[DeliverOrderController] Playing sound");
       await AudioPlayerService.playSound(false);
       print("[DeliverOrderController] Setting status to completed");

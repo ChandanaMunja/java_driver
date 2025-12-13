@@ -190,14 +190,16 @@ class FireStoreUtils {
     }
   }
   static Future<bool?> updateUserDeliveryAmount(
-      {required String amount, required String userId}) async {
+      {required String amount, required String userId,OrderModel? orderModel}) async {
     bool isAdded = false;
     await getUserProfile(userId).then((value) async {
       if (value != null) {
         UserModel userModel = value;
-        userModel.deliveryAmount =
-            double.parse(userModel.deliveryAmount.toString()) +
-                double.parse(amount);
+        userModel.deliveryAmount = double.parse(orderModel?.deliveryCharge.toString()??'0');
+        userModel.walletAmount =
+        -double.parse(orderModel?.toPay?.toString() ?? '0');
+        // double.parse(userModel.deliveryAmount.toString()) +
+            //     double.parse(amount);
         await FireStoreUtils.updateUser(userModel).then((value) {
           isAdded = value;
         });

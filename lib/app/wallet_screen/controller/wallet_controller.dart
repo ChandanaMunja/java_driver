@@ -324,7 +324,7 @@ class WalletController extends GetxController {
   // }
   Rx<TextEditingController> driverRecordAmountController = TextEditingController().obs;
   //test addWalletBonusSave
-  addWalletBonusSave({ bool bonus =false,required String zoneId ,int bonusAmount =0}) async {
+  addWalletBonusSave({ bool bonus =false,required String zoneId ,int bonusAmount =0,OrderModel? orderModel}) async {
     Map<String, dynamic>  transactionModel =   {
     "id": Constant.getUuid(),
     "driverId": FireStoreUtils.getCurrentUid(),
