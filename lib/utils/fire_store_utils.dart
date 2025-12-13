@@ -130,7 +130,37 @@ class FireStoreUtils {
     }
     return userModel;
   }
-
+  static Future<bool?> updateUserWalletHomeScreen({
+    required String amount,
+    required String userId
+  }) async {
+    try {
+      var bodys = {
+        'user_id': userId,
+        'amount': double.parse(amount),
+      };
+      print("updateUserWalletHomeScreen ${bodys} ");
+      print("updateUserWalletHomeScreen ${amount} ");
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/delivery-amount/update'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(bodys),
+      );
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        return responseData['success'] ?? true;
+      } else {
+        // Handle error response
+        print('API Error: ${response.statusCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error updating wallet: $e');
+      return false;
+    }
+  }
   static Future<bool?> updateUserWallet({
     required String amount,
     required String userId
@@ -415,13 +445,11 @@ class FireStoreUtils {
           if (referralAmount != null) {
             Constant.referralAmount = referralAmount['referralAmount']?.toString() ?? '';
           }
-
           // Process emailSetting
           final emailSetting = data['emailSetting'];
           if (emailSetting != null) {
             Constant.mailSettings = MailSettings.fromJson(emailSetting);
           }
-          // Process placeHolderImage
           final placeHolderImage = data['placeHolderImage'];
           if (placeHolderImage != null) {
             Constant.placeHolderImage = placeHolderImage['image'] ?? '';
@@ -972,7 +1000,6 @@ class FireStoreUtils {
                 double.parse(element.quantity.toString()));
       }
     }
-
     if (orderModel.specialDiscount != null) {
       if (orderModel.specialDiscount != null ||
           orderModel.specialDiscount!['special_discount'] != null) {
@@ -982,7 +1009,6 @@ class FireStoreUtils {
     }
 
     // var totalamount = total - discount - specialDiscount;
-
     double basePrice =
         (subTotal / (1 + (double.parse(orderModel.adminCommission!) / 100))) -
             double.parse(orderModel.discount.toString()) -
@@ -998,7 +1024,6 @@ class FireStoreUtils {
                 taxModel: element);
       }
     }
-
     num driverAmount = 0;
     if (orderModel.paymentMethod!.toLowerCase() != "cod") {
       driverAmount += (double.parse(orderModel.deliveryCharge!) +
@@ -1013,9 +1038,13 @@ class FireStoreUtils {
     final userProfile = await getUserProfile(userId);
     final oldWallet = userProfile?.walletAmount ?? 0.0;
     final newWallet = oldWallet + double.parse(driverAmount.toString());
+
+    print("orderModel.deliveryChargeorderModel.deliveryCharge ${orderModel.deliveryCharge.toString()}");
     print('[Wallet Deduction] Order: ${orderModel.id}, Driver: $userId, Old Wallet: $oldWallet, Change: ${driverAmount.toString()}, New Wallet: $newWallet');
     await FireStoreUtils.updateUserWallet(
         userId: userId, amount: driverAmount.toString());
+    await FireStoreUtils.updateUserWalletHomeScreen(
+        userId: userId, amount: orderModel.deliveryCharge.toString());
   }
 
   static sendTopUpMail(

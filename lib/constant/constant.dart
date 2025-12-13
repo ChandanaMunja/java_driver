@@ -28,8 +28,8 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.0.126:8002/api/";
-  // static String baseUrl  = "https://web.jippymart.in/api/";
+  static String baseUrl  = "http://192.168.0.125:8000/api/";
+  //static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
@@ -39,7 +39,7 @@ class Constant {
   static const globalUrl = "https://foodie.siswebapp.com/";
   static bool singleOrderReceive = false;
   static String driverLocationUpdate = '50';
-  static String minimumDepositToRideAccept = '-1000.0'; // Allow negative balance up to -1000
+  static String minimumDepositToRideAccept = '-1000.0';
   static String minimumAmountToWithdrawal = '0.0';
   static bool isDriverVerification = false;
   static ZoneModel? selectedZone;
@@ -49,7 +49,6 @@ class Constant {
   static String jsonNotificationFileURL = '';
   static String distanceType = "km";
   static String? referralAmount = "0.0";
-
   static String googlePlayLink = "";
   static String appStoreLink = "";
   static String appVersion = "";

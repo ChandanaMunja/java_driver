@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:developer';
 
 import 'package:http/http.dart' as http;
+import 'package:jippydriver_driver/app/home_screen/controller/home_controller.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
@@ -230,27 +231,40 @@ class DeliverOrderController extends GetxController {
       return null;
     }
   }
-
+  final controller = Get.find<HomeController>();
   completedOrder() async {
     ShowToastDialog.showLoader("Please wait".tr);
     try {
+      // Extract totalCalculatedCharge from calculatedCharges
+      // Try orderModel first (from arguments), then controller.currentOrder, then controller's observable
+      dynamic chargeValue = orderModel.value.calculatedCharges?['totalCalculatedCharge'] ??
+                           controller.currentOrder.value.calculatedCharges?['totalCalculatedCharge'];
+      num? parsedCharge;
+      if (chargeValue == null) {
+        // If calculatedCharges doesn't exist, try to use HomeController's totalCalculatedCharge
+        parsedCharge = controller.totalCalculatedCharge.value;
+        print("[DeliverOrderController] calculatedCharges not found, using HomeController totalCalculatedCharge: $parsedCharge");
+      } else if (chargeValue is num) {
+        parsedCharge = chargeValue;
+      } else {
+        // Try parsing as string
+        parsedCharge = num.tryParse(chargeValue.toString());
+      }
+      orderModel.value.deliveryCharge = parsedCharge?.toString() ?? '0';
+      print("[DeliverOrderController] Set orderModel.deliveryCharge: ${orderModel.value.deliveryCharge}");
       print("[DeliverOrderController] Playing sound");
       await AudioPlayerService.playSound(false);
-
       print("[DeliverOrderController] Setting status to completed");
       orderModel.value.status = Constant.orderCompleted;
-
       // Ensure driverID is set
       if (orderModel.value.driverID == null) {
         orderModel.value.driverID = Constant.userModel?.id;
         print("[DeliverOrderController] driverID was null, set to: ${orderModel.value.driverID}");
       }
-
-      print("driverID: ${orderModel.value.driverID}");
+      print("driverID:   ${orderModel.value.driverID}");
       print("paymentMethod: ${orderModel.value.paymentMethod}");
       print("deliveryCharge: ${orderModel.value.deliveryCharge}");
       print("tipAmount: ${orderModel.value.tipAmount}");
-
       if (orderModel.value.driverID == null ||
           orderModel.value.paymentMethod == null ||
           orderModel.value.deliveryCharge == null ||
@@ -259,12 +273,10 @@ class DeliverOrderController extends GetxController {
         ShowToastDialog.showToast("Order data is incomplete. Cannot complete order.");
         return;
       }
-
       print("[DeliverOrderController] Updating wallet amount");
       try {
         // Try to fetch toPay from API, but fallback to order model value if available
         double? toPay = await fetchToPay(orderModel.value.id ?? '0');
-        
         // If API fetch failed, try to use existing toPay value from order model
         if (toPay == null && orderModel.value.toPay != null && orderModel.value.toPay!.isNotEmpty) {
           try {
@@ -296,16 +308,29 @@ class DeliverOrderController extends GetxController {
       deliveryAmountBonusAmount();
       // Remove order from other drivers' orderRequestData
       await FireStoreUtils.removeOrderFromOtherDrivers(
-        orderId: orderModel.value.id!,
+        orderId: orderModel.value.id??'',
         assignedDriverId: orderModel.value.driverID!,
       );
+      // IMPORTANT: Set deliveryAmount RIGHT BEFORE updateUser to ensure it's not overwritten
+      // This must happen after all other operations that might affect Constant.userModel
+      if (parsedCharge != null) {
+        Constant.userModel?.deliveryAmount = parsedCharge;
+        print("[DeliverOrderController] Set deliveryAmount BEFORE updateUser: ${Constant.userModel?.deliveryAmount}");
+      } else {
+        print("[DeliverOrderController] WARNING: Could not parse totalCalculatedCharge, deliveryAmount will be 0");
+        Constant.userModel?.deliveryAmount = 0;
+      }
+      // Update user lists
       if (Constant.userModel?.vendorID?.isNotEmpty == true) {
         print("[DeliverOrderController] Removing order from user lists");
         Constant.userModel?.orderRequestData?.remove(orderModel.value.id);
         Constant.userModel?.inProgressOrderID?.remove(orderModel.value.id);
-        await FireStoreUtils.updateUser(Constant.userModel!);
       }
-
+      // Verify deliveryAmount is set before updating user
+      print("[DeliverOrderController] Before updateUser - deliveryAmount: ${Constant.userModel?.deliveryAmount}");
+      print("[DeliverOrderController] User JSON before update: ${Constant.userModel?.toJson()}");
+      // Always update user with deliveryAmount (regardless of vendorID)
+      await FireStoreUtils.updateUser(Constant.userModel!);
       print("[DeliverOrderController] Checking if first order");
       await FireStoreUtils.getFirestOrderOrNOt(orderModel.value)
           .then((value) async {
@@ -322,7 +347,6 @@ class DeliverOrderController extends GetxController {
           {},
         );
       }
-
       ShowToastDialog.closeLoader();
       print("[DeliverOrderController] Order completed, closing loader and going back");
       Get.back(result: true);

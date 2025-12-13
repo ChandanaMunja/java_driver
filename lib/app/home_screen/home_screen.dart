@@ -1228,6 +1228,7 @@ Obx(
                                       ),
                                     ),
                                   ),
+                                  //finded
                                   Text(
                                     "${(
                                         (double.tryParse(controller.currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0)
@@ -1378,6 +1379,31 @@ Obx(
         ),
       ),
     );
+  }
+
+  /// Helper method to determine the correct delivery button text based on order status
+  String _getDeliveryButtonText(HomeController controller) {
+    final orderStatus = controller.currentOrder.value.status;
+    final isDirectDelivery = controller.driverModel.value.vendorID?.isEmpty == true;
+    
+    // Pickup stage: Order Shipped or Driver Accepted
+    if (orderStatus == Constant.orderShipped || 
+        orderStatus == Constant.driverAccepted) {
+      return "Reached restaurant for Pickup".tr;
+    }
+    
+    // Delivery stage: In Transit
+    if (orderStatus == Constant.orderInTransit) {
+      // Direct delivery (no restaurant) - customer pickup
+      if (isDirectDelivery) {
+        return "Reached the Customers Door Steps".tr;
+      }
+      // Restaurant delivery - mark as delivered
+      return "Order Delivered".tr;
+    }
+    
+    // Fallback: Default to "Order Delivered" for any other status
+    return "Order Delivered".tr;
   }
 
   // showDriverBottomSheet(themeChange, HomeController controller) {
@@ -1639,7 +1665,7 @@ Obx(
                                                 CrossAxisAlignment.start,
                                             children: [
                                               Text(
-                                                "${controller.currentOrder.value.vendor!.title}",
+                                                "${controller.currentOrder.value.vendor?.title}",
                                                 textAlign: TextAlign.start,
                                                 style: TextStyle(
                                                   fontFamily:
@@ -1651,7 +1677,7 @@ Obx(
                                                 ),
                                               ),
                                               Text(
-                                                "${controller.currentOrder.value.vendor!.location}",
+                                                "${controller.currentOrder.value.vendor?.location}",
                                                 textAlign: TextAlign.start,
                                                 style: TextStyle(
                                                   fontFamily:
@@ -2039,14 +2065,7 @@ Obx(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
-                    controller.currentOrder.value.status ==
-                                Constant.orderShipped ||
-                            controller.currentOrder.value.status ==
-                                Constant.driverAccepted
-                        ? "Reached restaurant for Pickup".tr
-                        : controller.driverModel.value.vendorID?.isEmpty == true
-                            ? "Reached the Customers Door Steps".tr
-                            : "Order Delivered".tr,
+                    _getDeliveryButtonText(controller),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: themeChange.getThem()

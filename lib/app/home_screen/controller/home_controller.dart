@@ -1578,7 +1578,6 @@ if(arrowDrop.value){
           final body = jsonDecode(response.body);
           if (body["success"] == true && body["data"] != null) {
             currentOrder.value = OrderModel.fromJson(body["data"]);
-
             AppLogger.log(
                 "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
                 tag: "API"

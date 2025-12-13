@@ -220,7 +220,6 @@ class LoginController extends GetxController {
     try {
       final prefs = await SharedPreferences.getInstance();
       final String? userJson = prefs.getString('userData');
-
       if (userJson != null) {
         final Map<String, dynamic> userData = json.decode(userJson);
         return UserModel.fromJson(userData);
@@ -292,6 +291,7 @@ class LoginController extends GetxController {
       await prefs.remove('userBankDetails');
       await prefs.remove('subscriptionPlanId');
       await prefs.remove('subscriptionExpiryDate');
+      // prefs.clear();
       Get.offAll(const LoginScreen());
       print("✅ All user data cleared from SharedPreferences");
     } catch (e) {
