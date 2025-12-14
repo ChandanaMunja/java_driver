@@ -47,7 +47,7 @@ class LoginController extends GetxController {
               if (userModel.active == true) {
                 log(' [32m$fromScreen -> Getting FCM token... [0m');
                 userModel.fcmToken = await NotificationService.getToken();
-                log(' [32m$fromScreen -> Updating user with FCM token... [0m');
+                log(' [32m$fromScreen -> ${userModel.fcmToken} Updating user with FCM token... [0m');
                 await FireStoreUtils.updateUser(userModel);
                 log(' [32m$fromScreen -> DashBoardScreen [0m');
                 Get.offAll(() => DashBoardScreen(userModel: userModel));

@@ -195,12 +195,16 @@ class FireStoreUtils {
     await getUserProfile(userId).then((value) async {
       if (value != null) {
         UserModel userModel = value;
-        userModel.deliveryAmount = double.parse(orderModel?.deliveryCharge.toString()??'0');
-        userModel.walletAmount =
-        -double.parse(orderModel?.toPay?.toString() ?? '0');
+        // userModel.deliveryAmount =
+            // double.parse(orderModel?.deliveryCharge.toString()??'0');
+        // userModel.walletAmount =
+        // -double.parse(orderModel?.toPay?.toString() ?? '0');
+        print("updateUserDeliveryAmount ${userModel.toJson()}");
         // double.parse(userModel.deliveryAmount.toString()) +
             //     double.parse(amount);
-        await FireStoreUtils.updateUser(userModel).then((value) {
+        // IMPORTANT: Use updateUserWithoutWalletDelivery to avoid interfering with
+        // wallet/delivery amounts that are managed by separate APIs
+        await FireStoreUtils.updateUserWithoutWalletDelivery(userModel).then((value) {
           isAdded = value;
         });
       }
@@ -222,6 +226,42 @@ class FireStoreUtils {
         if (responseData['success'] == true) {
           Constant.userModel = userModel;
           log("User updated successfully: ${responseData['message']}");
+          return true;
+        } else {
+          log("Failed to update user: ${responseData['message'] ?? 'Unknown error'}");
+          return false;
+        }
+      } else {
+        log("Failed to update user: ${response.statusCode} - ${response.body}");
+        return false;
+      }
+    } catch (error) {
+      log("Failed to update user: $error");
+      return false;
+    }
+  }
+
+  /// Update user without walletAmount and deliveryAmount fields
+  /// This is used during order completion to avoid overwriting wallet/delivery amounts
+  /// that are managed by separate APIs (driver-sql/wallet/update and driver-sql/delivery-amount/update)
+  static Future<bool> updateUserWithoutWalletDelivery(UserModel userModel) async {
+    try {
+      Map<String, dynamic> userData = userModel.toJson();
+      userData.remove('wallet_amount');
+      userData.remove('deliveryAmount');
+      log("updateUserWithoutWalletDelivery ${userData}");
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/users/update'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(userData),
+      );
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['success'] == true) {
+          // Don't update Constant.userModel here - it should be refreshed from API
+          log("User updated successfully (without wallet/delivery): ${responseData['message']}");
           return true;
         } else {
           log("Failed to update user: ${responseData['message'] ?? 'Unknown error'}");
@@ -984,6 +1024,7 @@ class FireStoreUtils {
     return emailTemplateModel;
   }
   static updateWallateAmount(OrderModel orderModel) async {
+    log('[updateWallateAmount] START - Order ID: ${orderModel.id}');
     double subTotal = 0.0;
     double specialDiscount = 0.0;
     double taxAmount = 0.0;
@@ -1009,7 +1050,6 @@ class FireStoreUtils {
             orderModel.specialDiscount!['special_discount'].toString());
       }
     }
-
     // var totalamount = total - discount - specialDiscount;
     double basePrice =
         (subTotal / (1 + (double.parse(orderModel.adminCommission!) / 100))) -
@@ -1036,17 +1076,20 @@ class FireStoreUtils {
       driverAmount += -double.parse(orderModel.toPay.toString());
     }
     // Debug print: show deduction info
-    final userId = orderModel.driverID!;
+    final userId = orderModel.driverID??'';
     final userProfile = await getUserProfile(userId);
     final oldWallet = userProfile?.walletAmount ?? 0.0;
     final newWallet = oldWallet + double.parse(driverAmount.toString());
 
     print("orderModel.deliveryChargeorderModel.deliveryCharge ${orderModel.deliveryCharge.toString()}");
     print('[Wallet Deduction] Order: ${orderModel.id}, Driver: $userId, Old Wallet: $oldWallet, Change: ${driverAmount.toString()}, New Wallet: $newWallet');
+    log('[updateWallateAmount] Calling updateUserWallet with amount: ${driverAmount.toString()}');
     await FireStoreUtils.updateUserWallet(
         userId: userId, amount: driverAmount.toString());
+    log('[updateWallateAmount] Calling updateUserWalletHomeScreen with amount: ${orderModel.deliveryCharge.toString()}');
     await FireStoreUtils.updateUserWalletHomeScreen(
         userId: userId, amount: orderModel.deliveryCharge.toString());
+    log('[updateWallateAmount] END - Order ID: ${orderModel.id}');
   }
 
   static sendTopUpMail(

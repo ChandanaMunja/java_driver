@@ -336,28 +336,23 @@ class WalletController extends GetxController {
       "bonusAmount":bonusAmount,
     };
     print(" transactionModel ${transactionModel}");
+    // IMPORTANT: Only record the transaction, do NOT update user wallet/delivery amounts
+    // The wallet/delivery amounts are already updated by updateWallateAmount() in completedOrder()
+    // Calling updateUserDeliveryAmount() here would interfere with the correct values
     await FireStoreUtils.setDriverWalletRecord(transactionModel)
         .then((value) async {
-      String? userId = await LoginController.getFirebaseId();
       if (value == true) {
-        await FireStoreUtils.updateUserDeliveryAmount(
-            amount: driverRecordAmountController.value.text,
-            userId:userId)
-            .then((value) {
-          getWalletTransaction();
-          Get.back();
-        });
+        getWalletTransaction();
+        Get.back();
       }
     });
     ShowToastDialog.showToast("Amount Top-up successfully".tr);
   }
 
   // final _flutterPaypalNativePlugin = FlutterPaypalNative.instance;
-
   // void initPayPal() async {
   //   //set debugMode for error logging
   //   FlutterPaypalNative.isDebugMode = paytmModel.value.isSandboxEnabled == true ? true : false;
-
   //   //initiate payPal plugin
   //   await _flutterPaypalNativePlugin.init(
   //     //your app id !!! No Underscore!!! see readme.md for help

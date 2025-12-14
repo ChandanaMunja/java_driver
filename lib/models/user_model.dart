@@ -540,8 +540,8 @@ class UserModel {
     data['fcmToken'] = fcmToken;
     data['countryCode'] = countryCode;
     data['phoneNumber'] = phoneNumber;
-    data['wallet_amount'] = walletAmount ?? 0;
-    data['deliveryAmount'] = deliveryAmount ?? 0;
+    // data['wallet_amount'] = walletAmount ?? 0;
+    // data['deliveryAmount'] = deliveryAmount ?? 0;
     data['createdAt'] = createdAt;
     data['active'] = active;
     data['isActive'] = isActive;

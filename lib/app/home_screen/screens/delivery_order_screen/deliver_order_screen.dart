@@ -507,7 +507,7 @@ class DeliverOrderScreen extends StatelessWidget {
                     ),
                   ),
                   bottomNavigationBar: InkWell(
-                    onTap: () async {
+                    onTap: controller.isCompletingOrder.value ? null : () async {
                       if (controller.conformPickup.value == false) {
                         ShowToastDialog.showToast("Conform Deliver order".tr);
                       } else {
@@ -516,12 +516,16 @@ class DeliverOrderScreen extends StatelessWidget {
                     },
                     child: SafeArea(
                       child: Container(
-                        color: AppThemeData.driverApp300,
+                        color: controller.isCompletingOrder.value 
+                            ? AppThemeData.grey400 
+                            : AppThemeData.driverApp300,
                         width: Responsive.width(100, context),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            "Make Order Delivered".tr,
+                            controller.isCompletingOrder.value 
+                                ? "Processing...".tr 
+                                : "Make Order Delivered".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: themeChange.getThem()

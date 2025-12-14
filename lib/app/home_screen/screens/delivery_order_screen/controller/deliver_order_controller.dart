@@ -20,6 +20,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class DeliverOrderController extends GetxController {
   RxBool isLoading = true.obs;
   RxBool conformPickup = false.obs;
+  RxBool isCompletingOrder = false.obs; // Guard to prevent duplicate calls
 
 
   void confirmPickupFunction(){
@@ -149,7 +150,7 @@ class DeliverOrderController extends GetxController {
         //   if(orderCount>1 ){
           final totalAmount = totalCalculatedCharge + bonusAmount;
           walletController.driverRecordAmountController.value.text = totalAmount.toStringAsFixed(2);
-          walletController.addWalletBonusSave(bonus:true, zoneId: Constant.userModel?.zoneId??'',bonusAmount: bonusAmount,
+          walletController.addWalletBonusSave(bonus:true, zoneId: Constant.userModel?.zoneId??'',bonusAmount: bonusAmount,orderModel: orderModel.value,
           );
           Get.dialog(
             AlertDialog(
@@ -171,13 +172,13 @@ class DeliverOrderController extends GetxController {
         else{
           print("totalCalculatedCharge  1 $totalCalculatedCharge");
           walletController.driverRecordAmountController.value.text = totalCalculatedCharge.toString();
-          walletController.addWalletBonusSave(bonus:false, zoneId: Constant.userModel?.zoneId??'',
+          walletController.addWalletBonusSave(bonus:false, zoneId: Constant.userModel?.zoneId??'',orderModel: orderModel.value
           );
         }
       }else{
         print("totalCalculatedCharge  2 $totalCalculatedCharge");
         walletController.driverRecordAmountController.value.text = totalCalculatedCharge.toString();
-        walletController.addWalletBonusSave(bonus:false, zoneId: Constant.userModel?.zoneId??'',
+        walletController.addWalletBonusSave(bonus:false, zoneId: Constant.userModel?.zoneId??'',orderModel: orderModel.value
         );
       }}catch(e){
       print("totalCalculatedCharge deliveryAmountBonusAmount ${e.toString()} ");
@@ -233,6 +234,12 @@ class DeliverOrderController extends GetxController {
   }
   final controller = Get.find<HomeController>();
   completedOrder() async {
+    // Prevent duplicate calls
+    if (isCompletingOrder.value) {
+      print("[DeliverOrderController] Order completion already in progress, ignoring duplicate call");
+      return;
+    }
+    isCompletingOrder.value = true;
     ShowToastDialog.showLoader("Please wait".tr);
     try {
       // Extract totalCalculatedCharge from calculatedCharges
@@ -302,6 +309,7 @@ class DeliverOrderController extends GetxController {
         ShowToastDialog.showToast("Failed to fetch billing info. Cannot complete order.");
         return;
       }
+      // Update wallet and delivery amount via separate APIs first
       await FireStoreUtils.updateWallateAmount(orderModel.value);
       print("[DeliverOrderController] Setting order in Firestore");
       await FireStoreUtils.setOrder(orderModel.value);
@@ -311,26 +319,42 @@ class DeliverOrderController extends GetxController {
         orderId: orderModel.value.id??'',
         assignedDriverId: orderModel.value.driverID!,
       );
-      // IMPORTANT: Set deliveryAmount RIGHT BEFORE updateUser to ensure it's not overwritten
-      // This must happen after all other operations that might affect Constant.userModel
-      if (parsedCharge != null) {
-        Constant.userModel?.deliveryAmount = parsedCharge;
-        print("[DeliverOrderController] Set deliveryAmount BEFORE updateUser: ${Constant.userModel?.deliveryAmount}");
+      // IMPORTANT: Fetch latest user data from API AFTER wallet/delivery amount updates
+      // This ensures we have the correct accumulated values from the separate APIs
+      // Use updateUserWithoutWalletDelivery to avoid sending wallet/delivery amounts
+      // which are managed by separate APIs (driver-sql/wallet/update and driver-sql/delivery-amount/update)
+      print("[DeliverOrderController] Fetching latest user data after wallet/delivery updates");
+      UserModel? latestUserData = await FireStoreUtils.getUserProfile(Constant.userModel?.id ?? '');
+      if (latestUserData != null) {
+        // Update only the order lists
+        if (latestUserData.vendorID?.isNotEmpty == true) {
+          print("[DeliverOrderController] Removing order from user lists");
+          latestUserData.orderRequestData?.remove(orderModel.value.id);
+          latestUserData.inProgressOrderID?.remove(orderModel.value.id);
+        }
+        // IMPORTANT: Use updateUserWithoutWalletDelivery to exclude wallet/delivery amounts
+        // The actual wallet and delivery amount updates are handled by separate APIs:
+        // - driver-sql/wallet/update (called in updateWallateAmount) - handles walletAmount
+        // - driver-sql/delivery-amount/update (called in updateWallateAmount) - handles deliveryAmount
+        // By excluding these fields from users/update, we prevent overwriting the correct accumulated values
+        print("[DeliverOrderController] Updating user without wallet/delivery amounts");
+        await FireStoreUtils.updateUserWithoutWalletDelivery(latestUserData);
+        // Refresh user data to get the correct wallet/delivery amounts from database
+        UserModel? refreshedUser = await FireStoreUtils.getUserProfile(Constant.userModel?.id ?? '');
+        if (refreshedUser != null) {
+          Constant.userModel = refreshedUser;
+          print("[DeliverOrderController] Refreshed user data - walletAmount: ${refreshedUser.walletAmount}, deliveryAmount: ${refreshedUser.deliveryAmount}");
+        }
       } else {
-        print("[DeliverOrderController] WARNING: Could not parse totalCalculatedCharge, deliveryAmount will be 0");
-        Constant.userModel?.deliveryAmount = 0;
+        // Fallback: Update user lists in Constant.userModel if API fetch failed
+        if (Constant.userModel?.vendorID?.isNotEmpty == true) {
+          print("[DeliverOrderController] Removing order from user lists (fallback)");
+          Constant.userModel?.orderRequestData?.remove(orderModel.value.id);
+          Constant.userModel?.inProgressOrderID?.remove(orderModel.value.id);
+        }
+        // Use updateUserWithoutWalletDelivery to exclude wallet/delivery amounts
+        await FireStoreUtils.updateUserWithoutWalletDelivery(Constant.userModel!);
       }
-      // Update user lists
-      if (Constant.userModel?.vendorID?.isNotEmpty == true) {
-        print("[DeliverOrderController] Removing order from user lists");
-        Constant.userModel?.orderRequestData?.remove(orderModel.value.id);
-        Constant.userModel?.inProgressOrderID?.remove(orderModel.value.id);
-      }
-      // Verify deliveryAmount is set before updating user
-      print("[DeliverOrderController] Before updateUser - deliveryAmount: ${Constant.userModel?.deliveryAmount}");
-      print("[DeliverOrderController] User JSON before update: ${Constant.userModel?.toJson()}");
-      // Always update user with deliveryAmount (regardless of vendorID)
-      await FireStoreUtils.updateUser(Constant.userModel!);
       print("[DeliverOrderController] Checking if first order");
       await FireStoreUtils.getFirestOrderOrNOt(orderModel.value)
           .then((value) async {
@@ -343,17 +367,19 @@ class DeliverOrderController extends GetxController {
       if (orderModel.value.author?.fcmToken != null) {
         await SendNotification.sendFcmMessage(
           Constant.driverCompleted,
-          orderModel.value.author!.fcmToken.toString(),
+          orderModel.value.author?.fcmToken.toString() ??'',
           {},
         );
       }
       ShowToastDialog.closeLoader();
       print("[DeliverOrderController] Order completed, closing loader and going back");
+      isCompletingOrder.value = false;
       Get.back(result: true);
     } catch (e) {
       print("[DeliverOrderController] Error in completedOrder: $e");
       ShowToastDialog.closeLoader();
       ShowToastDialog.showToast("Failed to complete order");
+      isCompletingOrder.value = false; // Reset flag on error
     }
   }
   // completedOrder() async {
