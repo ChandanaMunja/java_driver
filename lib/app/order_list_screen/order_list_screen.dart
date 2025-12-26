@@ -15,9 +15,20 @@ import 'package:provider/provider.dart';
 import 'package:timelines_plus/timelines_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-class OrderListScreen extends StatelessWidget {
+class OrderListScreen extends StatefulWidget {
   const OrderListScreen({super.key});
 
+  @override
+  State<OrderListScreen> createState() => _OrderListScreenState();
+}
+
+class _OrderListScreenState extends State<OrderListScreen> {
+ final orderListController =  Get.put(OrderListController());
+  @override
+  void initState() {
+   orderListController.getOrder();
+    super.initState();
+  }
   @override
   Widget build(BuildContext context) {
     AppLogger.log('OrderListScreen build() called', tag: 'Screen');

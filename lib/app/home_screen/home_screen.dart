@@ -53,7 +53,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
   super.initState();
   WidgetsBinding.instance.addObserver(this);
   }
-
   @override
   void dispose() {
   WidgetsBinding.instance.removeObserver(this);
@@ -64,10 +63,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
     final controller = Get.find<HomeController>();
     if ((state == AppLifecycleState.paused || state == AppLifecycleState.inactive)
         && ModalRoute.of(context)?.isCurrent == true) {
-      // Only enter PiP if this screen is currently visible
       enterPipMode();
     } else if (state == AppLifecycleState.resumed && ModalRoute.of(context)?.isCurrent == true) {
-      // When app resumes, immediately refresh orders
       isInPipMode.value = false;
       AppLogger.log('App resumed - triggering immediate order refresh', tag: 'Lifecycle');
       controller.forceRefreshOrders();
@@ -75,8 +72,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
       isInPipMode.value = false;
     }
   }
-
-
   Future<void> enterPipMode() async {
   try {
   await AndroidPIP().enterPipMode(aspectRatio: [7, 9]);
@@ -85,10 +80,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
   debugPrint("Error entering PiP: $e");
   }
   }
-
   @override
   Widget build(BuildContext context) {
-
     final themeChange = Provider.of<DarkThemeProvider>(context);
     AppLogger.log('HomeScreen build() called', tag: 'Screen');
     return GetX(
@@ -197,13 +190,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                             ? Padding(
                                 padding: const EdgeInsets.all(8.0),
                                 child: Text(
-                                  "${'You have to minimum'.tr} ${Constant.amountShow(amount: Constant.minimumDepositToRideAccept.toString())} ${'wallet amount to receiving Order'.tr}",
+                                  "${'Please Contact your fleet manager your balance reached'.tr} ${Constant.amountShow(amount: Constant.minimumDepositToRideAccept.toString())}",
                                   style: TextStyle(
                                       color: themeChange.getThem()
                                           ? AppThemeData.grey50
                                           : AppThemeData.grey900,
                                       fontSize: 14,
                                       fontFamily: AppThemeData.semiBold),
+                                  textAlign: TextAlign.center,
                                 ),
                               )
                             : const SizedBox(),

@@ -26,13 +26,10 @@ class OrderListController extends GetxController{
     try {
       isLoading.value = true;
       orderList.clear();
-      // API endpoint for fetching orders
       final url = Uri.parse('${Constant.baseUrl}driver/orders');
-      // Request body
       final body = jsonEncode({
         "driver_id": Constant.userModel!.id,
       });
-
       final response = await http.post(
         url,
         headers: {

@@ -118,11 +118,11 @@ class WalletScreen extends StatelessWidget {
                                       ),
                                     ),
                                     child: const Text(
-                                      "Wallet balance is below minimum required amount",
+                                      "Please Contact Your fleet Manager",
                                       style: TextStyle(
                                         color: Colors.red,
-                                        fontSize: 12,
-                                        fontFamily: AppThemeData.medium,
+                                        fontSize: 15,
+                                        fontFamily: AppThemeData.bold,
                                       ),
                                     ),
                                   ),

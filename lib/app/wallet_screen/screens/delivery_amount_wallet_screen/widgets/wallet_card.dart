@@ -57,26 +57,26 @@ Widget deliveryWalletCard({required BuildContext context,required DarkThemeProvi
             ),
             const SizedBox(height: 8),
             // Wallet status indicator (show only if wallet is below -1000)
-            if ((controller.userModel.value.walletAmount ?? 0.0).toDouble() < -1000)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.red,
-                    width: 1,
-                  ),
-                ),
-                child: const Text(
-                  "Wallet balance is below minimum required amount",
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 12,
-                    fontFamily: AppThemeData.medium,
-                  ),
-                ),
-              ),
+            // if ((controller.userModel.value.walletAmount ?? 0.0).toDouble() < -1000)
+            //   Container(
+            //     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            //     decoration: BoxDecoration(
+            //       color: Colors.red.withOpacity(0.1),
+            //       borderRadius: BorderRadius.circular(12),
+            //       border: Border.all(
+            //         color: Colors.red,
+            //         width: 1,
+            //       ),
+            //     ),
+            //     child: const Text(
+            //       "Wallet balance is below minimum required amount",
+            //       style: TextStyle(
+            //         color: Colors.red,
+            //         fontSize: 12,
+            //         fontFamily: AppThemeData.medium,
+            //       ),
+            //     ),
+            //   ),
             const SizedBox(
               height: 20,
             ),
