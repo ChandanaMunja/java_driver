@@ -1,4 +1,3 @@
-import 'package:jippydriver_driver/app/order_list_screen/order_details_screen.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/controllers/dash_board_controller.dart';
 import 'package:jippydriver_driver/controllers/order_list_controller.dart';
@@ -23,18 +22,20 @@ class OrderListScreen extends StatefulWidget {
 }
 
 class _OrderListScreenState extends State<OrderListScreen> {
- final orderListController =  Get.put(OrderListController());
+  final orderListController = Get.put(OrderListController());
+  
   @override
   void initState() {
-   orderListController.getOrder();
     super.initState();
+    // getOrder() is already called in controller's onInit(), no need to call it again
   }
+  
   @override
   Widget build(BuildContext context) {
     AppLogger.log('OrderListScreen build() called', tag: 'Screen');
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
-        init: OrderListController(),
+    return GetX<OrderListController>(
+        init: orderListController,
         builder: (controller) {
           return Scaffold(
             body: controller.isLoading.value

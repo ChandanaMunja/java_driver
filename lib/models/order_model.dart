@@ -69,6 +69,7 @@ class OrderModel {
   });
 
   OrderModel.fromJson(Map<String, dynamic> json) {
+    try {
     // Handle address coming as Map or JSON string
     if (json['address'] != null) {
       if (json['address'] is Map) {
@@ -114,28 +115,53 @@ class OrderModel {
       });
     }
     adminCommissionType = json['adminCommissionType'];
-    // Handle vendor coming as Map or JSON string
+    // Handle vendorID - can come from 'vendorID' field or 'vendor' field if it's just an ID string
+    vendorID = json['vendorID']?.toString() ?? 
+               (json['vendor'] is String && json['vendor'] != null ? json['vendor']?.toString() : null);
+    
+    // Handle vendor coming as Map, JSON string, or null
     if (json['vendor'] != null) {
       if (json['vendor'] is Map) {
-        vendor = VendorModel.fromJson(Map<String, dynamic>.from(json['vendor']));
+        try {
+          vendor = VendorModel.fromJson(Map<String, dynamic>.from(json['vendor']));
+          // Ensure vendorID is set from vendor object if not already set
+          if (vendorID == null && vendor?.id != null) {
+            vendorID = vendor!.id;
+          }
+        } catch (e) {
+          print('Error parsing vendor Map: $e');
+          vendor = null;
+        }
       } else if (json['vendor'] is String) {
         try {
-          final vendorJson = jsonDecode(json['vendor']);
+          final vendorString = json['vendor'] as String;
+          // Try to parse as JSON string first
+          final vendorJson = jsonDecode(vendorString);
           if (vendorJson is Map) {
             vendor = VendorModel.fromJson(Map<String, dynamic>.from(vendorJson));
+            // Ensure vendorID is set from vendor object if not already set
+            if (vendorID == null && vendor?.id != null) {
+              vendorID = vendor!.id;
+            }
           } else {
-            vendorID = json['vendor']?.toString();
+            // If it's not a JSON string, treat it as vendorID
+            vendorID = vendorString;
             vendor = null;
           }
         } catch (e) {
-          print('Error decoding vendor JSON string: $e');
+          // If JSON decode fails, treat the string as vendorID
+          print('Error decoding vendor JSON string: $e - treating as vendorID');
           vendorID = json['vendor']?.toString();
           vendor = null;
         }
-    } else {
-      vendorID = json['vendor']?.toString();
-      vendor = null;
+      } else {
+        // vendor is not null but not Map or String - set vendorID if possible
+        vendorID = json['vendor']?.toString();
+        vendor = null;
       }
+    } else {
+      // vendor is null - vendorID should already be set from vendorID field above
+      vendor = null;
     }
     id = json['id']?.toString();
     adminCommission = json['adminCommission']?.toString();
@@ -213,6 +239,13 @@ class OrderModel {
           calculatedCharges = null;
         }
       }
+    }
+    } catch (e, stackTrace) {
+      print('Error parsing OrderModel from JSON: $e');
+      print('Stack trace: $stackTrace');
+      print('JSON keys: ${json.keys.toList()}');
+      // Re-throw to let caller handle it
+      rethrow;
     }
   }
   bool? _parseBool(dynamic value) {

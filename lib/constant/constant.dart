@@ -28,8 +28,8 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.0.27:8002/api/";
-  // static String baseUrl  = "https://web.jippymart.in/api/";
+  // static String baseUrl  = "http://192.168.0.21:8000/api/";
+  static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
@@ -43,7 +43,8 @@ class Constant {
   static String minimumAmountToWithdrawal = '0.0';
   static bool isDriverVerification = false;
   static ZoneModel? selectedZone;
-  static String mapAPIKey = "";
+  // Static API key for testing - from settings API: AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34
+  static String mapAPIKey = "AIzaSyCKCRzqaR1-uzbnEmB-JqVkbUKNGOJHv34";
   static String placeHolderImage = "";
   static String senderId = '';
   static String jsonNotificationFileURL = '';

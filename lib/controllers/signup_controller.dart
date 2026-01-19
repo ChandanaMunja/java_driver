@@ -132,9 +132,10 @@ class SignupController extends GetxController {
         log("🚀 Signup Request Body:\n$prettyJson");
         // Replace Firebase Auth with API call
         final response = await http.post(
-          Uri.parse('${Constant.baseUrl}driver/signup'),
+          Uri.parse('${Constant.baseUrl}drivers/signup'),
           headers: {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',  // <--- ADD THIS LINE
           },
           body: json.encode(bodySignup),
         );

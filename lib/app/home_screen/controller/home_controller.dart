@@ -30,6 +30,15 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:typed_data';
 // import '../services/order_service.dart';
 // import 'package:jippydriver_driver/services/order_service.dart';
+
+// Simple CancelToken class for request cancellation
+class CancelToken {
+  bool _isCancelled = false;
+  bool get isCancelled => _isCancelled;
+  void cancel() => _isCancelled = true;
+  void reset() => _isCancelled = false;
+}
+
 class HomeController extends GetxController {
 
   RxBool arrowDrop = false.obs;
@@ -186,9 +195,16 @@ if(arrowDrop.value){
     return vendorModel;
   }
   Future<void> calculateRestaurantToCustomerDetails() async {
+    // Use latitudeValue/longitudeValue getters which handle both latitude/longitude fields and coordinates GeoPoint
+    final vendorLat = currentOrder.value.vendor?.latitudeValue ?? 
+                      currentOrder.value.vendor?.latitude ?? 
+                      currentOrder.value.vendor?.coordinates?.latitude ?? 0.0;
+    final vendorLng = currentOrder.value.vendor?.longitudeValue ?? 
+                      currentOrder.value.vendor?.longitude ?? 
+                      currentOrder.value.vendor?.coordinates?.longitude ?? 0.0;
     double distanceInMeters = Geolocator.distanceBetween(
-      currentOrder.value.vendor?.latitude ?? 0.0,
-      currentOrder.value.vendor?.longitude ?? 0.0,
+      vendorLat,
+      vendorLng,
       currentOrder.value.address?.location!.latitude ?? 0.0,
       currentOrder.value.address?.location!.longitude ?? 0.0,
     );
@@ -243,6 +259,22 @@ if(arrowDrop.value){
   Timer? _orderPollingTimer;
   bool _isPolling = false;
   bool _isRefreshing = false; // Flag to prevent multiple simultaneous refreshes
+  Duration _currentPollInterval = Duration(seconds: 5); // Current polling interval
+  
+  // Track which orders have already been notified to prevent duplicates
+  final Set<String> _notifiedOrderIds = <String>{};
+  
+  // Performance optimizations
+  Timer? _changeDataDebounceTimer;
+  String? _lastRouteCacheKey; // Cache key for route calculations
+  List<LatLng>? _cachedPolylineCoordinates; // Cached route coordinates
+  CancelToken? _currentApiRequest; // For canceling duplicate API calls
+  DateTime? _lastRouteCalculationTime;
+  DateTime? _lastGetCurrentOrderTime;
+  String? _lastFetchedOrderId; // Track last fetched order to avoid redundant calls
+  static const Duration _routeCacheDuration = Duration(minutes: 2); // Cache routes for 2 minutes
+  static const Duration _changeDataDebounceDelay = Duration(milliseconds: 300); // Debounce changeData calls
+  static const Duration _minGetCurrentOrderInterval = Duration(seconds: 2); // Minimum interval between getCurrentOrder calls
   
   // Local notifications plugin for manual order updates
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
@@ -274,6 +306,12 @@ if(arrowDrop.value){
   
   /// Show local notification when new orders are detected (for manual updates)
   Future<void> _showNewOrderNotification(String orderId) async {
+    // Prevent duplicate notifications for the same order
+    if (_notifiedOrderIds.contains(orderId)) {
+      AppLogger.log('⚠️ Notification already shown for order: $orderId, skipping duplicate', tag: 'Notifications');
+      return;
+    }
+    
     try {
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'manual_order_channel',
@@ -315,6 +353,9 @@ if(arrowDrop.value){
         notificationDetails,
         payload: orderId,
       );
+      
+      // Mark this order as notified to prevent duplicates
+      _notifiedOrderIds.add(orderId);
       
       AppLogger.log('✅ Local notification shown for order: $orderId', tag: 'Notifications');
     } catch (e) {
@@ -539,16 +580,19 @@ if(arrowDrop.value){
   void onClose() {
     // Cancel polling timer when controller is disposed
     _orderPollingTimer?.cancel();
+    _changeDataDebounceTimer?.cancel();
+    _currentApiRequest?.cancel();
     super.onClose();
   }
   
-  /// Start automatic polling for new orders
+  /// Start automatic polling for new orders with adaptive frequency
   void _startOrderPolling() {
     if (_isPolling) return;
     _isPolling = true;
-    AppLogger.log('Starting automatic order polling every 5 seconds', tag: 'Polling');
-
-    _orderPollingTimer = Timer.periodic(Duration(seconds: 5), (timer) async {
+    _currentPollInterval = Duration(seconds: 5); // Start with 5 seconds
+    AppLogger.log('Starting automatic order polling with adaptive frequency', tag: 'Polling');
+    
+    void _pollCallback(Timer timer) async {
       // Prevent multiple simultaneous refreshes
       if (_isRefreshing) {
         AppLogger.log('Skipping refresh - already in progress', tag: 'Polling');
@@ -558,12 +602,32 @@ if(arrowDrop.value){
       try {
         // Refresh driver data to get latest orderRequestData
         await refreshHomeScreen();
+        
+        // Adaptive polling: If no active orders, poll less frequently
+        final hasActiveOrders = (driverModel.value.orderRequestData?.isNotEmpty ?? false) ||
+                               (driverModel.value.inProgressOrderID?.isNotEmpty ?? false) ||
+                               (currentOrder.value.id != null);
+        
+        Duration desiredInterval = hasActiveOrders 
+            ? Duration(seconds: 5)  // Active orders: poll every 5 seconds
+            : Duration(seconds: 15); // No active orders: poll every 15 seconds
+        
+        // Restart timer with new interval if it changed
+        if (_currentPollInterval != desiredInterval) {
+          timer.cancel();
+          _currentPollInterval = desiredInterval;
+          _orderPollingTimer = Timer.periodic(_currentPollInterval, _pollCallback);
+          AppLogger.log('Changed polling frequency to ${_currentPollInterval.inSeconds}s (${hasActiveOrders ? "active orders" : "no active orders"})', tag: 'Polling');
+        }
+        
         AppLogger.log('Periodic order check completed', tag: 'Polling');
       } catch (e) {
         AppLogger.log('Error in periodic order check: $e', tag: 'Polling');
         // Continue polling even on error - don't let temporary errors stop the timer
       }
-    });
+    }
+    
+    _orderPollingTimer = Timer.periodic(_currentPollInterval, _pollCallback);
   }
   
   /// Manually trigger an immediate order refresh (called on app resume, pull-to-refresh, etc.)
@@ -649,6 +713,10 @@ if(arrowDrop.value){
       }
       if (assignResult == true) {
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+        // Clean up notification tracking for accepted order
+        if (currentOrder.value.id != null) {
+          _notifiedOrderIds.remove(currentOrder.value.id!);
+        }
         driverModel.value.inProgressOrderID ??= [];
         driverModel.value.inProgressOrderID?.add(currentOrder.value.id!);
         await FireStoreUtils.updateUser(driverModel.value);
@@ -729,6 +797,10 @@ if(arrowDrop.value){
         AppLogger.log('Order already accepted by another driver', tag: 'Error');
         await AudioPlayerService.playSound(false); // Stop sound
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+        // Clean up notification tracking for rejected order
+        if (currentOrder.value.id != null) {
+          _notifiedOrderIds.remove(currentOrder.value.id!);
+        }
         await FireStoreUtils.updateUser(driverModel.value);
         currentOrder.value = OrderModel();
         await clearMap();
@@ -779,6 +851,10 @@ if(arrowDrop.value){
     await FireStoreUtils.setOrder(currentOrder.value);
     AppLogger.log('Firestore updated restaurant_orders/${currentOrder.value.id}', tag: 'Firestore');
     driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+    // Clean up notification tracking for rejected order
+    if (currentOrder.value.id != null) {
+      _notifiedOrderIds.remove(currentOrder.value.id!);
+    }
     await FireStoreUtils.updateUser(driverModel.value);
     AppLogger.log('Driver updated in Firestore with removed orderRequestData', tag: 'Firestore');
     currentOrder.value = OrderModel();
@@ -815,14 +891,25 @@ if(arrowDrop.value){
     } else {
       osmMarkers.clear();
       routePoints.clear();
+      // Reset map ready flag when clearing map
+      _osmMapReady = false;
     }
     update();
   }
   getCurrentOrder() async {
+    // Throttle: Prevent too frequent calls
+    if (_lastGetCurrentOrderTime != null && 
+        DateTime.now().difference(_lastGetCurrentOrderTime!) < _minGetCurrentOrderInterval) {
+      AppLogger.log('getCurrentOrder() throttled - too soon since last call', tag: 'Performance');
+      return;
+    }
+    
     AppLogger.log('getCurrentOrder() called', tag: 'Function');
     AppLogger.log('inProgressOrderID: ${driverModel.value.inProgressOrderID}', tag: 'Function');
     AppLogger.log('orderRequestData: ${driverModel.value.orderRequestData}', tag: 'Function');
     AppLogger.log('currentOrder.id: ${currentOrder.value.id}', tag: 'Function');
+    
+    _lastGetCurrentOrderTime = DateTime.now();
     // Clear current order if it's no longer in driver's lists (unless it's in progress or pending)
     // BUT: Keep it if it has Driver Pending status with no driver assigned (handles timing issues)
     if (currentOrder.value.id != null &&
@@ -848,27 +935,44 @@ if(arrowDrop.value){
     String? firstOrderId;
     final inProgress = driverModel.value.inProgressOrderID;
     final orderRequest = driverModel.value.orderRequestData;
-    if (Constant.singleOrderReceive == true) {
-      // Priority 1: In-progress orders
-      if (inProgress != null && inProgress.isNotEmpty) {
-        // Filter out empty strings
-        final validInProgress = inProgress.where((id) => id.isNotEmpty).toList();
-        if (validInProgress.isNotEmpty) {
-          firstOrderId = validInProgress.first;
-        AppLogger.log('Using inProgressOrderID first order: $firstOrderId', tag: 'Function');
-        }
+    
+    AppLogger.log('Determining firstOrderId - singleOrderReceive: ${Constant.singleOrderReceive}, '
+        'inProgress: $inProgress, orderRequest: $orderRequest', tag: 'Function');
+    
+    // Always check inProgress and orderRequest arrays (regardless of singleOrderReceive setting)
+    // Priority 1: In-progress orders
+    if (inProgress != null && inProgress.isNotEmpty) {
+      // Filter out empty strings
+      final validInProgress = inProgress.where((id) => id.isNotEmpty).toList();
+      AppLogger.log('Valid inProgress orders: $validInProgress', tag: 'Function');
+      if (validInProgress.isNotEmpty) {
+        firstOrderId = validInProgress.first;
+        AppLogger.log('✅ Using inProgressOrderID first order: $firstOrderId', tag: 'Function');
+      } else {
+        AppLogger.log('⚠️ inProgress array has items but all are empty strings', tag: 'Function');
       }
-      // Priority 2: Pending order requests
-      if (firstOrderId == null && orderRequest != null && orderRequest.isNotEmpty) {
-        // Filter out empty strings and already displayed orders
-        final validOrderRequests = orderRequest.where((id) => 
-          id.isNotEmpty && id != currentOrder.value.id).toList();
-        if (validOrderRequests.isNotEmpty) {
-          firstOrderId = validOrderRequests.first;
-        AppLogger.log('Using orderRequestData first order: $firstOrderId', tag: 'Function');
-        }
+    } else {
+      AppLogger.log('⚠️ inProgress is null or empty: $inProgress', tag: 'Function');
+    }
+    
+    // Priority 2: Pending order requests
+    if (firstOrderId == null && orderRequest != null && orderRequest.isNotEmpty) {
+      // Filter out empty strings and already displayed orders
+      final validOrderRequests = orderRequest.where((id) => 
+        id.isNotEmpty && id != currentOrder.value.id).toList();
+      AppLogger.log('Valid orderRequest orders: $validOrderRequests (excluding current: ${currentOrder.value.id})', tag: 'Function');
+      if (validOrderRequests.isNotEmpty) {
+        firstOrderId = validOrderRequests.first;
+        AppLogger.log('✅ Using orderRequestData first order: $firstOrderId', tag: 'Function');
+      } else {
+        AppLogger.log('⚠️ orderRequest array has items but all are empty or already displayed', tag: 'Function');
       }
-    } else if (orderModel.value.id != null) {
+    } else if (firstOrderId == null) {
+      AppLogger.log('⚠️ orderRequest is null or empty: $orderRequest', tag: 'Function');
+    }
+    
+    // Fallback: If singleOrderReceive is false and we have orderModel, use it
+    if (firstOrderId == null && Constant.singleOrderReceive == false && orderModel.value.id != null) {
       firstOrderId = orderModel.value.id.toString();
       AppLogger.log('Using orderModel.id: $firstOrderId', tag: 'Function');
     }
@@ -932,9 +1036,10 @@ if(arrowDrop.value){
       final data = jsonDecode(response.body);
       if (data['success'] == true && data['order'] != null) {
         currentOrder.value = OrderModel.fromJson(data['order']);
-              AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
-              orderFetched = true;
-            }
+        _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
+        AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+        orderFetched = true;
+      }
           } catch (e) {
             AppLogger.log('Error parsing primary API response: $e', tag: 'API');
           }
@@ -967,6 +1072,7 @@ if(arrowDrop.value){
               final data = jsonDecode(response.body);
               if (data['success'] == true && data['data'] != null) {
                 currentOrder.value = OrderModel.fromJson(data['data']);
+                _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
                 AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${currentOrder.value.id}', tag: 'API');
                 orderFetched = true;
               }
@@ -1025,6 +1131,9 @@ if(arrowDrop.value){
           await calculateOrderChargesInitial();
         }
         
+        // Track fetched order ID
+        _lastFetchedOrderId = currentOrder.value.id;
+        
         // Process and display order if:
         // 1. It's in inProgressOrderID or orderRequestData, OR
         // 2. It has Driver Pending status with no driver assigned (fallback for timing issues)
@@ -1035,7 +1144,8 @@ if(arrowDrop.value){
           changeData();
           AppLogger.log('Order processed and displayed', tag: 'API');
         }
-        update(); // Ensure UI updates after fetching order
+        // Use reactive update for specific observables instead of full rebuild
+        currentOrder.refresh();
         AppLogger.log('✅ Order Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}, Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'UI');
       } catch (parseError) {
         AppLogger.log('Error processing fetched order: $parseError', tag: 'API');
@@ -1121,17 +1231,55 @@ if(arrowDrop.value){
   RxBool isChange = false.obs;
 
   changeData() async {
+    // Debounce: Cancel previous timer if exists
+    _changeDataDebounceTimer?.cancel();
+    
+    // Create new debounced call
+    _changeDataDebounceTimer = Timer(_changeDataDebounceDelay, () async {
+      await _changeDataInternal();
+    });
+  }
+  
+  Future<void> _changeDataInternal() async {
     AppLogger.log('changeData() called', tag: 'Function');
     print(
         "currentOrder.value.status ::  [${currentOrder.value.id} :: ${currentOrder.value.status} :: ( ${orderModel.value.driver?.vendorID != null} :: ${orderModel.value.status})");
 
     if (Constant.mapType == "inappmap") {
       if (Constant.selectedMapType == "osm") {
-        getOSMPolyline();
         AppLogger.log('getOSMPolyline() called', tag: 'UI');
+        getOSMPolyline();
       } else {
+        AppLogger.log('🚀 getDirections() called - OrderID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'Function');
+        // Check if Google Maps API key is available
+        if (Constant.mapAPIKey.isEmpty) {
+          AppLogger.log('⚠️ Google Maps API key is empty - attempting to fetch settings...', tag: 'Function');
+          try {
+            await FireStoreUtils.getSettings();
+            // Update polylinePoints with the new API key if it was fetched
+            if (Constant.mapAPIKey.isNotEmpty) {
+              updatePolylinePoints();
+            }
+            AppLogger.log('✅ Settings fetched - API key: ${Constant.mapAPIKey.isEmpty ? "STILL EMPTY" : "SET (${Constant.mapAPIKey.length} chars)"}', tag: 'Function');
+            if (Constant.mapAPIKey.isEmpty) {
+              AppLogger.log('⚠️ Google Maps API key still empty - falling back to OSM', tag: 'Function');
+              // Fallback to OSM if Google Maps key is not available
+              if (Constant.selectedMapType != "osm") {
+                getOSMPolyline();
+                return;
+              }
+            }
+          } catch (e, stackTrace) {
+            AppLogger.log('Error fetching settings: $e', tag: 'Error');
+            AppLogger.log('Stack trace: $stackTrace', tag: 'Error');
+            AppLogger.log('⚠️ Google Maps API key still empty - falling back to OSM', tag: 'Function');
+            if (Constant.selectedMapType != "osm") {
+              getOSMPolyline();
+              return;
+            }
+          }
+        }
         getDirections();
-        AppLogger.log('getDirections() called', tag: 'UI');
       }
     }
     if (currentOrder.value.status == Constant.driverPending) {
@@ -1222,7 +1370,13 @@ if(arrowDrop.value){
 
   GoogleMapController? mapController;
 
-  Rx<PolylinePoints> polylinePoints = PolylinePoints(apiKey:  Constant.mapAPIKey,).obs;
+  Rx<PolylinePoints> polylinePoints = PolylinePoints(apiKey: Constant.mapAPIKey.isNotEmpty ? Constant.mapAPIKey : '').obs;
+  
+  // Update polylinePoints when API key changes
+  void updatePolylinePoints() {
+    polylinePoints.value = PolylinePoints(apiKey: Constant.mapAPIKey.isNotEmpty ? Constant.mapAPIKey : '');
+    AppLogger.log('Updated polylinePoints with API key: ${Constant.mapAPIKey.isNotEmpty ? "SET (${Constant.mapAPIKey.length} chars)" : "EMPTY"}', tag: 'Function');
+  }
   RxMap<PolylineId, Polyline> polyLines = <PolylineId, Polyline>{}.obs;
   RxMap<String, Marker> markers = <String, Marker>{}.obs;
 
@@ -1246,7 +1400,19 @@ if(arrowDrop.value){
   }
 
   getDirections() async {
+    AppLogger.log('🚀 getDirections() called - OrderID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'Function');
+    AppLogger.log('📍 Using Google Maps API key: ${Constant.mapAPIKey.isNotEmpty ? "SET (${Constant.mapAPIKey.length} chars)" : "EMPTY"}', tag: 'Function');
     if (currentOrder.value.id != null) {
+      // Check if we can use cached route
+      final routeCacheKey = _generateRouteCacheKey();
+      if (routeCacheKey == _lastRouteCacheKey && 
+          _cachedPolylineCoordinates != null &&
+          _lastRouteCalculationTime != null &&
+          DateTime.now().difference(_lastRouteCalculationTime!) < _routeCacheDuration) {
+        AppLogger.log('✅ Using cached route (${_cachedPolylineCoordinates!.length} points)', tag: 'Performance');
+        _applyCachedRoute();
+        return;
+      }
       if (currentOrder.value.status != Constant.driverPending) {
         if (currentOrder.value.status == Constant.orderShipped || 
             currentOrder.value.status == Constant.driverAccepted) {
@@ -1254,7 +1420,6 @@ if(arrowDrop.value){
 
           PolylineResult result = await polylinePoints.value
               .getRouteBetweenCoordinates(
-              // googleApiKey: Constant.mapAPIKey,
               request: PolylineRequest(
                   origin: PointLatLng(
                       driverModel.value.location?.latitude ?? 0.0,
@@ -1269,39 +1434,40 @@ if(arrowDrop.value){
             }
           }
 
-          markers.remove("Departure");
-          markers['Departure'] = Marker(
+          // Batch marker updates for better performance
+          final newMarkers = <String, Marker>{};
+          
+          newMarkers['Departure'] = Marker(
               markerId: const MarkerId('Departure'),
               infoWindow: const InfoWindow(title: "Departure"),
               position: LatLng(currentOrder.value.vendor?.latitude ?? 0.0,
                   currentOrder.value.vendor?.longitude ?? 0.0),
               icon: departureIcon!);
-          // ignore: invalid_use_of_protected_member
-          if (markers.value.containsKey("Destination")) {
-            markers.remove("Destination");
-          }
-          // markers['Destination'] = Marker(
-          //     markerId: const MarkerId('Destination'),
-          //     infoWindow: const InfoWindow(title: "Destination"),
-          //     position: LatLng(currentOrder.value.address!.location!.latitude ?? 0.0, currentOrder.value.address!.location!.longitude ?? 0.0),
-          //     icon: destinationIcon!);
-
-          markers.remove("Driver");
-          markers['Driver'] = Marker(
+          
+          newMarkers['Driver'] = Marker(
               markerId: const MarkerId('Driver'),
               infoWindow: const InfoWindow(title: "Driver"),
               position: LatLng(driverModel.value.location?.latitude ?? 0.0,
                   driverModel.value.location?.longitude ?? 0.0),
               icon: taxiIcon!,
               rotation: double.parse(driverModel.value.rotation.toString()));
+          
+          // Update all markers at once
+          markers.value = newMarkers;
+          markers.refresh();
 
+          // Cache the route for future use
+          if (polylineCoordinates.isNotEmpty) {
+            _lastRouteCacheKey = routeCacheKey;
+            _cachedPolylineCoordinates = List.from(polylineCoordinates);
+            _lastRouteCalculationTime = DateTime.now();
+          }
           addPolyLine(polylineCoordinates);
         } else if (currentOrder.value.status == Constant.orderInTransit) {
           List<LatLng> polylineCoordinates = [];
 
           PolylineResult result = await polylinePoints.value
               .getRouteBetweenCoordinates(
-              // googleApiKey: Constant.mapAPIKey,
               request: PolylineRequest(
                   origin: PointLatLng(
                       driverModel.value.location?.latitude ?? 0.0,
@@ -1317,18 +1483,10 @@ if(arrowDrop.value){
               polylineCoordinates.add(LatLng(point.latitude, point.longitude));
             }
           }
-          // ignore: invalid_use_of_protected_member
-          if (markers.value.containsKey("Departure")) {
-            markers.remove("Departure");
-          }
-          // markers['Departure'] = Marker(
-          //     markerId: const MarkerId('Departure'),
-          //     infoWindow: const InfoWindow(title: "Departure"),
-          //     position: LatLng(currentOrder.value.vendor!.latitude ?? 0.0, currentOrder.value.vendor!.longitude ?? 0.0),
-          //     icon: departureIcon!);
-
-          markers.remove("Destination");
-          markers['Destination'] = Marker(
+          // Batch marker updates for better performance
+          final newMarkers = <String, Marker>{};
+          
+          newMarkers['Destination'] = Marker(
               markerId: const MarkerId('Destination'),
               infoWindow: const InfoWindow(title: "Destination"),
               position: LatLng(
@@ -1336,64 +1494,153 @@ if(arrowDrop.value){
                   currentOrder.value.address?.location?.longitude ?? 0.0),
               icon: destinationIcon!);
 
-          markers.remove("Driver");
-          markers['Driver'] = Marker(
+          newMarkers['Driver'] = Marker(
               markerId: const MarkerId('Driver'),
               infoWindow: const InfoWindow(title: "Driver"),
               position: LatLng(driverModel.value.location?.latitude ?? 0.0,
                   driverModel.value.location?.longitude ?? 0.0),
               icon: taxiIcon!,
               rotation: double.parse(driverModel.value.rotation.toString()));
+          
+          // Update all markers at once
+          markers.value = newMarkers;
+          markers.refresh();
+          
+          // Cache the route for future use
+          if (polylineCoordinates.isNotEmpty) {
+            _lastRouteCacheKey = routeCacheKey;
+            _cachedPolylineCoordinates = List.from(polylineCoordinates);
+            _lastRouteCalculationTime = DateTime.now();
+          }
           addPolyLine(polylineCoordinates);
         }
       } else {
+        // For driverPending status, use driver location as origin (not author location)
+        // Author location may not be available, but we need to show route from driver to vendor
         List<LatLng> polylineCoordinates = [];
+
+        // Get vendor coordinates - try latitudeValue/longitudeValue first, then fallback to coordinates GeoPoint
+        final vendorLat = currentOrder.value.vendor?.latitudeValue ?? 
+                          currentOrder.value.vendor?.latitude ?? 
+                          currentOrder.value.vendor?.coordinates?.latitude;
+        final vendorLng = currentOrder.value.vendor?.longitudeValue ?? 
+                          currentOrder.value.vendor?.longitude ?? 
+                          currentOrder.value.vendor?.coordinates?.longitude;
+        
+        // Validate we have vendor coordinates before calculating route
+        if (vendorLat == null || vendorLng == null ||
+            driverModel.value.location?.latitude == null ||
+            driverModel.value.location?.longitude == null) {
+          AppLogger.log(
+            '⚠️ Cannot calculate directions (driverPending) - missing data. '
+            'Vendor: ${currentOrder.value.vendor != null}, '
+            'VendorLat: $vendorLat, '
+            'VendorLng: $vendorLng, '
+            'DriverLat: ${driverModel.value.location?.latitude}, '
+            'DriverLng: ${driverModel.value.location?.longitude}',
+            tag: 'Function');
+          return;
+        }
 
         PolylineResult result = await polylinePoints.value
             .getRouteBetweenCoordinates(
-            // googleApiKey: Constant.mapAPIKey,
             request: PolylineRequest(
                 origin: PointLatLng(
-                    currentOrder.value.author?.location?.latitude ?? 0.0,
-                    currentOrder.value.author?.location?.longitude ?? 0.0),
-                destination: PointLatLng(
-                    currentOrder.value.vendor?.latitude ?? 0.0,
-                    currentOrder.value.vendor?.longitude ?? 0.0),
+                    driverModel.value.location!.latitude!,
+                    driverModel.value.location!.longitude!),
+                destination: PointLatLng(vendorLat, vendorLng),
                 mode: TravelMode.driving));
 
         if (result.points.isNotEmpty) {
           for (var point in result.points) {
             polylineCoordinates.add(LatLng(point.latitude, point.longitude));
           }
+          AppLogger.log('✅ Route calculated successfully - ${polylineCoordinates.length} points', tag: 'Function');
+        } else {
+          AppLogger.log('⚠️ Route calculation returned no points', tag: 'Function');
         }
 
-        markers.remove("Departure");
-        markers['Departure'] = Marker(
-            markerId: const MarkerId('Departure'),
-            infoWindow: const InfoWindow(title: "Departure"),
-            position: LatLng(currentOrder.value.vendor?.latitude ?? 0.0,
-                currentOrder.value.vendor?.longitude ?? 0.0),
-            icon: departureIcon!);
+        // Batch marker updates for better performance
+        final newMarkers = <String, Marker>{};
+        
+        if (vendorLat != null && vendorLng != null) {
+          newMarkers['Departure'] = Marker(
+              markerId: const MarkerId('Departure'),
+              infoWindow: const InfoWindow(title: "Departure"),
+              position: LatLng(vendorLat, vendorLng),
+              icon: departureIcon!);
+        }
 
-        markers.remove("Destination");
-        markers['Destination'] = Marker(
-            markerId: const MarkerId('Destination'),
-            infoWindow: const InfoWindow(title: "Destination"),
-            position: LatLng(
-                currentOrder.value.address?.location?.latitude ?? 0.0,
-                currentOrder.value.address?.location?.longitude ?? 0.0),
-            icon: destinationIcon!);
+        if (currentOrder.value.address?.location?.latitude != null &&
+            currentOrder.value.address?.location?.longitude != null) {
+          newMarkers['Destination'] = Marker(
+              markerId: const MarkerId('Destination'),
+              infoWindow: const InfoWindow(title: "Destination"),
+              position: LatLng(
+                  currentOrder.value.address!.location!.latitude!,
+                  currentOrder.value.address!.location!.longitude!),
+              icon: destinationIcon!);
+        }
 
-        markers.remove("Driver");
-        markers['Driver'] = Marker(
-            markerId: const MarkerId('Driver'),
-            infoWindow: const InfoWindow(title: "Driver"),
-            position: LatLng(driverModel.value.location?.latitude ?? 0.0,
-                driverModel.value.location?.longitude ?? 0.0),
-            icon: taxiIcon!,
-            rotation: double.parse(driverModel.value.rotation.toString()));
-        addPolyLine(polylineCoordinates);
+        if (driverModel.value.location?.latitude != null && driverModel.value.location?.longitude != null) {
+          newMarkers['Driver'] = Marker(
+              markerId: const MarkerId('Driver'),
+              infoWindow: const InfoWindow(title: "Driver"),
+              position: LatLng(driverModel.value.location!.latitude!,
+                  driverModel.value.location!.longitude!),
+              icon: taxiIcon!,
+              rotation: double.parse(driverModel.value.rotation.toString()));
+        }
+        
+        // Update all markers at once
+        markers.value = newMarkers;
+        markers.refresh();
+        
+        if (polylineCoordinates.isNotEmpty) {
+          // Cache the route for future use
+          _lastRouteCacheKey = routeCacheKey;
+          _cachedPolylineCoordinates = List.from(polylineCoordinates);
+          _lastRouteCalculationTime = DateTime.now();
+          addPolyLine(polylineCoordinates);
+        } else {
+          // Only refresh markers, not full update
+          markers.refresh();
+        }
       }
+    }
+  }
+  
+  // Generate cache key based on order status and coordinates
+  String _generateRouteCacheKey() {
+    final orderId = currentOrder.value.id ?? '';
+    final status = currentOrder.value.status ?? '';
+    final driverLat = driverModel.value.location?.latitude?.toStringAsFixed(4) ?? '0';
+    final driverLng = driverModel.value.location?.longitude?.toStringAsFixed(4) ?? '0';
+    
+    if (status == Constant.orderShipped || status == Constant.driverAccepted) {
+      final vendorLat = (currentOrder.value.vendor?.latitudeValue ?? 
+                        currentOrder.value.vendor?.latitude ?? 0.0).toStringAsFixed(4);
+      final vendorLng = (currentOrder.value.vendor?.longitudeValue ?? 
+                        currentOrder.value.vendor?.longitude ?? 0.0).toStringAsFixed(4);
+      return '$orderId-$status-$driverLat,$driverLng-$vendorLat,$vendorLng';
+    } else if (status == Constant.orderInTransit) {
+      final destLat = currentOrder.value.address?.location?.latitude?.toStringAsFixed(4) ?? '0';
+      final destLng = currentOrder.value.address?.location?.longitude?.toStringAsFixed(4) ?? '0';
+      return '$orderId-$status-$driverLat,$driverLng-$destLat,$destLng';
+    } else if (status == Constant.driverPending) {
+      final vendorLat = (currentOrder.value.vendor?.latitudeValue ?? 
+                        currentOrder.value.vendor?.latitude ?? 0.0).toStringAsFixed(4);
+      final vendorLng = (currentOrder.value.vendor?.longitudeValue ?? 
+                        currentOrder.value.vendor?.longitude ?? 0.0).toStringAsFixed(4);
+      return '$orderId-$status-$driverLat,$driverLng-$vendorLat,$vendorLng';
+    }
+    return '$orderId-$status-$driverLat,$driverLng';
+  }
+  
+  // Apply cached route to map
+  void _applyCachedRoute() {
+    if (_cachedPolylineCoordinates != null && _cachedPolylineCoordinates!.isNotEmpty) {
+      addPolyLine(_cachedPolylineCoordinates!);
     }
   }
 
@@ -1407,11 +1654,14 @@ if(arrowDrop.value){
       width: 8,
       geodesic: true,
     );
+    // Use reactive update instead of full rebuild
     polyLines[id] = polyline;
-    update();
+    // Only update markers and polylines, not entire controller
+    markers.refresh();
+    polyLines.refresh();
 
     // Safely update camera location only if polyline coordinates exist
-    if (polylineCoordinates.isNotEmpty) {
+    if (polylineCoordinates.isNotEmpty && mapController != null) {
       updateCameraLocation(polylineCoordinates.first, mapController);
     }
   }
@@ -1434,11 +1684,53 @@ if(arrowDrop.value){
     );
   }
 
+  // Track if OSM map is ready
+  bool _osmMapReady = false;
+  
+  void setOsmMapReady(bool ready) {
+    _osmMapReady = ready;
+  }
+  
   void animateToSource() {
-    osmMapController.move(
-        location.LatLng(driverModel.value.location?.latitude ?? 0.0,
-            driverModel.value.location?.longitude ?? 0.0),
-        16);
+    try {
+      if (!_osmMapReady) {
+        // Map not ready yet, schedule for later
+        AppLogger.log('OSM map not ready yet, will retry after delay', tag: 'Function');
+        Future.delayed(Duration(milliseconds: 1000), () {
+          if (_osmMapReady) {
+            try {
+              osmMapController.move(
+                  location.LatLng(driverModel.value.location?.latitude ?? 0.0,
+                      driverModel.value.location?.longitude ?? 0.0),
+                  16);
+            } catch (e) {
+              AppLogger.log('Error animating to source after delay: $e', tag: 'Error');
+            }
+          }
+        });
+        return;
+      }
+      osmMapController.move(
+          location.LatLng(driverModel.value.location?.latitude ?? 0.0,
+              driverModel.value.location?.longitude ?? 0.0),
+          16);
+    } catch (e) {
+      AppLogger.log('Error animating to source: $e - Map may not be rendered yet', tag: 'Error');
+      // Don't throw, just log - map will be ready on next update
+      // Schedule retry
+      Future.delayed(Duration(milliseconds: 1000), () {
+        if (_osmMapReady) {
+          try {
+            osmMapController.move(
+                location.LatLng(driverModel.value.location?.latitude ?? 0.0,
+                    driverModel.value.location?.longitude ?? 0.0),
+                16);
+          } catch (e2) {
+            AppLogger.log('Error animating to source on retry: $e2', tag: 'Error');
+          }
+        }
+      });
+    }
   }
 
   Rx<location.LatLng> source =
@@ -1483,11 +1775,18 @@ if(arrowDrop.value){
             current.value = location.LatLng(
                 driverModel.value.location?.latitude ?? 0.0,
                 driverModel.value.location?.longitude ?? 0.0);
-            destination.value = location.LatLng(
-              currentOrder.value.vendor?.latitude ?? 0.0,
-              currentOrder.value.vendor?.longitude ?? 0.0,
-            );
-            animateToSource();
+            // Get vendor coordinates - try latitudeValue/longitudeValue first, then fallback to coordinates GeoPoint
+            final vendorLat = currentOrder.value.vendor?.latitudeValue ?? 
+                              currentOrder.value.vendor?.latitude ?? 
+                              currentOrder.value.vendor?.coordinates?.latitude ?? 0.0;
+            final vendorLng = currentOrder.value.vendor?.longitudeValue ?? 
+                              currentOrder.value.vendor?.longitude ?? 
+                              currentOrder.value.vendor?.coordinates?.longitude ?? 0.0;
+            destination.value = location.LatLng(vendorLat, vendorLng);
+            // Delay animateToSource to ensure map is rendered
+            Future.delayed(Duration(milliseconds: 500), () {
+              animateToSource();
+            });
             fetchRoute(current.value, destination.value).then((value) {
               setOsmMapMarker();
             });
@@ -1505,22 +1804,52 @@ if(arrowDrop.value){
             fetchRoute(current.value, destination.value).then((value) {
               setOsmMapMarker();
             });
-            animateToSource();
+            // Delay animateToSource to ensure map is rendered
+            Future.delayed(Duration(milliseconds: 500), () {
+              animateToSource();
+            });
           }
         } else {
+          // For driverPending status, use driver location as origin (not author location)
+          // Author location may not be available, but we need to show route from driver to vendor
           print("====>5");
-          current.value = location.LatLng(
-              currentOrder.value.author?.location?.latitude ?? 0.0,
-              currentOrder.value.author?.location?.longitude ?? 0.0);
+          
+          // Get vendor coordinates - try latitudeValue/longitudeValue first, then fallback to coordinates GeoPoint
+          final vendorLat = currentOrder.value.vendor?.latitudeValue ?? 
+                            currentOrder.value.vendor?.latitude ?? 
+                            currentOrder.value.vendor?.coordinates?.latitude;
+          final vendorLng = currentOrder.value.vendor?.longitudeValue ?? 
+                            currentOrder.value.vendor?.longitude ?? 
+                            currentOrder.value.vendor?.coordinates?.longitude;
+          
+          // Validate we have vendor and driver coordinates before calculating route
+          if (vendorLat == null || vendorLng == null ||
+              driverModel.value.location?.latitude == null ||
+              driverModel.value.location?.longitude == null) {
+            AppLogger.log(
+              '⚠️ Cannot calculate OSM directions (driverPending) - author or vendor data missing. '
+              'Author: ${currentOrder.value.author != null}, '
+              'Vendor: ${currentOrder.value.vendor != null}, '
+              'VendorLat: $vendorLat, '
+              'VendorLng: $vendorLng, '
+              'DriverLat: ${driverModel.value.location?.latitude}, '
+              'DriverLng: ${driverModel.value.location?.longitude}',
+              tag: 'Function');
+            return;
+          }
 
-          destination.value = location.LatLng(
-              currentOrder.value.vendor?.latitude ?? 0.0,
-              currentOrder.value.vendor?.longitude ?? 0.0);
-          animateToSource();
+          current.value = location.LatLng(
+              driverModel.value.location!.latitude!,
+              driverModel.value.location!.longitude!);
+
+          destination.value = location.LatLng(vendorLat, vendorLng);
+          // Delay animateToSource to ensure map is rendered
+          Future.delayed(Duration(milliseconds: 500), () {
+            animateToSource();
+          });
           fetchRoute(current.value, destination.value).then((value) {
             setOsmMapMarker();
           });
-          animateToSource();
         }
       }
     } catch (e) {
@@ -1577,11 +1906,44 @@ if(arrowDrop.value){
         if (response.statusCode == 200) {
           final body = jsonDecode(response.body);
           if (body["success"] == true && body["data"] != null) {
-            currentOrder.value = OrderModel.fromJson(body["data"]);
-            AppLogger.log(
-                "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
-                tag: "API"
-            );
+            try {
+              currentOrder.value = OrderModel.fromJson(body["data"]);
+              AppLogger.log(
+                  "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
+                  tag: "API"
+              );
+              
+              // Log vendor parsing status
+              if (currentOrder.value.vendor != null) {
+                final vendorLat = currentOrder.value.vendor?.latitudeValue ?? 
+                                  currentOrder.value.vendor?.latitude ?? 
+                                  currentOrder.value.vendor?.coordinates?.latitude;
+                final vendorLng = currentOrder.value.vendor?.longitudeValue ?? 
+                                  currentOrder.value.vendor?.longitude ?? 
+                                  currentOrder.value.vendor?.coordinates?.longitude;
+                AppLogger.log(
+                    "[OrderModel] Vendor parsed from order - Location: ${currentOrder.value.vendor?.location}, "
+                    "Title: ${currentOrder.value.vendor?.title}, "
+                    "Lat: $vendorLat, Lng: $vendorLng",
+                    tag: "OrderModel");
+              } else if (currentOrder.value.vendorID != null) {
+                AppLogger.log(
+                    "[OrderModel] Vendor not in order, but vendorID exists: ${currentOrder.value.vendorID}",
+                    tag: "OrderModel");
+                // Try to fetch vendor data if missing
+                await _fetchVendorData(currentOrder.value.vendorID!);
+              } else {
+                AppLogger.log(
+                    "[OrderModel] No vendor data in order and no vendorID",
+                    tag: "OrderModel");
+              }
+            } catch (e, stackTrace) {
+              AppLogger.log(
+                  "Error parsing order from API response: $e\nStack trace: $stackTrace",
+                  tag: "API");
+              AppLogger.log("Response body: ${response.body}", tag: "API");
+              rethrow;
+            }
             
             // Ensure order status is set correctly for accept/reject buttons
             // If order is in orderRequestData and no driver assigned, set status to Driver Pending

@@ -433,9 +433,16 @@ class FireStoreUtils {
         throw TimeoutException('getSettings timeout', const Duration(seconds: 15));
       });
       if (response.statusCode == 200) {
+        // Check for HTML responses (error pages)
+        if (response.body.trim().startsWith('<!') || response.body.trim().startsWith('<html')) {
+          log('getSettings - Received HTML response instead of JSON');
+          return;
+        }
         final jsonResponse = json.decode(response.body);
+        log('getSettings - Response decoded, success: ${jsonResponse['success']}');
         if (jsonResponse['success'] == true) {
           final data = jsonResponse['data'];
+          log('getSettings - Data keys: ${data?.keys.toList()}');
           // Process globalSettings
           final globalSettings = data['globalSettings'];
           if (globalSettings != null) {
@@ -451,10 +458,50 @@ class FireStoreUtils {
             }
           }
           // Process googleMapKey
-          final googleMapKey = data['googleMapKey'];
-          if (googleMapKey != null) {
-            Constant.mapAPIKey = googleMapKey["key"] ?? '';
+          try {
+            final googleMapKey = data['googleMapKey'];
+            log('getSettings - googleMapKey data: $googleMapKey, type: ${googleMapKey?.runtimeType}');
+            if (googleMapKey != null) {
+              // Handle both Map and direct string cases
+              if (googleMapKey is Map<String, dynamic> || googleMapKey is Map) {
+                final keyValue = (googleMapKey as dynamic)["key"];
+                if (keyValue != null) {
+                  Constant.mapAPIKey = keyValue.toString();
+                  log('getSettings - ✅ Set mapAPIKey from Map["key"]: ${Constant.mapAPIKey.isNotEmpty ? "SET (${Constant.mapAPIKey.length} chars)" : "EMPTY"}');
+                } else {
+                  log('getSettings - ⚠️ googleMapKey Map exists but "key" field is null or missing');
+                }
+              } else if (googleMapKey is String) {
+                Constant.mapAPIKey = googleMapKey;
+                log('getSettings - ✅ Set mapAPIKey from String: ${Constant.mapAPIKey.isNotEmpty ? "SET (${Constant.mapAPIKey.length} chars)" : "EMPTY"}');
+              } else {
+                log('getSettings - ⚠️ googleMapKey is neither Map nor String: ${googleMapKey.runtimeType}, value: $googleMapKey');
+                // Try to convert to string as last resort
+                try {
+                  Constant.mapAPIKey = googleMapKey.toString();
+                  if (Constant.mapAPIKey.isNotEmpty && Constant.mapAPIKey != 'null') {
+                    log('getSettings - ✅ Set mapAPIKey from toString(): ${Constant.mapAPIKey.length} chars');
+                  }
+                } catch (e) {
+                  log('getSettings - ❌ Failed to convert googleMapKey to string: $e');
+                }
+              }
+            } else {
+              log('getSettings - ⚠️ googleMapKey is null in data');
+            }
+          } catch (e, stackTrace) {
+            log('getSettings - ❌ Error processing googleMapKey: $e');
+            log('getSettings - Stack trace: $stackTrace');
           }
+          log('getSettings - Final mapAPIKey value: ${Constant.mapAPIKey.isNotEmpty ? "✅ SET (${Constant.mapAPIKey.length} chars)" : "❌ EMPTY"}');
+          
+          // Also update polylinePoints with the new API key if it was set
+          if (Constant.mapAPIKey.isNotEmpty) {
+            // Note: polylinePoints is in HomeController, so we can't update it here
+            // But we can log that it should be updated
+            log('getSettings - mapAPIKey is now set, should update polylinePoints in HomeController');
+          }
+          
           // Process notification_setting
           final notificationSetting = data['notification_setting'];
           if (notificationSetting != null) {

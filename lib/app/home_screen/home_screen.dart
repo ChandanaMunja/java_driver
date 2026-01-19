@@ -222,6 +222,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                                                       .location?.longitude ??
                                                   0.0),
                                           initialZoom: 12,
+                                          onMapReady: () {
+                                            // Mark map as ready when it's rendered
+                                            controller.setOsmMapReady(true);
+                                          },
                                         ),
                                         children: [
                                           flutterMap.TileLayer(
@@ -512,34 +516,33 @@ Obx(
           tag: 'UI');
     }
     
-    return    hideUI?SizedBox():  shouldShowAcceptReject
-        ?
-    showDriverBottomSheet(themeChange, controller)
-        : (controller.currentOrder.value.id != null &&
-        !isOrderInRequestData &&
-        controller.currentOrder.value.status !=
-            Constant.driverPending &&
-        controller.currentOrder.value.driverID ==
-            Constant.userModel?.id)
+    // Show order card if:
+    // 1. Should show accept/reject bottom sheet (new order request)
+    // 2. Order exists, driverID matches current driver, and status is NOT driverPending (active order)
+    // 3. Order exists, driverID matches current driver, and status IS driverPending (driver assigned but still pending)
+    final shouldShowOrderCard = controller.currentOrder.value.id != null &&
+        controller.currentOrder.value.driverID == Constant.userModel?.id &&
+        (!isOrderInRequestData || controller.currentOrder.value.status == Constant.driverPending);
+    
+    return hideUI ? SizedBox() : shouldShowAcceptReject
+        ? showDriverBottomSheet(themeChange, controller)
+        : shouldShowOrderCard
         ? (() {
       AppLogger.log(
           'Showing buildOrderActionsCard: currentDriverId=${Constant.userModel?.id}, orderDriverId=${controller.currentOrder.value.driverID}, status=${controller.currentOrder.value.status}',
           tag: 'UI');
-      return
-        buildOrderActionsCard(
-          themeChange, controller);
+      return buildOrderActionsCard(themeChange, controller);
     })()
         : (() {
       /// Clear the map ONLY if the current driver is NOT assigned
-      if (controller
-          .currentOrder.value.driverID !=
-          Constant.userModel?.id) {
+      if (controller.currentOrder.value.driverID != Constant.userModel?.id) {
         controller.clearMap();
       }
       AppLogger.log(
           'Not showing order card - OrderID: ${controller.currentOrder.value.id}, '
           'Status: ${controller.currentOrder.value.status}, '
-          'DriverID match: ${controller.currentOrder.value.driverID == Constant.userModel?.id}',
+          'DriverID match: ${controller.currentOrder.value.driverID == Constant.userModel?.id}, '
+          'isOrderInRequestData: $isOrderInRequestData',
           tag: 'UI');
       return SafeArea(
         child: Center(

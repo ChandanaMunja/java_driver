@@ -93,6 +93,7 @@ class VendorModel {
   });
 
   VendorModel.fromJson(Map<String, dynamic> json) {
+    try {
     author = json['author'];
     // Handle dine_in_active: can be bool, int (0/1), or null
     dineInActive = _parseBool(json['dine_in_active']);
@@ -116,7 +117,16 @@ class VendorModel {
     reststatus = _parseBool(json['reststatus']);
     filters =
         json['filters'] != null ? Filters.fromJson(json['filters']) : null;
-    reviewsCount = json['reviewsCount'] ?? 0.0;
+    // Handle reviewsCount - can be num, null, or 0
+    if (json['reviewsCount'] != null) {
+      if (json['reviewsCount'] is num) {
+        reviewsCount = json['reviewsCount'] as num;
+      } else {
+        reviewsCount = num.tryParse(json['reviewsCount'].toString()) ?? 0.0;
+      }
+    } else {
+      reviewsCount = 0.0;
+    }
     photo = json['photo'];
     description = json['description'];
     walletAmount = json['walletAmount'];
@@ -169,7 +179,16 @@ class VendorModel {
         }
       }
     }
-    reviewsSum = json['reviewsSum'] ?? 0.0;
+    // Handle reviewsSum - can be num, null, or 0
+    if (json['reviewsSum'] != null) {
+      if (json['reviewsSum'] is num) {
+        reviewsSum = json['reviewsSum'] as num;
+      } else {
+        reviewsSum = num.tryParse(json['reviewsSum'].toString()) ?? 0.0;
+      }
+    } else {
+      reviewsSum = 0.0;
+    }
     photos = _parseList(json['photos']);
     title = json['title'];
     // Safely parse latitude - handle null values
@@ -192,6 +211,33 @@ class VendorModel {
     isSelfDelivery = _parseBool(json['isSelfDelivery']);
     // Handle categoryTitle - can be String or List
     categoryTitle = _parseList(json['categoryTitle']);
+    
+    // If latitude/longitude are not set but coordinates (GeoPoint) is available, extract them
+    if ((latitude == null || longitude == null) && coordinates != null) {
+      latitude = coordinates!.latitude;
+      longitude = coordinates!.longitude;
+    }
+    // If coordinates (GeoPoint) is not set but latitude/longitude are available, create GeoPoint
+    else if (coordinates == null && latitude != null && longitude != null) {
+      coordinates = GeoPoint(latitude!, longitude!);
+    }
+    } catch (e, stackTrace) {
+      print('Error parsing VendorModel from JSON: $e');
+      print('Stack trace: $stackTrace');
+      print('JSON keys: ${json.keys.toList()}');
+      // Re-throw to let caller handle it
+      rethrow;
+    }
+  }
+
+  /// Get latitude from either latitude field or coordinates GeoPoint
+  double? get latitudeValue {
+    return latitude ?? coordinates?.latitude;
+  }
+
+  /// Get longitude from either longitude field or coordinates GeoPoint
+  double? get longitudeValue {
+    return longitude ?? coordinates?.longitude;
   }
 
   /// Safely parse a timestamp that may come as:

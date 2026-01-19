@@ -12,11 +12,17 @@ class AudioPlayerService {
 
   static Future<void> playSound(bool isPlay) async {
     try {
+      // Validate input type
+      if (isPlay is! bool) {
+        log("ERROR: playSound called with non-bool value: $isPlay (type: ${isPlay.runtimeType})");
+        return;
+      }
+      
       if (isPlay) {
-        log("PlaySound :: 11 :: $isPlay :: ${Preferences.getString(Preferences.orderRingtone)}");
-        if (_audioPlayer.state != PlayerState.playing) {
-          await _audioPlayer.setSource(
-              UrlSource(Preferences.getString(Preferences.orderRingtone)));
+        final ringtoneUrl = Preferences.getString(Preferences.orderRingtone);
+        log("PlaySound :: 11 :: $isPlay :: $ringtoneUrl");
+        if (ringtoneUrl.isNotEmpty && _audioPlayer.state != PlayerState.playing) {
+          await _audioPlayer.setSource(UrlSource(ringtoneUrl));
           await _audioPlayer.setReleaseMode(ReleaseMode.loop);
           await _audioPlayer.resume();
         }
@@ -26,7 +32,9 @@ class AudioPlayerService {
           await _audioPlayer.stop();
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      log("Error in playSound: $e");
+      log("Stack trace: $stackTrace");
       print("Error in playSound: $e");
     }
   }
