@@ -170,6 +170,18 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "connectivity_plus",
+      "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/connectivity_plus-6.1.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "connectivity_plus_platform_interface",
+      "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/connectivity_plus_platform_interface-2.0.1",
+      "packageUri": "lib/",
+      "languageVersion": "2.18"
+    },
+    {
       "name": "country_code_picker",
       "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/country_code_picker-3.4.1",
       "packageUri": "lib/",
@@ -940,6 +952,12 @@
     {
       "name": "nested",
       "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/nested-1.0.0",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
+      "name": "nm",
+      "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/nm-0.5.0",
       "packageUri": "lib/",
       "languageVersion": "2.12"
     },

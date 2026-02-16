@@ -8,6 +8,8 @@ import 'package:jippydriver_driver/models/currency_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart';
+import 'package:jippydriver_driver/services/http_client_service.dart';
+import 'package:jippydriver_driver/services/api_cache_service.dart';
 import 'package:get/get.dart';
 
 class GlobalSettingController extends GetxController {
@@ -21,10 +23,14 @@ class GlobalSettingController extends GetxController {
   Future<void> getCurrentCurrency() async {
     try {
       final uri = Uri.parse('${Constant.baseUrl}settings/getActiveCurrency');
-      final response = await http.get(uri).timeout(const Duration(seconds: 20), onTimeout: () {
-        log("getCurrentCurrency API request timed out");
-        throw Exception("Request timed out");
-      });
+      // Use HttpClientService with caching - currency rarely changes (24 hours cache)
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
+        uri,
+        cacheStrategy: CacheStrategy.settings, // 24 hours cache
+        useCache: true,
+        timeout: const Duration(seconds: 20),
+      );
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
         if (responseData['success'] == true && responseData['data'] != null) {

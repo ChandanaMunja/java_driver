@@ -9,6 +9,7 @@
 import 'package:audioplayers_web/audioplayers_web.dart';
 import 'package:cloud_firestore_web/cloud_firestore_web.dart';
 import 'package:cloud_functions_web/cloud_functions_web.dart';
+import 'package:connectivity_plus/src/connectivity_plus_web.dart';
 import 'package:firebase_app_check_web/firebase_app_check_web.dart';
 import 'package:firebase_core_web/firebase_core_web.dart';
 import 'package:firebase_database_web/firebase_database_web.dart';
@@ -34,6 +35,7 @@ void registerPlugins([final Registrar? pluginRegistrar]) {
   AudioplayersPlugin.registerWith(registrar);
   FirebaseFirestoreWeb.registerWith(registrar);
   FirebaseFunctionsWeb.registerWith(registrar);
+  ConnectivityPlusWebPlugin.registerWith(registrar);
   FirebaseAppCheckWeb.registerWith(registrar);
   FirebaseCoreWeb.registerWith(registrar);
   FirebaseDatabaseWeb.registerWith(registrar);

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:cloud_firestore/cloud_firestore.dart' show FieldValue;
 import 'package:jippydriver_driver/app/home_screen/home_screen.dart' show fetchOrderSurgeFee;
@@ -28,6 +29,9 @@ import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/utils/app_logger.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'dart:typed_data';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:jippydriver_driver/services/http_client_service.dart';
+import 'package:jippydriver_driver/services/api_cache_service.dart';
 // import '../services/order_service.dart';
 // import 'package:jippydriver_driver/services/order_service.dart';
 
@@ -168,28 +172,66 @@ if(arrowDrop.value){
     update();
   }
   static Future<VendorModel?> getVendorById(String vendorId) async {
+    if (vendorId.isEmpty) return null;
+    
+    // Try to get controller instance for cache access (may not exist in all contexts)
+    HomeController? controller;
+    try {
+      controller = Get.find<HomeController>();
+    } catch (e) {
+      // Controller not available, skip in-memory cache
+      AppLogger.log('HomeController not available, skipping in-memory cache', tag: 'VendorCache');
+    }
+    
+    // Check in-memory cache first (instant access) if controller is available
+    if (controller != null && controller._vendorModelCache.containsKey(vendorId)) {
+      final cachedTime = controller._vendorCacheTime[vendorId];
+      if (cachedTime != null && 
+          DateTime.now().difference(cachedTime) < HomeController.vendorModelCacheTTL) {
+        AppLogger.log('✅ Vendor found in memory cache: $vendorId', tag: 'VendorCache');
+        return controller._vendorModelCache[vendorId];
+      } else {
+        // Cache expired, remove it
+        controller._vendorModelCache.remove(vendorId);
+        controller._vendorCacheTime.remove(vendorId);
+      }
+    }
+    
     VendorModel? vendorModel;
     try {
       String? url = '${Constant.baseUrl}restaurant/vendors/$vendorId';
-      print("getVendorById $url ");
-      if (vendorId.isNotEmpty) {
-        final response = await http.get(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-        );
-        if (response.statusCode == 200) {
-          final Map<String, dynamic> responseData = jsonDecode(response.body);
-          if (responseData['success'] == true && responseData['data'] != null) {
-            vendorModel = VendorModel.fromJson(responseData['data']);
+      AppLogger.log('Fetching vendor: $vendorId', tag: 'VendorCache');
+      
+      // Use caching service with vendor cache strategy (1 hour TTL)
+      // This checks HTTP cache (memory + persistent) before making network request
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        cacheStrategy: CacheStrategy.vendor,
+        useCache: true,
+      );
+      
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = jsonDecode(response.body);
+        if (responseData['success'] == true && responseData['data'] != null) {
+          vendorModel = VendorModel.fromJson(responseData['data']);
+          
+          // Store in in-memory cache for instant future access (if controller available)
+          if (controller != null) {
+            controller._vendorModelCache[vendorId] = vendorModel!;
+            controller._vendorCacheTime[vendorId] = DateTime.now();
+            AppLogger.log('✅ Vendor cached in memory: $vendorId', tag: 'VendorCache');
           }
-        } else if (response.statusCode == 404) {
-          return null;
-        } else {
-          throw Exception('Failed to load vendor: ${response.statusCode}');
         }
+      } else if (response.statusCode == 404) {
+        AppLogger.log('Vendor not found (404): $vendorId', tag: 'VendorCache');
+        return null;
+      } else {
+        throw Exception('Failed to load vendor: ${response.statusCode}');
       }
     } catch (e, s) {
-      log('getVendorById error: $e $s');
+      AppLogger.log('getVendorById error: $e $s', tag: 'VendorCache');
       return null;
     }
     return vendorModel;
@@ -264,16 +306,40 @@ if(arrowDrop.value){
   // Track which orders have already been notified to prevent duplicates
   final Set<String> _notifiedOrderIds = <String>{};
   
+  // Intelligent polling optimization variables
+  String? _lastETag; // Store ETag from last successful response
+  String? _lastModified; // Store Last-Modified header
+  int _consecutiveNoOrdersCount = 0; // Track consecutive polls with no orders for exponential backoff
+  bool _isAppInForeground = true; // Track app lifecycle state
+  bool _isConnected = true; // Track network connectivity
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  AppLifecycleState? _currentAppLifecycleState;
+  
+  // Local status tracking to reduce unnecessary API calls
+  String? _lastKnownOrderStatus; // Track last known status to detect changes
+  DateTime? _lastStatusChangeTime; // Track when status last changed
+  static const Duration _statusCheckCooldown = Duration(seconds: 5); // Cooldown between status checks
+  
+  // In-memory vendor cache for instant access (separate from HTTP cache)
+  final Map<String, VendorModel> _vendorModelCache = {};
+  final Map<String, DateTime> _vendorCacheTime = {};
+  static const Duration vendorModelCacheTTL = Duration(hours: 2); // Longer TTL for in-memory vendor models
+  
   // Performance optimizations
   Timer? _changeDataDebounceTimer;
   String? _lastRouteCacheKey; // Cache key for route calculations
-  List<LatLng>? _cachedPolylineCoordinates; // Cached route coordinates
+  List<LatLng>? _cachedPolylineCoordinates; // Cached full route coordinates (for navigation)
+  List<LatLng>? _cachedSimplifiedCoordinates; // Cached simplified route coordinates (for display)
   CancelToken? _currentApiRequest; // For canceling duplicate API calls
   DateTime? _lastRouteCalculationTime;
   DateTime? _lastGetCurrentOrderTime;
   String? _lastFetchedOrderId; // Track last fetched order to avoid redundant calls
-  static const Duration _routeCacheDuration = Duration(minutes: 2); // Cache routes for 2 minutes
-  static const Duration _changeDataDebounceDelay = Duration(milliseconds: 300); // Debounce changeData calls
+  static const Duration _routeCacheDuration = Duration(minutes: 2); // Reduced cache duration for fresher routes
+  static const int _maxDisplayPoints = 100; // Maximum points for display (simplified route)
+  static const double _coordinatePrecision = 0.005; // ~500m grid for cache key (more sensitive to movement)
+  static const Duration _changeDataDebounceDelay = Duration(milliseconds: 100); // Reduced debounce for faster route updates
+  LatLng? _lastRouteOrigin; // Track last route origin to detect significant movement
+  static const double _routeRecalculationDistance = 50.0; // Recalculate route if driver moved 50+ meters from route origin
   static const Duration _minGetCurrentOrderInterval = Duration(seconds: 2); // Minimum interval between getCurrentOrder calls
   
   // Local notifications plugin for manual order updates
@@ -284,11 +350,76 @@ if(arrowDrop.value){
     getArgument();
     setIcons();
     _initializeLocalNotifications();
+    _initializeConnectivityMonitoring();
     getDriver();
     driverChargeAdd();
-    // Start automatic polling for new orders every 3 seconds
+    // Start automatic polling for new orders with intelligent optimization
     _startOrderPolling();
     super.onInit();
+  }
+  
+  /// Initialize connectivity monitoring to pause polling when offline
+  void _initializeConnectivityMonitoring() {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      (List<ConnectivityResult> results) {
+        final wasConnected = _isConnected;
+        _isConnected = results.any((result) => 
+          result != ConnectivityResult.none
+        );
+        
+        if (!wasConnected && _isConnected) {
+          AppLogger.log('✅ Network reconnected - resuming polling', tag: 'Polling');
+          // Resume polling when connection is restored
+          if (!_isPolling) {
+            _startOrderPolling();
+          }
+        } else if (wasConnected && !_isConnected) {
+          AppLogger.log('⚠️ Network disconnected - pausing polling', tag: 'Polling');
+          // Pause polling when offline
+          _orderPollingTimer?.cancel();
+          _isPolling = false;
+        }
+      },
+    );
+    
+    // Check initial connectivity state
+    Connectivity().checkConnectivity().then((results) {
+      _isConnected = results.any((result) => result != ConnectivityResult.none);
+      AppLogger.log('Initial connectivity: ${_isConnected ? "Connected" : "Disconnected"}', tag: 'Polling');
+    });
+  }
+  
+  /// Update app lifecycle state (called from home_screen.dart)
+  void updateAppLifecycleState(AppLifecycleState state) {
+    final wasInForeground = _isAppInForeground;
+    _currentAppLifecycleState = state;
+    _isAppInForeground = state == AppLifecycleState.resumed;
+    
+    // Cleanup cache when app goes to background to free memory and prevent lag
+    if (wasInForeground && !_isAppInForeground) {
+      try {
+        final cacheService = ApiCacheService();
+        cacheService.forceCleanup();
+        AppLogger.log('✅ Cache cleaned up when app went to background', tag: 'Cache');
+      } catch (e) {
+        AppLogger.log('⚠️ Error cleaning cache on background: $e', tag: 'Cache');
+      }
+    }
+    
+    if (!wasInForeground && _isAppInForeground) {
+      AppLogger.log('📱 App resumed to foreground - resuming fast polling', tag: 'Polling');
+      // Reset to fast polling when app comes to foreground
+      _consecutiveNoOrdersCount = 0;
+      if (_isPolling) {
+        _restartPollingWithInterval(Duration(seconds: 5));
+      }
+    } else if (wasInForeground && !_isAppInForeground) {
+      AppLogger.log('📱 App moved to background - switching to slow polling', tag: 'Polling');
+      // Switch to slower polling when app goes to background
+      if (_isPolling) {
+        _restartPollingWithInterval(Duration(seconds: 30));
+      }
+    }
   }
   
   /// Initialize local notifications for manual order updates
@@ -472,13 +603,18 @@ if(arrowDrop.value){
           '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$orderId&exclude_statuses=$excludeStatuses');
       bool orderFetched = false;
       try {
-        final response = await http.get(
+        // Use caching service with order cache strategy
+        final httpClient = HttpClientService();
+        final response = await httpClient.get(
           primaryUri,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
-        ).timeout(Duration(seconds: 10));
+          cacheStrategy: CacheStrategy.order,
+          useCache: true,
+          timeout: Duration(seconds: 10),
+        );
         
         if (response.statusCode == 200) {
           if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
@@ -503,13 +639,18 @@ if(arrowDrop.value){
         AppLogger.log('Trying FALLBACK endpoint for order: $orderId', tag: 'API');
         try {
           final fallbackUri = Uri.parse('${Constant.baseUrl}restaurant/orders/$orderId');
-          final response = await http.get(
+          // Use caching service with order cache strategy
+          final httpClient = HttpClientService();
+          final response = await httpClient.get(
             fallbackUri,
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
             },
-          ).timeout(Duration(seconds: 10));
+            cacheStrategy: CacheStrategy.order,
+            useCache: true,
+            timeout: Duration(seconds: 10),
+          );
           
           if (response.statusCode == 200) {
             if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
@@ -582,15 +723,41 @@ if(arrowDrop.value){
     _orderPollingTimer?.cancel();
     _changeDataDebounceTimer?.cancel();
     _currentApiRequest?.cancel();
+    _connectivitySubscription?.cancel();
+    
+    // Cleanup cache when controller closes to free memory and prevent lag
+    try {
+      final cacheService = ApiCacheService();
+      cacheService.forceCleanup();
+      AppLogger.log('✅ Cache cleaned up on controller close', tag: 'Cache');
+    } catch (e) {
+      AppLogger.log('⚠️ Error cleaning cache on close: $e', tag: 'Cache');
+    }
+    
+    // Clean up vendor cache (optional - can keep for faster app restart)
+    // clearVendorCache(); // Uncomment if you want to clear cache on logout
+    
     super.onClose();
   }
   
-  /// Start automatic polling for new orders with adaptive frequency
+  /// Start automatic polling for new orders with intelligent optimization
   void _startOrderPolling() {
     if (_isPolling) return;
+    
+    // Don't start polling if offline
+    if (!_isConnected) {
+      AppLogger.log('⚠️ Cannot start polling - device is offline', tag: 'Polling');
+      return;
+    }
+    
     _isPolling = true;
-    _currentPollInterval = Duration(seconds: 5); // Start with 5 seconds
-    AppLogger.log('Starting automatic order polling with adaptive frequency', tag: 'Polling');
+    // Start with foreground interval (5s) or background interval (30s) based on current state
+    _currentPollInterval = _isAppInForeground 
+        ? Duration(seconds: 5) 
+        : Duration(seconds: 30);
+    _consecutiveNoOrdersCount = 0; // Reset counter when starting
+    
+    AppLogger.log('Starting intelligent order polling - Foreground: $_isAppInForeground, Interval: ${_currentPollInterval.inSeconds}s', tag: 'Polling');
     
     void _pollCallback(Timer timer) async {
       // Prevent multiple simultaneous refreshes
@@ -599,31 +766,98 @@ if(arrowDrop.value){
         return;
       }
       
+      // Skip polling if offline
+      if (!_isConnected) {
+        AppLogger.log('Skipping poll - device is offline', tag: 'Polling');
+        return;
+      }
+      
       try {
-        // Refresh driver data to get latest orderRequestData
-        await refreshHomeScreen();
+        // Refresh driver data to get latest orderRequestData (with ETag/Last-Modified support)
+        final hasNewData = await refreshHomeScreen();
         
-        // Adaptive polling: If no active orders, poll less frequently
+        // Check if we have active orders
         final hasActiveOrders = (driverModel.value.orderRequestData?.isNotEmpty ?? false) ||
                                (driverModel.value.inProgressOrderID?.isNotEmpty ?? false) ||
                                (currentOrder.value.id != null);
         
-        Duration desiredInterval = hasActiveOrders 
-            ? Duration(seconds: 5)  // Active orders: poll every 5 seconds
-            : Duration(seconds: 15); // No active orders: poll every 15 seconds
+        // Calculate desired interval based on multiple factors
+        Duration desiredInterval;
+        
+        if (hasActiveOrders) {
+          // Reset counter when orders are found
+          _consecutiveNoOrdersCount = 0;
+          // Active orders: use foreground/background intervals
+          desiredInterval = _isAppInForeground 
+              ? Duration(seconds: 5)   // Foreground: 5s
+              : Duration(seconds: 10);  // Background: 10s (still faster than no orders)
+        } else {
+          // No active orders: implement exponential backoff
+          _consecutiveNoOrdersCount++;
+          
+          // Exponential backoff: 5s → 10s → 20s → 30s → 30s (max)
+          if (_consecutiveNoOrdersCount == 1) {
+            desiredInterval = Duration(seconds: 10);
+          } else if (_consecutiveNoOrdersCount == 2) {
+            desiredInterval = Duration(seconds: 20);
+          } else if (_consecutiveNoOrdersCount >= 3) {
+            desiredInterval = Duration(seconds: 30);
+          } else {
+            desiredInterval = Duration(seconds: 5);
+          }
+          
+          // Apply foreground/background multiplier
+          if (!_isAppInForeground) {
+            // Background: double the interval (max 60s)
+            desiredInterval = Duration(seconds: (desiredInterval.inSeconds * 2).clamp(30, 60));
+          }
+        }
         
         // Restart timer with new interval if it changed
         if (_currentPollInterval != desiredInterval) {
           timer.cancel();
           _currentPollInterval = desiredInterval;
           _orderPollingTimer = Timer.periodic(_currentPollInterval, _pollCallback);
-          AppLogger.log('Changed polling frequency to ${_currentPollInterval.inSeconds}s (${hasActiveOrders ? "active orders" : "no active orders"})', tag: 'Polling');
+          AppLogger.log('Changed polling frequency to ${_currentPollInterval.inSeconds}s (Orders: ${hasActiveOrders ? "Yes" : "No"}, Count: $_consecutiveNoOrdersCount, Foreground: $_isAppInForeground)', tag: 'Polling');
         }
         
-        AppLogger.log('Periodic order check completed', tag: 'Polling');
+        AppLogger.log('Periodic order check completed - HasOrders: $hasActiveOrders, NextPoll: ${_currentPollInterval.inSeconds}s', tag: 'Polling');
       } catch (e) {
         AppLogger.log('Error in periodic order check: $e', tag: 'Polling');
         // Continue polling even on error - don't let temporary errors stop the timer
+      }
+    }
+    
+    _orderPollingTimer = Timer.periodic(_currentPollInterval, _pollCallback);
+  }
+  
+  /// Restart polling with a new interval
+  void _restartPollingWithInterval(Duration newInterval) {
+    if (!_isPolling) return;
+    
+    _orderPollingTimer?.cancel();
+    _currentPollInterval = newInterval;
+    
+    void _pollCallback(Timer timer) async {
+      if (_isRefreshing || !_isConnected) return;
+      
+      try {
+        await refreshHomeScreen();
+        final hasActiveOrders = (driverModel.value.orderRequestData?.isNotEmpty ?? false) ||
+                               (driverModel.value.inProgressOrderID?.isNotEmpty ?? false) ||
+                               (currentOrder.value.id != null);
+        
+        Duration desiredInterval = hasActiveOrders 
+            ? (_isAppInForeground ? Duration(seconds: 5) : Duration(seconds: 10))
+            : (_isAppInForeground ? Duration(seconds: 10) : Duration(seconds: 30));
+        
+        if (_currentPollInterval != desiredInterval) {
+          timer.cancel();
+          _currentPollInterval = desiredInterval;
+          _orderPollingTimer = Timer.periodic(_currentPollInterval, _pollCallback);
+        }
+      } catch (e) {
+        AppLogger.log('Error in polling: $e', tag: 'Polling');
       }
     }
     
@@ -647,6 +881,12 @@ if(arrowDrop.value){
     }
   }
   
+  /// Reset status tracking variables (used when order is cleared/completed)
+  void resetStatusTracking() {
+    _lastKnownOrderStatus = null;
+    _lastStatusChangeTime = null;
+    AppLogger.log('Status tracking reset', tag: 'Order');
+  }
 
   Rx<OrderModel> orderModel = OrderModel().obs;
   Rx<OrderModel> currentOrder = OrderModel().obs;
@@ -660,8 +900,25 @@ if(arrowDrop.value){
   }
 
   //acceptOrder() async {
+  
+  // Guard to prevent duplicate accept calls
+  bool _isAcceptingOrder = false;
 
   Future<void> acceptOrder() async {
+    // Prevent duplicate calls
+    if (_isAcceptingOrder) {
+      AppLogger.log('⚠️ acceptOrder() already in progress, ignoring duplicate call', tag: 'Function');
+      return;
+    }
+    
+    // Check if order is already accepted by this driver
+    if (currentOrder.value.status == Constant.driverAccepted &&
+        currentOrder.value.driverID == driverModel.value.id) {
+      AppLogger.log('⚠️ Order already accepted by this driver, skipping', tag: 'Function');
+      return;
+    }
+    
+    _isAcceptingOrder = true;
     AppLogger.log('acceptOrder() called', tag: 'Function');
     AppLogger.log('Current Order ID: ${currentOrder.value.id}', tag: 'Function');
     AppLogger.log('Driver ID: ${driverModel.value.id}', tag: 'Function');
@@ -712,41 +969,95 @@ if(arrowDrop.value){
         return; // Don't clear order, allow retry
       }
       if (assignResult == true) {
-        driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+        final orderId = currentOrder.value.id!;
+        
+        // Remove from orderRequestData immediately
+        driverModel.value.orderRequestData?.remove(orderId);
+        
         // Clean up notification tracking for accepted order
-        if (currentOrder.value.id != null) {
-          _notifiedOrderIds.remove(currentOrder.value.id!);
-        }
+        _notifiedOrderIds.remove(orderId);
+        
+        // Add to inProgressOrderID
         driverModel.value.inProgressOrderID ??= [];
-        driverModel.value.inProgressOrderID?.add(currentOrder.value.id!);
+        driverModel.value.inProgressOrderID?.add(orderId);
+        
+        // Update driver in Firestore
         await FireStoreUtils.updateUser(driverModel.value);
         AppLogger.log('Driver updated in Firestore after accept', tag: 'Firestore');
+        
+        // Invalidate cache BEFORE updating order to ensure fresh data
+        final httpClient = HttpClientService();
+        await httpClient.invalidateCache('orders/$orderId');
+        await httpClient.invalidateCache('users/');
+        AppLogger.log('Cache invalidated for order and user after accept', tag: 'Cache');
+        
         // Update order status and driver info
         currentOrder.value.status = Constant.driverAccepted;
         currentOrder.value.driverID = driverModel.value.id;
         currentOrder.value.driver = driverModel.value;
+        
+        // Track status change for optimization
+        _lastKnownOrderStatus = Constant.driverAccepted;
+        _lastStatusChangeTime = DateTime.now();
+        
         // Calculate charges before saving
         await calculateOrderCharges();
+        
         // Save order to Firestore
         await FireStoreUtils.setOrder(currentOrder.value);
         AppLogger.log('Order updated in Firestore after accept', tag: 'Firestore');
+        
         // Refresh order from API to get complete details (vendor address, etc.)
-        AppLogger.log('Refreshing order from API to get complete details', tag: 'API');
+        // Use forceRefresh to bypass cache and get latest status
+        AppLogger.log('Refreshing order from API to get complete details (force refresh)', tag: 'API');
         try {
-          final refreshResponse = await http.get(
-            Uri.parse("${Constant.baseUrl}restaurant/orders/${currentOrder.value.id}"),
+          final refreshResponse = await httpClient.get(
+            Uri.parse("${Constant.baseUrl}restaurant/orders/$orderId"),
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
             },
-          ).timeout(Duration(seconds: 10));
+            cacheStrategy: CacheStrategy.order,
+            useCache: false, // Force refresh - bypass cache
+            forceRefresh: true, // Ensure we get latest data
+            timeout: Duration(seconds: 10),
+          );
           if (refreshResponse.statusCode == 200) {
             if (!refreshResponse.body.trim().startsWith('<!') && !refreshResponse.body.trim().startsWith('<html')) {
               try {
                 final refreshData = jsonDecode(refreshResponse.body);
                 if (refreshData['success'] == true && refreshData['data'] != null) {
-                  currentOrder.value = OrderModel.fromJson(refreshData['data']);
-                  AppLogger.log('✅ Order refreshed after accept - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
+                  final refreshedOrder = OrderModel.fromJson(refreshData['data']);
+                  
+                  // Ensure status doesn't get downgraded - use status priority
+                  final statusPriority = {
+                    Constant.driverPending: 1,
+                    Constant.driverAccepted: 2,
+                    Constant.orderShipped: 2,
+                    Constant.orderInTransit: 3,
+                    Constant.orderCompleted: 4,
+                  };
+                  
+                  final currentPriority = statusPriority[currentOrder.value.status] ?? 0;
+                  final refreshedPriority = statusPriority[refreshedOrder.status] ?? 0;
+                  
+                  // Only update if refreshed status is same or higher priority
+                  // This prevents overwriting driverAccepted with older statuses
+                  if (refreshedPriority >= currentPriority) {
+                    // Preserve driver info we just set
+                    refreshedOrder.driverID = driverModel.value.id;
+                    refreshedOrder.driver = driverModel.value;
+                    currentOrder.value = refreshedOrder;
+                    AppLogger.log('✅ Order refreshed after accept - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
+                  } else {
+                    // Keep our accepted status, but update other fields
+                    refreshedOrder.status = Constant.driverAccepted;
+                    refreshedOrder.driverID = driverModel.value.id;
+                    refreshedOrder.driver = driverModel.value;
+                    currentOrder.value = refreshedOrder;
+                    AppLogger.log('⚠️ Refreshed order had older status, kept driverAccepted - ID: ${currentOrder.value.id}', tag: 'API');
+                  }
+                  
                   AppLogger.log('Vendor: ${currentOrder.value.vendor != null}, Address: ${currentOrder.value.address != null}', tag: 'API');
                   
                   // If vendor is missing but vendorID exists, fetch vendor data
@@ -760,6 +1071,10 @@ if(arrowDrop.value){
                   // Recalculate charges with fresh data
                   await calculateOrderChargesInitial();
                   changeData(); // Update map and directions
+                  
+                  // Force UI update
+                  currentOrder.refresh();
+                  update();
                 }
               } catch (e) {
                 AppLogger.log('Error parsing refreshed order: $e', tag: 'API');
@@ -769,6 +1084,9 @@ if(arrowDrop.value){
         } catch (e) {
           AppLogger.log('Error refreshing order after accept: $e', tag: 'API');
           // Continue even if refresh fails - order is already accepted
+          // Force UI update to reflect accepted status
+          currentOrder.refresh();
+          update();
         }
         ShowToastDialog.closeLoader();
         // Send notifications
@@ -777,6 +1095,11 @@ if(arrowDrop.value){
               currentOrder.value.author!.fcmToken.toString(), {});
           AppLogger.log('Notification sent to customer', tag: 'CloudFunction');
         }
+        
+        // Ensure UI is updated
+        currentOrder.refresh();
+        update();
+        AppLogger.log('✅ Order accepted successfully - Status: ${currentOrder.value.status}, DriverID: ${currentOrder.value.driverID}', tag: 'Function');
         if (currentOrder.value.vendor?.fcmToken != null) {
           await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,
               currentOrder.value.vendor!.fcmToken.toString(), {});
@@ -784,8 +1107,14 @@ if(arrowDrop.value){
         }
         ShowToastDialog.showToast("Order accepted successfully!".tr);
         AppLogger.log('✅ Order accepted successfully - Showing vendor address and full details', tag: 'UI');
+        
+        // Invalidate cache for this order and driver profile (reuse existing httpClient)
+        await httpClient.invalidateCache('orders/${currentOrder.value.id}');
+        await httpClient.invalidateCache('users/');
+        
         await AudioPlayerService.playSound(false); // Stop sound after accept
         update(); // Force UI update after accepting
+        _isAcceptingOrder = false; // Reset flag after successful acceptance
       } else {
         ShowToastDialog.closeLoader();
         Get.snackbar(
@@ -805,6 +1134,7 @@ if(arrowDrop.value){
         currentOrder.value = OrderModel();
         await clearMap();
         update();
+        _isAcceptingOrder = false; // Reset flag
       }
     } catch (e) {
       ShowToastDialog.closeLoader();
@@ -815,6 +1145,7 @@ if(arrowDrop.value){
         duration: Duration(seconds: 3),
       );
       AppLogger.log('Exception in acceptOrder: $e', tag: 'Error');
+      _isAcceptingOrder = false; // Reset flag on error
     }
   }
   // acceptOrder() async {
@@ -854,6 +1185,11 @@ if(arrowDrop.value){
     // Clean up notification tracking for rejected order
     if (currentOrder.value.id != null) {
       _notifiedOrderIds.remove(currentOrder.value.id!);
+      
+      // Invalidate cache for this order and driver profile
+      final httpClient = HttpClientService();
+      await httpClient.invalidateCache('orders/${currentOrder.value.id}');
+      await httpClient.invalidateCache('users/');
     }
     await FireStoreUtils.updateUser(driverModel.value);
     AppLogger.log('Driver updated in Firestore with removed orderRequestData', tag: 'Firestore');
@@ -894,7 +1230,18 @@ if(arrowDrop.value){
       // Reset map ready flag when clearing map
       _osmMapReady = false;
     }
+    // Clear route cache when map is cleared
+    _clearRouteCache();
     update();
+  }
+  
+  // Clear route cache (used when order changes or map is cleared)
+  void _clearRouteCache() {
+    _lastRouteCacheKey = null;
+    _cachedPolylineCoordinates = null;
+    _cachedSimplifiedCoordinates = null;
+    _lastRouteCalculationTime = null;
+    AppLogger.log('🗑️ Route cache cleared', tag: 'Performance');
   }
   getCurrentOrder() async {
     // Throttle: Prevent too frequent calls
@@ -1012,20 +1359,26 @@ if(arrowDrop.value){
     // Try to fetch order with fallback mechanism
     bool orderFetched = false;
     // METHOD 1: Try primary endpoint first
+    // Always exclude completed orders - they should not be shown again
     final excludeStatuses = (inProgress?.contains(firstOrderId) ?? false)
         ? 'Order Cancelled,Driver Rejected,Order Completed'
-        : 'Order Cancelled,Driver Rejected';
+        : 'Order Cancelled,Driver Rejected,Order Completed'; // Always exclude completed orders
     final primaryUri = Uri.parse(
         '${Constant.baseUrl}driver/get-current-reject-accept?order_id=$firstOrderId&exclude_statuses=$excludeStatuses');
     AppLogger.log('getCurrentOrder - Trying primary API: $primaryUri', tag: 'API');
     try {
-      final response = await http.get(
+      // Use caching service with order cache strategy (30 seconds TTL)
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         primaryUri,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-      ).timeout(Duration(seconds: 10));
+        cacheStrategy: CacheStrategy.order,
+        useCache: true,
+        timeout: Duration(seconds: 10),
+      );
       
       AppLogger.log('Primary API response status: ${response.statusCode}', tag: 'API');
       
@@ -1037,6 +1390,11 @@ if(arrowDrop.value){
       if (data['success'] == true && data['order'] != null) {
         currentOrder.value = OrderModel.fromJson(data['order']);
         _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
+        
+        // Track status for optimization
+        _lastKnownOrderStatus = currentOrder.value.status;
+        _lastStatusChangeTime = DateTime.now();
+        
         AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
         orderFetched = true;
       }
@@ -1055,13 +1413,18 @@ if(arrowDrop.value){
       AppLogger.log('Trying FALLBACK endpoint: restaurant/orders/$firstOrderId', tag: 'API');
       try {
         final fallbackUri = Uri.parse('${Constant.baseUrl}restaurant/orders/$firstOrderId');
-        final response = await http.get(
+        // Use caching service with order cache strategy
+        final httpClient = HttpClientService();
+        final response = await httpClient.get(
           fallbackUri,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
           },
-        ).timeout(Duration(seconds: 10));
+          cacheStrategy: CacheStrategy.order,
+          useCache: true,
+          timeout: Duration(seconds: 10),
+        );
         
         AppLogger.log('Fallback API response status: ${response.statusCode}', tag: 'API');
         
@@ -1073,6 +1436,11 @@ if(arrowDrop.value){
               if (data['success'] == true && data['data'] != null) {
                 currentOrder.value = OrderModel.fromJson(data['data']);
                 _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
+                
+                // Track status for optimization
+                _lastKnownOrderStatus = currentOrder.value.status;
+                _lastStatusChangeTime = DateTime.now();
+                
                 AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${currentOrder.value.id}', tag: 'API');
                 orderFetched = true;
               }
@@ -1133,6 +1501,33 @@ if(arrowDrop.value){
         
         // Track fetched order ID
         _lastFetchedOrderId = currentOrder.value.id;
+        
+        // Don't display completed orders - they should be cleared
+        if (currentOrder.value.status == Constant.orderCompleted || 
+            currentOrder.value.status == "Order Completed") {
+          AppLogger.log('⚠️ Completed order detected - clearing: ${currentOrder.value.id}', tag: 'Order');
+          // Remove from driver lists
+          driverModel.value.inProgressOrderID?.remove(currentOrder.value.id);
+          driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+          await FireStoreUtils.updateUser(driverModel.value);
+          
+          // Clear order and cache
+          final orderId = currentOrder.value.id;
+          currentOrder.value = OrderModel();
+          await clearMap();
+          
+          // Invalidate cache
+          if (orderId != null) {
+            final httpClient = HttpClientService();
+            await httpClient.invalidateCache('orders/$orderId');
+          }
+          
+          // Reset status tracking
+          resetStatusTracking();
+          
+          update();
+          return;
+        }
         
         // Process and display order if:
         // 1. It's in inProgressOrderID or orderRequestData, OR
@@ -1230,6 +1625,119 @@ if(arrowDrop.value){
 //finded
   RxBool isChange = false.obs;
 
+  // Track if camera should follow driver (user can disable)
+  bool _shouldFollowDriver = true; // Default: follow driver
+  bool hasInitialCameraSet = false; // Track if initial camera position is set (public for access from UI)
+  LatLng? _lastCameraFollowPosition; // Track last camera follow position to avoid excessive updates
+  
+  /// Update driver marker position immediately (no debounce) - for smooth real-time movement
+  /// This ensures the bike icon follows the blue dot without lag
+  void updateDriverMarkerPosition({bool updateCamera = false}) {
+    // Only update if we have valid location and icon
+    if (driverModel.value.location?.latitude == null || 
+        driverModel.value.location?.longitude == null ||
+        taxiIcon == null ||
+        Constant.selectedMapType == 'osm') {
+      return; // Skip if using OSM map or missing data
+    }
+    
+    final currentPosition = LatLng(
+      driverModel.value.location!.latitude!,
+      driverModel.value.location!.longitude!,
+    );
+    
+    // Reduced distance threshold from 5m to 1m for smoother updates
+    // This ensures bike marker moves smoothly even with small movements
+    if (_lastDriverMarkerPosition != null) {
+      final distance = _calculateDistanceBetween(
+        _lastDriverMarkerPosition!.latitude,
+        _lastDriverMarkerPosition!.longitude,
+        currentPosition.latitude,
+        currentPosition.longitude,
+      );
+      // Only skip if moved less than 1 meter (reduces jitter but allows smooth movement)
+      if (distance < 1.0) {
+        // Still update camera if requested, even if marker doesn't move
+        if (updateCamera && _shouldFollowDriver && mapController != null) {
+          _smoothCameraFollow(currentPosition);
+        }
+        return;
+      }
+    }
+    
+    // Update driver marker position immediately (no debounce) - synchronous update
+    final currentMarkers = Map<String, Marker>.from(markers.value);
+    currentMarkers['Driver'] = Marker(
+      markerId: const MarkerId('Driver'),
+      infoWindow: const InfoWindow(title: "Driver"),
+      position: currentPosition, // Use exact same position as blue dot
+      icon: taxiIcon!,
+      rotation: (driverModel.value.rotation ?? 0.0).toDouble(),
+      anchor: const Offset(0.5, 0.5), // Center the icon on the position
+    );
+    
+    // Synchronous update - no async delays
+    markers.value = currentMarkers;
+    markers.refresh(); // Force reactive update
+    
+    _lastDriverMarkerPosition = currentPosition;
+    
+    // Optionally update camera to follow driver (smooth, non-intrusive)
+    if (updateCamera && _shouldFollowDriver && mapController != null) {
+      _smoothCameraFollow(currentPosition);
+    }
+  }
+  
+  /// Smooth camera follow for driver position (non-intrusive, only if enabled)
+  /// Only follows if driver moves significantly (10+ meters) to avoid excessive camera movement
+  void _smoothCameraFollow(LatLng position) {
+    if (mapController == null || !_shouldFollowDriver) return;
+    
+    // Only update camera if driver moved significantly (10+ meters)
+    // This prevents excessive camera movement on small GPS fluctuations
+    if (_lastCameraFollowPosition != null) {
+      final distance = _calculateDistanceBetween(
+        _lastCameraFollowPosition!.latitude,
+        _lastCameraFollowPosition!.longitude,
+        position.latitude,
+        position.longitude,
+      );
+      // Only follow if moved more than 10 meters (reduces camera jitter)
+      if (distance < 10.0) {
+        return;
+      }
+    }
+    
+    // Use a gentle camera update that smoothly follows driver
+    mapController!.animateCamera(
+      CameraUpdate.newLatLng(position),
+    );
+    
+    _lastCameraFollowPosition = position;
+  }
+  
+  /// Enable/disable camera following driver
+  void setCameraFollowDriver(bool follow) {
+    _shouldFollowDriver = follow;
+  }
+  
+  /// Calculate distance between two coordinates in meters
+  double _calculateDistanceBetween(double lat1, double lon1, double lat2, double lon2) {
+    // Using Haversine formula for distance calculation
+    const double earthRadius = 6371000; // meters
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) *
+        math.sin(dLon / 2) * math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    
+    return earthRadius * c;
+  }
+  
+  double _toRadians(double degrees) => degrees * (math.pi / 180.0);
+  
   changeData() async {
     // Debounce: Cancel previous timer if exists
     _changeDataDebounceTimer?.cancel();
@@ -1296,13 +1804,18 @@ if(arrowDrop.value){
     String? userId = await LoginController.getFirebaseId();
     AppLogger.log('getDriver() API called', tag: 'Function');
     try {
-      var response = await http.get(
+      // Use caching service with driver profile cache strategy (10 seconds TTL)
+      final httpClient = HttpClientService();
+      var response = await httpClient.get(
         Uri.parse("${Constant.baseUrl}users/$userId"),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-      ).timeout(Duration(seconds: 10));
+        cacheStrategy: CacheStrategy.driverProfile,
+        useCache: true,
+        timeout: Duration(seconds: 10),
+      );
       
       if (response.statusCode == 200) {
         var jsonResponse = jsonDecode(response.body);
@@ -1383,6 +1896,9 @@ if(arrowDrop.value){
   BitmapDescriptor? departureIcon;
   BitmapDescriptor? destinationIcon;
   BitmapDescriptor? taxiIcon;
+  
+  // Track last driver marker position to avoid unnecessary updates
+  LatLng? _lastDriverMarkerPosition;
 
   setIcons() async {
     if (Constant.selectedMapType == 'google') {
@@ -1403,13 +1919,38 @@ if(arrowDrop.value){
     AppLogger.log('🚀 getDirections() called - OrderID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'Function');
     AppLogger.log('📍 Using Google Maps API key: ${Constant.mapAPIKey.isNotEmpty ? "SET (${Constant.mapAPIKey.length} chars)" : "EMPTY"}', tag: 'Function');
     if (currentOrder.value.id != null) {
-      // Check if we can use cached route
+      // Check if driver has moved significantly from last route origin
+      final currentDriverLocation = driverModel.value.location;
+      bool shouldRecalculateRoute = false;
+      
+      if (currentDriverLocation?.latitude != null && 
+          currentDriverLocation?.longitude != null &&
+          _lastRouteOrigin != null) {
+        final distanceFromOrigin = _calculateDistanceBetween(
+          _lastRouteOrigin!.latitude,
+          _lastRouteOrigin!.longitude,
+          currentDriverLocation!.latitude!,
+          currentDriverLocation.longitude!,
+        );
+        
+        // Force recalculation if driver moved significantly from route origin
+        if (distanceFromOrigin > _routeRecalculationDistance) {
+          shouldRecalculateRoute = true;
+          AppLogger.log('🔄 Driver moved ${distanceFromOrigin.toStringAsFixed(1)}m from route origin - recalculating route', tag: 'Performance');
+        }
+      } else if (_lastRouteOrigin == null) {
+        // First route calculation
+        shouldRecalculateRoute = true;
+      }
+      
+      // Check if we can use cached route (only if driver hasn't moved significantly)
       final routeCacheKey = _generateRouteCacheKey();
-      if (routeCacheKey == _lastRouteCacheKey && 
-          _cachedPolylineCoordinates != null &&
+      if (!shouldRecalculateRoute &&
+          routeCacheKey == _lastRouteCacheKey && 
+          _cachedSimplifiedCoordinates != null &&
           _lastRouteCalculationTime != null &&
           DateTime.now().difference(_lastRouteCalculationTime!) < _routeCacheDuration) {
-        AppLogger.log('✅ Using cached route (${_cachedPolylineCoordinates!.length} points)', tag: 'Performance');
+        AppLogger.log('✅ Using cached route (${_cachedSimplifiedCoordinates!.length} display points, cache age: ${DateTime.now().difference(_lastRouteCalculationTime!).inSeconds}s)', tag: 'Performance');
         _applyCachedRoute();
         return;
       }
@@ -1418,16 +1959,23 @@ if(arrowDrop.value){
             currentOrder.value.status == Constant.driverAccepted) {
           List<LatLng> polylineCoordinates = [];
 
+          // Store route origin for future comparison
+          final routeOrigin = LatLng(
+            driverModel.value.location?.latitude ?? 0.0,
+            driverModel.value.location?.longitude ?? 0.0,
+          );
+          _lastRouteOrigin = routeOrigin;
+          
           PolylineResult result = await polylinePoints.value
               .getRouteBetweenCoordinates(
               request: PolylineRequest(
                   origin: PointLatLng(
-                      driverModel.value.location?.latitude ?? 0.0,
-                      driverModel.value.location?.longitude ?? 0.0),
+                      routeOrigin.latitude,
+                      routeOrigin.longitude),
                   destination: PointLatLng(
                       currentOrder.value.vendor?.latitude ?? 0.0,
                       currentOrder.value.vendor?.longitude ?? 0.0),
-                  mode: TravelMode.driving));
+                  mode: TravelMode.driving)); // Google Maps API returns shortest route by default
           if (result.points.isNotEmpty) {
             for (var point in result.points) {
               polylineCoordinates.add(LatLng(point.latitude, point.longitude));
@@ -1444,39 +1992,54 @@ if(arrowDrop.value){
                   currentOrder.value.vendor?.longitude ?? 0.0),
               icon: departureIcon!);
           
+          // Use exact coordinates (same as blue dot) with proper anchor
+          final driverLat = driverModel.value.location?.latitude ?? 0.0;
+          final driverLng = driverModel.value.location?.longitude ?? 0.0;
           newMarkers['Driver'] = Marker(
               markerId: const MarkerId('Driver'),
               infoWindow: const InfoWindow(title: "Driver"),
-              position: LatLng(driverModel.value.location?.latitude ?? 0.0,
-                  driverModel.value.location?.longitude ?? 0.0),
+              position: LatLng(driverLat, driverLng), // Exact same position as blue dot
               icon: taxiIcon!,
-              rotation: double.parse(driverModel.value.rotation.toString()));
+              rotation: (driverModel.value.rotation ?? 0.0).toDouble(),
+              anchor: const Offset(0.5, 0.5)); // Center the icon on the position
+          _lastDriverMarkerPosition = LatLng(driverLat, driverLng);
           
           // Update all markers at once
           markers.value = newMarkers;
           markers.refresh();
 
-          // Cache the route for future use
+          // Cache the route for future use (both full and simplified)
           if (polylineCoordinates.isNotEmpty) {
             _lastRouteCacheKey = routeCacheKey;
-            _cachedPolylineCoordinates = List.from(polylineCoordinates);
+            _cachedPolylineCoordinates = List.from(polylineCoordinates); // Full route for navigation
+            final simplified = _simplifyPolyline(polylineCoordinates); // Simplified for display
+            _cachedSimplifiedCoordinates = simplified;
             _lastRouteCalculationTime = DateTime.now();
+            AppLogger.log('✅ Route cached: ${polylineCoordinates.length} full points, ${simplified.length} display points', tag: 'Performance');
+            // Use simplified route for display (smoother rendering)
+            addPolyLine(simplified);
           }
-          addPolyLine(polylineCoordinates);
         } else if (currentOrder.value.status == Constant.orderInTransit) {
           List<LatLng> polylineCoordinates = [];
 
+          // Store route origin for future comparison
+          final routeOrigin = LatLng(
+            driverModel.value.location?.latitude ?? 0.0,
+            driverModel.value.location?.longitude ?? 0.0,
+          );
+          _lastRouteOrigin = routeOrigin;
+          
           PolylineResult result = await polylinePoints.value
               .getRouteBetweenCoordinates(
               request: PolylineRequest(
                   origin: PointLatLng(
-                      driverModel.value.location?.latitude ?? 0.0,
-                      driverModel.value.location?.longitude ?? 0.0),
+                      routeOrigin.latitude,
+                      routeOrigin.longitude),
                   destination: PointLatLng(
                       currentOrder.value.address?.location?.latitude ?? 0.0,
                       currentOrder.value.address?.location?.longitude ??
                           0.0),
-                  mode: TravelMode.driving));
+                  mode: TravelMode.driving)); // Google Maps API returns shortest route by default
 
           if (result.points.isNotEmpty) {
             for (var point in result.points) {
@@ -1494,25 +2057,33 @@ if(arrowDrop.value){
                   currentOrder.value.address?.location?.longitude ?? 0.0),
               icon: destinationIcon!);
 
+          // Use exact coordinates (same as blue dot) with proper anchor
+          final driverLat = driverModel.value.location?.latitude ?? 0.0;
+          final driverLng = driverModel.value.location?.longitude ?? 0.0;
           newMarkers['Driver'] = Marker(
               markerId: const MarkerId('Driver'),
               infoWindow: const InfoWindow(title: "Driver"),
-              position: LatLng(driverModel.value.location?.latitude ?? 0.0,
-                  driverModel.value.location?.longitude ?? 0.0),
+              position: LatLng(driverLat, driverLng), // Exact same position as blue dot
               icon: taxiIcon!,
-              rotation: double.parse(driverModel.value.rotation.toString()));
+              rotation: (driverModel.value.rotation ?? 0.0).toDouble(),
+              anchor: const Offset(0.5, 0.5)); // Center the icon on the position
+          _lastDriverMarkerPosition = LatLng(driverLat, driverLng);
           
           // Update all markers at once
           markers.value = newMarkers;
           markers.refresh();
           
-          // Cache the route for future use
+          // Cache the route for future use (both full and simplified)
           if (polylineCoordinates.isNotEmpty) {
             _lastRouteCacheKey = routeCacheKey;
-            _cachedPolylineCoordinates = List.from(polylineCoordinates);
+            _cachedPolylineCoordinates = List.from(polylineCoordinates); // Full route for navigation
+            final simplified = _simplifyPolyline(polylineCoordinates); // Simplified for display
+            _cachedSimplifiedCoordinates = simplified;
             _lastRouteCalculationTime = DateTime.now();
+            AppLogger.log('✅ Route cached: ${polylineCoordinates.length} full points, ${simplified.length} display points', tag: 'Performance');
+            // Use simplified route for display (smoother rendering)
+            addPolyLine(simplified);
           }
-          addPolyLine(polylineCoordinates);
         }
       } else {
         // For driverPending status, use driver location as origin (not author location)
@@ -1542,14 +2113,21 @@ if(arrowDrop.value){
           return;
         }
 
+        // Store route origin for future comparison
+        final routeOrigin = LatLng(
+          driverModel.value.location!.latitude!,
+          driverModel.value.location!.longitude!,
+        );
+        _lastRouteOrigin = routeOrigin;
+        
         PolylineResult result = await polylinePoints.value
             .getRouteBetweenCoordinates(
             request: PolylineRequest(
                 origin: PointLatLng(
-                    driverModel.value.location!.latitude!,
-                    driverModel.value.location!.longitude!),
+                    routeOrigin.latitude,
+                    routeOrigin.longitude),
                 destination: PointLatLng(vendorLat, vendorLng),
-                mode: TravelMode.driving));
+                mode: TravelMode.driving)); // Google Maps API returns shortest route by default
 
         if (result.points.isNotEmpty) {
           for (var point in result.points) {
@@ -1597,11 +2175,15 @@ if(arrowDrop.value){
         markers.refresh();
         
         if (polylineCoordinates.isNotEmpty) {
-          // Cache the route for future use
+          // Cache the route for future use (both full and simplified)
           _lastRouteCacheKey = routeCacheKey;
-          _cachedPolylineCoordinates = List.from(polylineCoordinates);
+          _cachedPolylineCoordinates = List.from(polylineCoordinates); // Full route for navigation
+          final simplified = _simplifyPolyline(polylineCoordinates); // Simplified for display
+          _cachedSimplifiedCoordinates = simplified;
           _lastRouteCalculationTime = DateTime.now();
-          addPolyLine(polylineCoordinates);
+          AppLogger.log('✅ Route cached: ${polylineCoordinates.length} full points, ${simplified.length} display points', tag: 'Performance');
+          // Use simplified route for display (smoother rendering)
+          addPolyLine(simplified);
         } else {
           // Only refresh markers, not full update
           markers.refresh();
@@ -1610,36 +2192,80 @@ if(arrowDrop.value){
     }
   }
   
-  // Generate cache key based on order status and coordinates
+  // Generate optimized cache key based on order status and coordinates
+  // Uses grid-based precision to reduce cache misses from minor coordinate changes
   String _generateRouteCacheKey() {
     final orderId = currentOrder.value.id ?? '';
     final status = currentOrder.value.status ?? '';
-    final driverLat = driverModel.value.location?.latitude?.toStringAsFixed(4) ?? '0';
-    final driverLng = driverModel.value.location?.longitude?.toStringAsFixed(4) ?? '0';
+    
+    // Round coordinates to grid (reduces cache misses from minor GPS fluctuations)
+    final driverLat = _roundToGrid(driverModel.value.location?.latitude ?? 0.0);
+    final driverLng = _roundToGrid(driverModel.value.location?.longitude ?? 0.0);
     
     if (status == Constant.orderShipped || status == Constant.driverAccepted) {
-      final vendorLat = (currentOrder.value.vendor?.latitudeValue ?? 
-                        currentOrder.value.vendor?.latitude ?? 0.0).toStringAsFixed(4);
-      final vendorLng = (currentOrder.value.vendor?.longitudeValue ?? 
-                        currentOrder.value.vendor?.longitude ?? 0.0).toStringAsFixed(4);
+      final vendorLat = _roundToGrid(currentOrder.value.vendor?.latitudeValue ?? 
+                        currentOrder.value.vendor?.latitude ?? 0.0);
+      final vendorLng = _roundToGrid(currentOrder.value.vendor?.longitudeValue ?? 
+                        currentOrder.value.vendor?.longitude ?? 0.0);
       return '$orderId-$status-$driverLat,$driverLng-$vendorLat,$vendorLng';
     } else if (status == Constant.orderInTransit) {
-      final destLat = currentOrder.value.address?.location?.latitude?.toStringAsFixed(4) ?? '0';
-      final destLng = currentOrder.value.address?.location?.longitude?.toStringAsFixed(4) ?? '0';
+      final destLat = _roundToGrid(currentOrder.value.address?.location?.latitude ?? 0.0);
+      final destLng = _roundToGrid(currentOrder.value.address?.location?.longitude ?? 0.0);
       return '$orderId-$status-$driverLat,$driverLng-$destLat,$destLng';
     } else if (status == Constant.driverPending) {
-      final vendorLat = (currentOrder.value.vendor?.latitudeValue ?? 
-                        currentOrder.value.vendor?.latitude ?? 0.0).toStringAsFixed(4);
-      final vendorLng = (currentOrder.value.vendor?.longitudeValue ?? 
-                        currentOrder.value.vendor?.longitude ?? 0.0).toStringAsFixed(4);
+      final vendorLat = _roundToGrid(currentOrder.value.vendor?.latitudeValue ?? 
+                        currentOrder.value.vendor?.latitude ?? 0.0);
+      final vendorLng = _roundToGrid(currentOrder.value.vendor?.longitudeValue ?? 
+                        currentOrder.value.vendor?.longitude ?? 0.0);
       return '$orderId-$status-$driverLat,$driverLng-$vendorLat,$vendorLng';
     }
     return '$orderId-$status-$driverLat,$driverLng';
   }
   
-  // Apply cached route to map
+  // Round coordinate to grid for cache key optimization
+  // This reduces cache misses from minor GPS fluctuations (~1km grid)
+  double _roundToGrid(double coordinate) {
+    return (coordinate / _coordinatePrecision).round() * _coordinatePrecision;
+  }
+  
+  // Simplify polyline by reducing points while maintaining route shape
+  // Uses Douglas-Peucker-like algorithm: keep start, end, and points with significant direction changes
+  List<LatLng> _simplifyPolyline(List<LatLng> points) {
+    if (points.length <= _maxDisplayPoints) {
+      return points; // No simplification needed
+    }
+    
+    final simplified = <LatLng>[];
+    simplified.add(points.first); // Always keep first point
+    
+    // Calculate step size to sample points
+    final step = (points.length / _maxDisplayPoints).ceil();
+    
+    // Sample points evenly, but always include last point
+    for (int i = step; i < points.length - step; i += step) {
+      simplified.add(points[i]);
+    }
+    
+    // Always keep last point
+    if (simplified.last != points.last) {
+      simplified.add(points.last);
+    }
+    
+    AppLogger.log(
+      'Route simplified: ${points.length} → ${simplified.length} points (${((1 - simplified.length / points.length) * 100).toStringAsFixed(1)}% reduction)',
+      tag: 'Performance'
+    );
+    
+    return simplified;
+  }
+  
+  // Apply cached route to map (use simplified version for display)
   void _applyCachedRoute() {
-    if (_cachedPolylineCoordinates != null && _cachedPolylineCoordinates!.isNotEmpty) {
+    if (_cachedSimplifiedCoordinates != null && _cachedSimplifiedCoordinates!.isNotEmpty) {
+      addPolyLine(_cachedSimplifiedCoordinates!);
+      AppLogger.log('✅ Applied cached simplified route (${_cachedSimplifiedCoordinates!.length} points)', tag: 'Performance');
+    } else if (_cachedPolylineCoordinates != null && _cachedPolylineCoordinates!.isNotEmpty) {
+      // Fallback to full route if simplified not available
       addPolyLine(_cachedPolylineCoordinates!);
     }
   }
@@ -1660,10 +2286,9 @@ if(arrowDrop.value){
     markers.refresh();
     polyLines.refresh();
 
-    // Safely update camera location only if polyline coordinates exist
-    if (polylineCoordinates.isNotEmpty && mapController != null) {
-      updateCameraLocation(polylineCoordinates.first, mapController);
-    }
+    // REMOVED: Auto-focus on start point - let user control camera
+    // Camera will follow driver position if enabled, or stay where user positioned it
+    // This prevents annoying auto-focus jumps when route is calculated
   }
 
   Future<void> updateCameraLocation(
@@ -1896,18 +2521,101 @@ if(arrowDrop.value){
   }
 
 
-  Future<void> refreshCurrentOrder() async {
-    AppLogger.log('refreshCurrentOrder() API called', tag: 'Function');
+  Future<void> refreshCurrentOrder({bool forceRefresh = false}) async {
+    AppLogger.log('refreshCurrentOrder() API called - forceRefresh: $forceRefresh', tag: 'Function');
     if (currentOrder.value.id != null) {
       try {
-        final response = await http.get(
+        // Invalidate cache if force refresh is requested
+        if (forceRefresh) {
+          final httpClient = HttpClientService();
+          await httpClient.invalidateCache('orders/${currentOrder.value.id}');
+        }
+        
+        // Use caching service with order cache strategy (30 seconds TTL)
+        final httpClient = HttpClientService();
+        final response = await httpClient.get(
           Uri.parse("${Constant.baseUrl}restaurant/orders/${currentOrder.value.id}"),
+          cacheStrategy: CacheStrategy.order,
+          useCache: !forceRefresh, // Bypass cache if force refresh
+          forceRefresh: forceRefresh,
         );
         if (response.statusCode == 200) {
           final body = jsonDecode(response.body);
           if (body["success"] == true && body["data"] != null) {
             try {
-              currentOrder.value = OrderModel.fromJson(body["data"]);
+              final refreshedOrder = OrderModel.fromJson(body["data"]);
+              final newStatus = refreshedOrder.status;
+              final currentStatus = currentOrder.value.status;
+              
+              // Prevent overwriting newer status with older cached data
+              // Status progression: driverPending -> driverAccepted -> orderShipped -> orderInTransit -> orderCompleted
+              final statusPriority = {
+                Constant.driverPending: 1,
+                Constant.driverAccepted: 2,
+                Constant.orderShipped: 2,
+                Constant.orderInTransit: 3,
+                Constant.orderCompleted: 4,
+              };
+              
+              final currentPriority = statusPriority[currentStatus] ?? 0;
+              final newPriority = statusPriority[newStatus] ?? 0;
+              
+              // Don't update if order is completed - clear it instead
+              if (newStatus == Constant.orderCompleted || newStatus == "Order Completed") {
+                AppLogger.log('⚠️ Completed order detected in refresh - clearing: ${currentOrder.value.id}', tag: 'Order');
+                
+                // Remove from driver lists
+                driverModel.value.inProgressOrderID?.remove(currentOrder.value.id);
+                driverModel.value.orderRequestData?.remove(currentOrder.value.id);
+                await FireStoreUtils.updateUser(driverModel.value);
+                
+                // Clear order
+                final orderId = currentOrder.value.id;
+                currentOrder.value = OrderModel();
+                await clearMap();
+                
+                // Invalidate cache
+                if (orderId != null) {
+                  final httpClient = HttpClientService();
+                  await httpClient.invalidateCache('orders/$orderId');
+                }
+                
+                // Reset status tracking
+                _lastKnownOrderStatus = null;
+                _lastStatusChangeTime = null;
+                
+                update();
+                return;
+              }
+              
+              // Only update if new status is same or higher priority (newer)
+              // This prevents cache from overwriting newer status
+              if (newPriority >= currentPriority || forceRefresh) {
+                final statusChanged = _lastKnownOrderStatus != null && 
+                                     _lastKnownOrderStatus != newStatus;
+                
+                currentOrder.value = refreshedOrder;
+                
+                // Track status changes to optimize future refreshes
+                if (statusChanged) {
+                  _lastStatusChangeTime = DateTime.now();
+                  _lastKnownOrderStatus = newStatus;
+                  AppLogger.log(
+                      "🔄 Order Status Changed: $_lastKnownOrderStatus → $newStatus",
+                      tag: "API"
+                  );
+                  // Force UI update when status changes
+                  currentOrder.refresh();
+                } else {
+                  _lastKnownOrderStatus = newStatus;
+                }
+              } else {
+                AppLogger.log(
+                    "⚠️ Skipping status update - current status ($currentStatus) is newer than cached ($newStatus)",
+                    tag: "API"
+                );
+              }
+              
               AppLogger.log(
                   "Order Refreshed via API -> ID: ${currentOrder.value.id} | Status: ${currentOrder.value.status}",
                   tag: "API"
@@ -1982,11 +2690,11 @@ if(arrowDrop.value){
     }
   }
 
-  Future<void> refreshHomeScreen() async {
+  Future<bool> refreshHomeScreen() async {
     // Prevent multiple simultaneous refreshes
     if (_isRefreshing) {
       AppLogger.log('refreshHomeScreen() skipped - already in progress', tag: 'Function');
-      return;
+      return false;
     }
     
     _isRefreshing = true;
@@ -1998,16 +2706,53 @@ if(arrowDrop.value){
       // Store previous orderRequestData to detect changes
       final previousOrderRequestData = driverModel.value.orderRequestData?.toList();
       
-      /// API CALL instead of Firestore
-      final response = await http.get(
+      // Build headers with ETag/Last-Modified support for conditional requests
+      final headers = <String, String>{
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      };
+      
+      // Add conditional headers if we have them from previous request
+      if (_lastETag != null) {
+        headers['If-None-Match'] = _lastETag!;
+        AppLogger.log('Using ETag: $_lastETag', tag: 'API');
+      }
+      if (_lastModified != null) {
+        headers['If-Modified-Since'] = _lastModified!;
+        AppLogger.log('Using Last-Modified: $_lastModified', tag: 'API');
+      }
+      
+      /// API CALL with caching and conditional request support
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse("${Constant.baseUrl}users/$userId"),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: headers,
+        cacheStrategy: CacheStrategy.driverProfile,
+        useCache: true,
+        forceRefresh: _lastETag != null || _lastModified != null, // Force refresh if using conditional headers
       );
 
+      // Handle 304 Not Modified response (data hasn't changed)
+      if (response.statusCode == 304) {
+        AppLogger.log("✅ Data unchanged (304 Not Modified) - skipping update", tag: "API");
+        _isRefreshing = false;
+        return false; // No new data
+      }
+      
       if (response.statusCode == 200) {
+        // Extract and store ETag/Last-Modified headers for next request
+        final etag = response.headers['etag'];
+        final lastModified = response.headers['last-modified'];
+        
+        if (etag != null) {
+          _lastETag = etag;
+          AppLogger.log('Stored ETag: $etag', tag: 'API');
+        }
+        if (lastModified != null) {
+          _lastModified = lastModified;
+          AppLogger.log('Stored Last-Modified: $lastModified', tag: 'API');
+        }
+        
         final responseData = jsonDecode(response.body);
 
         if (responseData['success'] == true) {
@@ -2054,14 +2799,27 @@ if(arrowDrop.value){
       } else if (response.statusCode == 429) {
         AppLogger.log("Rate limited (429) - will retry on next poll", tag: "API");
         // Don't throw error, just log - will retry on next poll
+        _isRefreshing = false;
+        return false;
       } else {
         AppLogger.log("Failed to get user | Code: ${response.statusCode}",
             tag: "API");
+        _isRefreshing = false;
+        return false;
       }
 
-      /// Refresh existing order if we have one
+      /// Refresh existing order if we have one (only if status might have changed)
       if (currentOrder.value.id != null) {
-        await refreshCurrentOrder();
+        // Only refresh if enough time has passed since last status check
+        // This reduces server load while still keeping data fresh
+        final shouldRefresh = _lastStatusChangeTime == null ||
+            DateTime.now().difference(_lastStatusChangeTime!) > _statusCheckCooldown;
+        
+        if (shouldRefresh) {
+          await refreshCurrentOrder();
+        } else {
+          AppLogger.log('Skipping order refresh - within cooldown period', tag: 'Performance');
+        }
       } else {
         // If no current order, check for new orders from orderRequestData
         await getCurrentOrder();
@@ -2080,11 +2838,15 @@ if(arrowDrop.value){
 
       update();
       AppLogger.log('Home screen refresh completed', tag: 'UI');
+      
+      // Return true if data was updated, false if unchanged
+      return true;
 
     } catch (e) {
       AppLogger.log('Error refreshing home screen: $e', tag: 'Error');
       // Even on error, try to fetch current order
       await getCurrentOrder();
+      return false;
     } finally {
       // Always reset the refresh flag
       _isRefreshing = false;
@@ -2092,18 +2854,43 @@ if(arrowDrop.value){
   }
 
   /// Fetch vendor data by vendorID if missing from order
+  /// Uses multi-layer caching: in-memory -> HTTP cache -> API -> Firestore
   Future<void> _fetchVendorData(String vendorID) async {
     try {
-      AppLogger.log('Fetching vendor data for vendorID: $vendorID', tag: 'API');
+      // Step 1: Check in-memory cache first (instant access)
+      if (_vendorModelCache.containsKey(vendorID)) {
+        final cachedTime = _vendorCacheTime[vendorID];
+        if (cachedTime != null && 
+            DateTime.now().difference(cachedTime) < vendorModelCacheTTL) {
+          currentOrder.value.vendor = _vendorModelCache[vendorID]!;
+          AppLogger.log('✅ Vendor loaded from memory cache: $vendorID', tag: 'VendorCache');
+          update();
+          
+          // Refresh in background to ensure data is fresh (non-blocking)
+          _refreshVendorInBackground(vendorID);
+          return;
+        } else {
+          // Cache expired, remove it
+          _vendorModelCache.remove(vendorID);
+          _vendorCacheTime.remove(vendorID);
+        }
+      }
       
-      // Try API endpoint first
-      final response = await http.get(
+      AppLogger.log('Fetching vendor data for vendorID: $vendorID', tag: 'VendorCache');
+      
+      // Step 2: Try API endpoint with HTTP caching (checks memory + persistent cache)
+      // This will use cached data if available (1 hour TTL), otherwise fetch from API
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse("${Constant.baseUrl}restaurant/vendors/$vendorID"),
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
-      ).timeout(Duration(seconds: 10));
+        cacheStrategy: CacheStrategy.vendor,
+        useCache: true,
+        timeout: Duration(seconds: 10),
+      );
       
       if (response.statusCode == 200) {
         if (!response.body.trim().startsWith('<!') && !response.body.trim().startsWith('<html')) {
@@ -2118,51 +2905,130 @@ if(arrowDrop.value){
                   vendorData = jsonDecode(vendorData);
                 }
                 if (vendorData is Map<String, dynamic>) {
-                  currentOrder.value.vendor = VendorModel.fromJson(vendorData);
-                  AppLogger.log('✅ Vendor data fetched successfully', tag: 'API');
+                  final vendorModel = VendorModel.fromJson(vendorData);
+                  currentOrder.value.vendor = vendorModel;
+                  
+                  // Store in in-memory cache for instant future access
+                  _vendorModelCache[vendorID] = vendorModel;
+                  _vendorCacheTime[vendorID] = DateTime.now();
+                  
+                  AppLogger.log('✅ Vendor data fetched and cached: $vendorID', tag: 'VendorCache');
                   update(); // Update UI
                   return;
                 } else {
-                  AppLogger.log('Vendor data is not a Map: ${vendorData.runtimeType}', tag: 'API');
+                  AppLogger.log('Vendor data is not a Map: ${vendorData.runtimeType}', tag: 'VendorCache');
                 }
               } catch (parseError) {
-                AppLogger.log('Error creating VendorModel from API data: $parseError', tag: 'API');
-                AppLogger.log('Vendor data type: ${data['data'].runtimeType}', tag: 'API');
+                AppLogger.log('Error creating VendorModel from API data: $parseError', tag: 'VendorCache');
+                AppLogger.log('Vendor data type: ${data['data'].runtimeType}', tag: 'VendorCache');
               }
             }
           } catch (e) {
-            AppLogger.log('Error parsing vendor API response: $e', tag: 'API');
+            AppLogger.log('Error parsing vendor API response: $e', tag: 'VendorCache');
           }
         }
       }
       
-      // Fallback: Try Firestore
-      AppLogger.log('API failed, trying Firestore for vendor: $vendorID', tag: 'API');
+      // Step 3: Fallback to Firestore if API fails
+      AppLogger.log('API failed, trying Firestore for vendor: $vendorID', tag: 'VendorCache');
       try {
         final vendorDoc = await firestore.FirebaseFirestore.instance.collection('vendors').doc(vendorID).get();
         if (vendorDoc.exists) {
           final vendorData = vendorDoc.data();
           if (vendorData != null) {
             try {
-              currentOrder.value.vendor = VendorModel.fromJson(Map<String, dynamic>.from(vendorData));
-              AppLogger.log('✅ Vendor data fetched from Firestore', tag: 'API');
+              final vendorModel = VendorModel.fromJson(Map<String, dynamic>.from(vendorData));
+              currentOrder.value.vendor = vendorModel;
+              
+              // Store in in-memory cache for future access
+              _vendorModelCache[vendorID] = vendorModel;
+              _vendorCacheTime[vendorID] = DateTime.now();
+              
+              AppLogger.log('✅ Vendor data fetched from Firestore and cached: $vendorID', tag: 'VendorCache');
               update(); // Update UI
             } catch (parseError) {
-              AppLogger.log('Error creating VendorModel from Firestore data: $parseError', tag: 'API');
-              AppLogger.log('Vendor data: $vendorData', tag: 'API');
+              AppLogger.log('Error creating VendorModel from Firestore data: $parseError', tag: 'VendorCache');
+              AppLogger.log('Vendor data: $vendorData', tag: 'VendorCache');
             }
           } else {
-            AppLogger.log('❌ Vendor document exists but data is null', tag: 'API');
+            AppLogger.log('❌ Vendor document exists but data is null', tag: 'VendorCache');
           }
         } else {
-          AppLogger.log('❌ Vendor not found in Firestore', tag: 'API');
+          AppLogger.log('❌ Vendor not found in Firestore: $vendorID', tag: 'VendorCache');
         }
       } catch (firestoreError) {
-        AppLogger.log('Firestore error: $firestoreError', tag: 'API');
+        AppLogger.log('Firestore error: $firestoreError', tag: 'VendorCache');
       }
     } catch (e) {
-      AppLogger.log('Error fetching vendor data: $e', tag: 'API');
+      AppLogger.log('Error fetching vendor data: $e', tag: 'VendorCache');
     }
+  }
+  
+  /// Refresh vendor data in background (non-blocking)
+  /// This ensures cached vendor data stays fresh without blocking UI
+  void _refreshVendorInBackground(String vendorID) {
+    // Refresh vendor in background without blocking
+    Future.delayed(Duration(seconds: 2), () async {
+      try {
+        final httpClient = HttpClientService();
+        final response = await httpClient.get(
+          Uri.parse("${Constant.baseUrl}restaurant/vendors/$vendorID"),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          cacheStrategy: CacheStrategy.vendor,
+          useCache: true,
+          timeout: Duration(seconds: 10),
+        );
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['data'] != null) {
+            dynamic vendorData = data['data'];
+            if (vendorData is String) {
+              vendorData = jsonDecode(vendorData);
+            }
+            if (vendorData is Map<String, dynamic>) {
+              final vendorModel = VendorModel.fromJson(vendorData);
+              
+              // Update cache with fresh data
+              _vendorModelCache[vendorID] = vendorModel;
+              _vendorCacheTime[vendorID] = DateTime.now();
+              
+              // Only update UI if this vendor is still the current order's vendor
+              if (currentOrder.value.vendorID == vendorID) {
+                currentOrder.value.vendor = vendorModel;
+                update();
+              }
+              
+              AppLogger.log('✅ Vendor refreshed in background: $vendorID', tag: 'VendorCache');
+            }
+          }
+        }
+      } catch (e) {
+        AppLogger.log('Background vendor refresh failed: $e', tag: 'VendorCache');
+      }
+    });
+  }
+  
+  /// Invalidate vendor cache (call when vendor data might have changed)
+  Future<void> invalidateVendorCache(String vendorID) async {
+    _vendorModelCache.remove(vendorID);
+    _vendorCacheTime.remove(vendorID);
+    
+    // Also invalidate HTTP cache
+    final httpClient = HttpClientService();
+    await httpClient.invalidateCache('vendors/$vendorID');
+    
+    AppLogger.log('🗑️ Vendor cache invalidated: $vendorID', tag: 'VendorCache');
+  }
+  
+  /// Clear all vendor caches (useful for logout or cache cleanup)
+  void clearVendorCache() {
+    _vendorModelCache.clear();
+    _vendorCacheTime.clear();
+    AppLogger.log('🗑️ All vendor caches cleared', tag: 'VendorCache');
   }
 
 }

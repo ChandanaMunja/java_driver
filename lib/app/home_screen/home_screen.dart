@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'package:android_pip/android_pip.dart';
@@ -16,6 +17,7 @@ import 'package:jippydriver_driver/main.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
+import 'package:jippydriver_driver/services/http_client_service.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
 import 'package:jippydriver_driver/themes/responsive.dart';
 import 'package:jippydriver_driver/themes/round_button_fill.dart';
@@ -48,37 +50,116 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
 
+  Timer? _pipDelayTimer; // Delay timer to prevent accidental PiP triggers
+  
   @override
   void initState() {
-  super.initState();
-  WidgetsBinding.instance.addObserver(this);
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
   }
+  
   @override
   void dispose() {
-  WidgetsBinding.instance.removeObserver(this);
-  super.dispose();
+    // Cancel PiP delay timer
+    _pipDelayTimer?.cancel();
+    // Remove lifecycle observer
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
+  
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = Get.find<HomeController>();
+    
+    // Update polling optimization based on lifecycle state (includes cache cleanup)
+    controller.updateAppLifecycleState(state);
+    
+    // Smart PiP mode: Only enter PiP if:
+    // 1. App is paused/inactive (user switched apps)
+    // 2. Current route is active
+    // 3. There's an active order (makes PiP useful)
+    // 4. Add small delay to prevent accidental triggers
     if ((state == AppLifecycleState.paused || state == AppLifecycleState.inactive)
         && ModalRoute.of(context)?.isCurrent == true) {
-      enterPipMode();
+      // Check if there's an active order before entering PiP
+      final hasActiveOrder = controller.currentOrder.value.id != null &&
+          controller.currentOrder.value.driverID == Constant.userModel?.id;
+      
+      if (hasActiveOrder) {
+        // Cancel any existing timer
+        _pipDelayTimer?.cancel();
+        
+        // Add 1 second delay before entering PiP to prevent accidental triggers
+        _pipDelayTimer = Timer(const Duration(seconds: 1), () {
+          if (mounted && (state == AppLifecycleState.paused || state == AppLifecycleState.inactive)) {
+            enterPipMode();
+          }
+        });
+      } else {
+        // No active order, don't enter PiP
+        isInPipMode.value = false;
+      }
     } else if (state == AppLifecycleState.resumed && ModalRoute.of(context)?.isCurrent == true) {
-      isInPipMode.value = false;
+      // Cancel any pending PiP entry
+      _pipDelayTimer?.cancel();
+      
+      // Exit PiP mode when app resumes
+      exitPipMode();
       AppLogger.log('App resumed - triggering immediate order refresh', tag: 'Lifecycle');
       controller.forceRefreshOrders();
     } else {
+      // Cancel timer and reset PiP state
+      _pipDelayTimer?.cancel();
       isInPipMode.value = false;
     }
   }
+  
+  /// Enter PiP mode with optimized aspect ratio for better UX
+  /// Aspect ratio options:
+  /// - [1, 1] = Square (best for small screens, most visible)
+  /// - [4, 3] = Medium (balanced)
+  /// - [16, 9] = Wide (bigger but may be too wide)
+  /// - [7, 9] = Tall (old, too small)
   Future<void> enterPipMode() async {
-  try {
-  await AndroidPIP().enterPipMode(aspectRatio: [7, 9]);
-  isInPipMode.value = true;
-  } catch (e) {
-  debugPrint("Error entering PiP: $e");
+    // Prevent multiple PiP entries
+    if (isInPipMode.value) {
+      AppLogger.log('PiP mode already active, skipping', tag: 'PiP');
+      return;
+    }
+    
+    try {
+      // Using [1, 1] square aspect ratio for better visibility and user-friendliness
+      // Square format is more visible and easier to interact with in PiP mode
+      await AndroidPIP().enterPipMode(aspectRatio: [1, 1]);
+      
+      // Use a small delay before setting flag for smooth transition
+      await Future.delayed(const Duration(milliseconds: 300));
+      
+      if (mounted) {
+        isInPipMode.value = true;
+        AppLogger.log('✅ PiP mode entered successfully with square aspect ratio [1, 1]', tag: 'PiP');
+      }
+    } catch (e) {
+      debugPrint("Error entering PiP: $e");
+      AppLogger.log('❌ Failed to enter PiP: $e', tag: 'PiP');
+      // Reset flag on error
+      isInPipMode.value = false;
+    }
   }
+  
+  /// Exit PiP mode smoothly
+  Future<void> exitPipMode() async {
+    try {
+      // Note: Android PiP doesn't have a direct programmatic exit method
+      // The system handles exit when user taps outside or app resumes
+      // But we can reset the flag for smooth UI transition
+      if (isInPipMode.value) {
+        isInPipMode.value = false;
+        AppLogger.log('✅ PiP mode exited', tag: 'PiP');
+      }
+    } catch (e) {
+      debugPrint("Error exiting PiP: $e");
+    }
   }
   @override
   Widget build(BuildContext context) {
@@ -261,19 +342,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                                   : GoogleMap(
                             onMapCreated: (mapController) async {
                               controller.mapController = mapController;
-                              // Wait a bit to ensure map fully loads
-                              await Future.delayed(const Duration(seconds: 1));
-                              // If location is available, move camera there
-                              final location = Constant.locationDataFinal;
-                              if (location != null) {
-                                controller.mapController!.animateCamera(
-                                  CameraUpdate.newCameraPosition(
-                                    CameraPosition(
-                                      target: LatLng(location.latitude??0.0, location.longitude??0.0),
-                                      zoom: 15,
+                              // Reduced delay for faster initial camera setup
+                              await Future.delayed(const Duration(milliseconds: 300));
+                              // Only set initial camera position once - focus on driver location (bike), not start point
+                              // Use driver location for initial camera position (bike position)
+                              if (!controller.hasInitialCameraSet) {
+                                final driverLocation = controller.driverModel.value.location;
+                                if (driverLocation != null && 
+                                    (driverLocation.latitude ?? 0.0) != 0.0 &&
+                                    (driverLocation.longitude ?? 0.0) != 0.0) {
+                                  controller.mapController!.animateCamera(
+                                    CameraUpdate.newCameraPosition(
+                                      CameraPosition(
+                                        target: LatLng(
+                                          driverLocation.latitude ?? 0.0, 
+                                          driverLocation.longitude ?? 0.0
+                                        ),
+                                        zoom: 15,
+                                      ),
                                     ),
-                                  ),
-                                );
+                                  );
+                                  controller.hasInitialCameraSet = true;
+                                } else {
+                                  // Fallback to Constant.locationDataFinal if driver location not available
+                                  final location = Constant.locationDataFinal;
+                                  if (location != null && 
+                                      (location.latitude ?? 0.0) != 0.0 &&
+                                      (location.longitude ?? 0.0) != 0.0) {
+                                    controller.mapController!.animateCamera(
+                                      CameraUpdate.newCameraPosition(
+                                        CameraPosition(
+                                          target: LatLng(
+                                            location.latitude ?? 0.0, 
+                                            location.longitude ?? 0.0
+                                          ),
+                                          zoom: 15,
+                                        ),
+                                      ),
+                                    );
+                                    controller.hasInitialCameraSet = true;
+                                  }
+                                }
                               }
                             },
                              // onMapCreated: (mapController) {
@@ -478,7 +587,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver{
                         //           })(),
 Obx(
   () {
-    bool hideUI = isInPipMode.value;
+    bool isPiPActive = isInPipMode.value;
+    
+    // In PiP mode, show simplified UI with essential info only
+    if (isPiPActive) {
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 300),
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        },
+        child: Container(
+          key: const ValueKey('pip_view'),
+          child: buildOrderActionsCard(themeChange, controller),
+        ),
+      );
+    }
+    
+    // Normal full-screen UI
     // Check if order is in orderRequestData (pending driver acceptance)
     final isOrderInRequestData = controller.driverModel.value.orderRequestData
         ?.contains(controller.currentOrder.value.id) ?? false;
@@ -524,36 +652,54 @@ Obx(
         controller.currentOrder.value.driverID == Constant.userModel?.id &&
         (!isOrderInRequestData || controller.currentOrder.value.status == Constant.driverPending);
     
-    return hideUI ? SizedBox() : shouldShowAcceptReject
-        ? showDriverBottomSheet(themeChange, controller)
-        : shouldShowOrderCard
-        ? (() {
-      AppLogger.log(
-          'Showing buildOrderActionsCard: currentDriverId=${Constant.userModel?.id}, orderDriverId=${controller.currentOrder.value.driverID}, status=${controller.currentOrder.value.status}',
-          tag: 'UI');
-      return buildOrderActionsCard(themeChange, controller);
-    })()
-        : (() {
-      /// Clear the map ONLY if the current driver is NOT assigned
-      if (controller.currentOrder.value.driverID != Constant.userModel?.id) {
-        controller.clearMap();
-      }
-      AppLogger.log(
-          'Not showing order card - OrderID: ${controller.currentOrder.value.id}, '
-          'Status: ${controller.currentOrder.value.status}, '
-          'DriverID match: ${controller.currentOrder.value.driverID == Constant.userModel?.id}, '
-          'isOrderInRequestData: $isOrderInRequestData',
-          tag: 'UI');
-      return SafeArea(
-        child: Center(
-          // child: Text(
-          //   'No active orders. Waiting for new orders...',
-          //   style: TextStyle(
-          //       fontSize: 18, color: Colors.grey),
-          // ),
-        ),
-      );
-    })();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: child,
+        );
+      },
+      child: shouldShowAcceptReject
+          ? Container(
+              key: const ValueKey('accept_reject'),
+              child: showDriverBottomSheet(themeChange, controller),
+            )
+          : shouldShowOrderCard
+              ? Container(
+                  key: const ValueKey('order_card'),
+                  child: (() {
+                    AppLogger.log(
+                        'Showing buildOrderActionsCard: currentDriverId=${Constant.userModel?.id}, orderDriverId=${controller.currentOrder.value.driverID}, status=${controller.currentOrder.value.status}',
+                        tag: 'UI');
+                    return buildOrderActionsCard(themeChange, controller);
+                  })(),
+                )
+              : Container(
+                  key: const ValueKey('no_order'),
+                  child: (() {
+                    /// Clear the map ONLY if the current driver is NOT assigned
+                    if (controller.currentOrder.value.driverID != Constant.userModel?.id) {
+                      controller.clearMap();
+                    }
+                    AppLogger.log(
+                        'Not showing order card - OrderID: ${controller.currentOrder.value.id}, '
+                        'Status: ${controller.currentOrder.value.status}, '
+                        'DriverID match: ${controller.currentOrder.value.driverID == Constant.userModel?.id}, '
+                        'isOrderInRequestData: $isOrderInRequestData',
+                        tag: 'UI');
+                    return SafeArea(
+                      child: Center(
+                        // child: Text(
+                        //   'No active orders. Waiting for new orders...',
+                        //   style: TextStyle(
+                        //       fontSize: 18, color: Colors.grey),
+                        // ),
+                      ),
+                    );
+                  })(),
+                ),
+    );
   }
 ),
 
@@ -1354,16 +1500,9 @@ Obx(
                         onPress: () async {
                           AppLogger.log('User clicked Accept Order button',
                               tag: 'UserAction');
+                          // acceptOrder() already handles all updates and UI refresh
+                          // No need to fetch again - it will cause race conditions
                           await controller.acceptOrder();
-                          if (controller.currentOrder.value.id != null) {
-                            final updatedOrder =
-                                await FireStoreUtils.getOrderById(
-                                    controller.currentOrder.value.id!);
-                            if (updatedOrder != null) {
-                              controller.currentOrder.value = updatedOrder;
-                              controller.update();
-                            }
-                          }
                         },
                       ),
                     )
@@ -1379,24 +1518,49 @@ Obx(
   }
 
   /// Helper method to determine the correct delivery button text based on order status
+  /// This method is called inside Obx() to ensure it reacts to status changes
   String _getDeliveryButtonText(HomeController controller) {
+    // Access observable values to ensure reactivity
     final orderStatus = controller.currentOrder.value.status;
     final isDirectDelivery = controller.driverModel.value.vendorID?.isEmpty == true;
     
+    // Handle null or empty status
+    if (orderStatus == null || orderStatus.isEmpty) {
+      return "Order Delivered".tr;
+    }
+    
+    // Status priority check - ensure we show correct button based on actual status
+    // Order progression: driverPending -> driverAccepted -> orderShipped -> orderInTransit -> orderCompleted
+    
     // Pickup stage: Order Shipped or Driver Accepted
     if (orderStatus == Constant.orderShipped || 
-        orderStatus == Constant.driverAccepted) {
+        orderStatus == Constant.driverAccepted ||
+        orderStatus == "Order Shipped" ||
+        orderStatus == "Driver Accepted") {
       return "Reached restaurant for Pickup".tr;
     }
     
     // Delivery stage: In Transit
-    if (orderStatus == Constant.orderInTransit) {
+    if (orderStatus == Constant.orderInTransit || 
+        orderStatus == "In Transit") {
       // Direct delivery (no restaurant) - customer pickup
       if (isDirectDelivery) {
         return "Reached the Customers Door Steps".tr;
       }
       // Restaurant delivery - mark as delivered
       return "Order Delivered".tr;
+    }
+    
+    // Order Completed - show delivered
+    if (orderStatus == Constant.orderCompleted || 
+        orderStatus == "Order Completed") {
+      return "Order Delivered".tr;
+    }
+    
+    // Driver Pending - show pickup (order just accepted, waiting for driver)
+    if (orderStatus == Constant.driverPending || 
+        orderStatus == "Driver Pending") {
+      return "Reached restaurant for Pickup".tr;
     }
     
     // Fallback: Default to "Order Delivered" for any other status
@@ -1959,49 +2123,10 @@ Obx(
                               ),
                             ),
                           ),
-                          // Amount Field here need to Update
-
-                          //  Text(
-                          //     Constant.amountShow(amount: totalAmount.toString()),
-                          //     textAlign: TextAlign.start,
-                          //     style: TextStyle(
-                          //       fontFamily: AppThemeData.semiBold,
-                          //       color: themeChange.getThem()
-                          //           ? AppThemeData.grey50
-                          //           : AppThemeData.grey900,
-                          //       fontSize: 16,
-                          //     ), =
-
-                          FutureBuilder<double?>(
-                            future: fetchToPayForOrder(
-                                controller.currentOrder.value.id!),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                  ConnectionState.waiting) {
-                                return const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child:
-                                      CircularProgressIndicator(strokeWidth: 2),
-                                );
-                              }
-                              if (snapshot.hasError) {
-                                return const Text('Error');
-                              }
-                              final toPay = snapshot.data;
-                              return Text(
-                                Constant.amountShow(
-                                    amount: (toPay ?? 0.0).toString()),
-                                textAlign: TextAlign.start,
-                                style: TextStyle(
-                                  fontFamily: AppThemeData.semiBold,
-                                  color: themeChange.getThem()
-                                      ? AppThemeData.grey50
-                                      : AppThemeData.grey900,
-                                  fontSize: 16,
-                                ),
-                              );
-                            },
+                          // Cached ToPay amount display - prevents repeated API calls
+                          _CachedToPayAmount(
+                            orderId: controller.currentOrder.value.id!,
+                            themeChange: themeChange,
                           ),
                         ],
                       )
@@ -2024,11 +2149,23 @@ Obx(
                   "orderModel": controller.currentOrder.value
                 })?.then((v) async {
                   if (v == true) {
-                    OrderModel? ordermodel = await FireStoreUtils.getOrderById(
-                        controller.currentOrder.value.id!);
-                    if (ordermodel?.id != null) {
-                      controller.currentOrder.value = ordermodel!;
+                    // Optimistically update status to orderInTransit for smooth transition
+                    final cachedOrder = controller.currentOrder.value;
+                    final orderId = cachedOrder.id;
+                    
+                    if (cachedOrder.status == Constant.driverAccepted || 
+                        cachedOrder.status == Constant.orderShipped) {
+                      cachedOrder.status = Constant.orderInTransit;
+                      controller.currentOrder.value = cachedOrder;
+                      controller.currentOrder.refresh();
+                      AppLogger.log('✅ Optimistically updated status to orderInTransit for order: $orderId', tag: 'UI');
                     }
+                    
+                    // Force refresh from server (bypass cache) to get latest status
+                    // Small delay to allow Firestore/API to update
+                    await Future.delayed(Duration(milliseconds: 800));
+                    await controller.refreshCurrentOrder(forceRefresh: true);
+                    
                     controller.update();
                   }
                 });
@@ -2040,13 +2177,37 @@ Obx(
                     .then(
                   (value) async {
                     if (value == true) {
+                      // Order delivery completed - clear everything
+                      final completedOrderId = controller.currentOrder.value.id;
+                      
                       await AudioPlayerService.playSound(false);
+                      
+                      // Remove from inProgressOrderID
                       controller.driverModel.value.inProgressOrderID!
-                          .remove(controller.currentOrder.value.id);
-                      await FireStoreUtils.updateUser(
-                          controller.driverModel.value);
+                          .remove(completedOrderId);
+                      
+                      // Invalidate cache for completed order to prevent it from showing again
+                      if (completedOrderId != null) {
+                        final httpClient = HttpClientService();
+                        await httpClient.invalidateCache('orders/$completedOrderId');
+                        AppLogger.log('🗑️ Invalidated cache for completed order: $completedOrderId', tag: 'Order');
+                      }
+                      
+                      // Update driver profile
+                      await FireStoreUtils.updateUser(controller.driverModel.value);
+                      
+                      // Clear current order immediately
                       controller.currentOrder.value = OrderModel();
                       controller.clearMap();
+                      
+                      // Reset status tracking
+                      controller.resetStatusTracking();
+                      
+                      // Force UI update
+                      controller.update();
+                      
+                      AppLogger.log('✅ Order delivery completed - order cleared: $completedOrderId', tag: 'Order');
+                      
                       if (Constant.singleOrderReceive == false) {
                         Get.back();
                       }
@@ -2061,18 +2222,37 @@ Obx(
                 width: Responsive.width(100, Get.context!),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  child: Text(
-                    _getDeliveryButtonText(controller),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: themeChange.getThem()
-                          ? AppThemeData.grey900
-                          : AppThemeData.grey900,
-                      fontSize: 16,
-                      fontFamily: AppThemeData.semiBold,
-                      fontWeight: FontWeight.w400,
+                  child: Obx(() => AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    transitionBuilder: (Widget child, Animation<double> animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween<Offset>(
+                            begin: const Offset(0.0, 0.1),
+                            end: Offset.zero,
+                          ).animate(CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOut,
+                          )),
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Text(
+                      _getDeliveryButtonText(controller),
+                      key: ValueKey<String>(_getDeliveryButtonText(controller)),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: themeChange.getThem()
+                            ? AppThemeData.grey900
+                            : AppThemeData.grey900,
+                        fontSize: 16,
+                        fontFamily: AppThemeData.semiBold,
+                        fontWeight: FontWeight.w400,
+                      ),
                     ),
-                  ),
+                  )),
                 ),
               ),
             ),
@@ -2092,6 +2272,78 @@ class HomeScreenLogger extends RouteAware {
   @override
   void didPop() {
     AppLogger.log('Popped HomeScreen', tag: 'Screen');
+  }
+}
+
+/// Cached widget to prevent repeated API calls for ToPay amount
+class _CachedToPayAmount extends StatefulWidget {
+  final String orderId;
+  final dynamic themeChange; // DarkThemeProvider
+
+  const _CachedToPayAmount({
+    required this.orderId,
+    required this.themeChange,
+  });
+
+  @override
+  State<_CachedToPayAmount> createState() => _CachedToPayAmountState();
+}
+
+class _CachedToPayAmountState extends State<_CachedToPayAmount> {
+  Future<double?>? _cachedFuture;
+  String? _lastOrderId;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchToPay();
+  }
+
+  @override
+  void didUpdateWidget(_CachedToPayAmount oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Only refetch if order ID changed
+    if (oldWidget.orderId != widget.orderId) {
+      _fetchToPay();
+    }
+  }
+
+  void _fetchToPay() {
+    if (_lastOrderId != widget.orderId) {
+      _lastOrderId = widget.orderId;
+      _cachedFuture = fetchToPayForOrder(widget.orderId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<double?>(
+      future: _cachedFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          );
+        }
+        if (snapshot.hasError) {
+          return const Text('Error');
+        }
+        final toPay = snapshot.data;
+        return Text(
+          Constant.amountShow(amount: (toPay ?? 0.0).toString()),
+          textAlign: TextAlign.start,
+          style: TextStyle(
+            fontFamily: AppThemeData.semiBold,
+            color: widget.themeChange.getThem()
+                ? AppThemeData.grey50
+                : AppThemeData.grey900,
+            fontSize: 16,
+          ),
+        );
+      },
+    );
   }
 }
 

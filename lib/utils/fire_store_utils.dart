@@ -4,6 +4,8 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
+import 'package:jippydriver_driver/services/http_client_service.dart';
+import 'package:jippydriver_driver/services/api_cache_service.dart';
 import 'package:jippydriver_driver/app/chat_screens/ChatVideoContainer.dart';
 import 'package:jippydriver_driver/app/wallet_screen/screens/model/delivery_amount_model.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
@@ -426,12 +428,14 @@ class FireStoreUtils {
  static Future<void> getSettings() async {
     try {
       print('getSettings ${Constant.baseUrl}driver-sql/settings');
-      final response = await http.get(
+      // Use HttpClientService with caching - settings rarely change (24 hours cache)
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse('${Constant.baseUrl}driver-sql/settings'),
-      ).timeout(const Duration(seconds: 15), onTimeout: () {
-        log("getSettings timeout for API call");
-        throw TimeoutException('getSettings timeout', const Duration(seconds: 15));
-      });
+        cacheStrategy: CacheStrategy.settings, // 24 hours cache
+        useCache: true,
+        timeout: const Duration(seconds: 15),
+      );
       if (response.statusCode == 200) {
         // Check for HTML responses (error pages)
         if (response.body.trim().startsWith('<!') || response.body.trim().startsWith('<html')) {
@@ -576,11 +580,16 @@ class FireStoreUtils {
     List<ZoneModel> zoneList = [];
     try {
       print("getZone ") ;
-      final response = await http.get(
+      // Use HttpClientService with caching - zones rarely change (2 hours cache)
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse('${Constant.baseUrl}restaurant/zones'),
         headers: {
           'Content-Type': 'application/json',
         },
+        cacheStrategy: CacheStrategy.custom, // Custom TTL for zones
+        customTTL: const Duration(hours: 2), // Zones change rarely, cache for 2 hours
+        useCache: true,
       );
       print("getZone ${response.body}") ;
 

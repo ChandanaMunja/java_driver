@@ -21,7 +21,7 @@ class SignupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
+    return GetX<SignupController>(
         init: SignupController(),
         builder: (controller) {
           return Scaffold(
@@ -30,32 +30,53 @@ class SignupScreen extends StatelessWidget {
                   ? AppThemeData.surfaceDark
                   : AppThemeData.surface,
             ),
-            body: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: SingleChildScrollView(
+            body: SingleChildScrollView(
+              // Enable smooth scrolling
+              physics: const BouncingScrollPhysics(), // Smooth iOS-like scrolling
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      "Create an Account".tr,
-                      style: TextStyle(
-                          color: themeChange.getThem()
-                              ? AppThemeData.grey50
-                              : AppThemeData.grey900,
-                          fontSize: 22,
-                          fontFamily: AppThemeData.semiBold),
+                    // Animated title for smooth appearance
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            "Create an Account".tr,
+                            style: TextStyle(
+                                color: themeChange.getThem()
+                                    ? AppThemeData.grey50
+                                    : AppThemeData.grey900,
+                                fontSize: 22,
+                                fontFamily: AppThemeData.semiBold),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Sign up now to start your journey as a JippyMart driver and begin earning with every delivery.".tr,
+                            style: TextStyle(
+                                color: themeChange.getThem()
+                                    ? AppThemeData.grey50
+                                    : AppThemeData.grey500,
+                                fontFamily: AppThemeData.regular),
+                          ),
+                        ],
+                      ),
                     ),
-                    Text(
-                      "Sign up now to start your journey as a JippyMart driver and begin earning with every delivery.".tr,
-                      style: TextStyle(
-                          color: themeChange.getThem()
-                              ? AppThemeData.grey50
-                              : AppThemeData.grey500,
-                          fontFamily: AppThemeData.regular),
-                    ),
-                    const SizedBox(
-                      height: 10,
-                    ),
+                    const SizedBox(height: 10),
                     Text.rich(
                       TextSpan(
                         children: [
@@ -72,7 +93,9 @@ class SignupScreen extends StatelessWidget {
                           TextSpan(
                               recognizer: TapGestureRecognizer()
                                 ..onTap = () {
-                                  Get.offAll(const LoginScreen());
+                                  Get.offAll(() => const LoginScreen(),
+                                      transition: Transition.rightToLeft,
+                                      duration: const Duration(milliseconds: 300));
                                 },
                               text: 'Log in'.tr,
                               style: const TextStyle(
@@ -84,117 +107,158 @@ class SignupScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(
-                      height: 32,
-                    ),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFieldWidget(
-                            title: 'First Name'.tr,
-                            controller:
-                                controller.firstNameEditingController.value,
-                            hintText: 'Enter First Name'.tr,
-                            prefix: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: SvgPicture.asset(
-                                "assets/icons/ic_user.svg",
-                                colorFilter: ColorFilter.mode(
-                                  themeChange.getThem()
-                                      ? AppThemeData.grey300
-                                      : AppThemeData.grey600,
-                                  BlendMode.srcIn,
+                    const SizedBox(height: 32),
+                    // Form fields with staggered animations
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 500),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextFieldWidget(
+                              title: 'First Name'.tr,
+                              controller:
+                                  controller.firstNameEditingController.value,
+                              hintText: 'Enter First Name'.tr,
+                              prefix: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: SvgPicture.asset(
+                                  "assets/icons/ic_user.svg",
+                                  colorFilter: ColorFilter.mode(
+                                    themeChange.getThem()
+                                        ? AppThemeData.grey300
+                                        : AppThemeData.grey600,
+                                    BlendMode.srcIn,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Expanded(
-                          child: TextFieldWidget(
-                            title: 'Last Name'.tr,
-                            controller:
-                                controller.lastNameEditingController.value,
-                            hintText: 'Enter Last Name'.tr,
-                            prefix: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: SvgPicture.asset(
-                                "assets/icons/ic_user.svg",
-                                colorFilter: ColorFilter.mode(
-                                  themeChange.getThem()
-                                      ? AppThemeData.grey300
-                                      : AppThemeData.grey600,
-                                  BlendMode.srcIn,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFieldWidget(
+                              title: 'Last Name'.tr,
+                              controller:
+                                  controller.lastNameEditingController.value,
+                              hintText: 'Enter Last Name'.tr,
+                              prefix: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: SvgPicture.asset(
+                                  "assets/icons/ic_user.svg",
+                                  colorFilter: ColorFilter.mode(
+                                    themeChange.getThem()
+                                        ? AppThemeData.grey300
+                                        : AppThemeData.grey600,
+                                    BlendMode.srcIn,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    TextFieldWidget(
-                      title: 'Email Address'.tr,
-                      textInputType: TextInputType.emailAddress,
-                      controller: controller.emailEditingController.value,
-                      hintText: 'Enter Email Address'.tr,
-                      enable: controller.type.value == "google" ||
-                              controller.type.value == "apple"
-                          ? false
-                          : true,
-                      prefix: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: SvgPicture.asset(
-                          "assets/icons/ic_mail.svg",
-                          colorFilter: ColorFilter.mode(
-                            themeChange.getThem()
-                                ? AppThemeData.grey300
-                                : AppThemeData.grey600,
-                            BlendMode.srcIn,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
-                    TextFieldWidget(
-                      title: 'Phone Number'.tr,
-                      controller: controller.phoneNUmberEditingController.value,
-                      hintText: 'Enter Phone Number'.tr,
-                      enable: controller.type.value == "mobileNumber" ? false : true,
-                      textInputType: const TextInputType.numberWithOptions(
-                          signed: true, decimal: true),
-                      textInputAction: TextInputAction.done,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp('[0-9]')),
-                      ],
-                      prefix: CountryCodePicker(
-                        enabled: controller.type.value == "mobileNumber" ? false : true,
-                        onChanged: (value) {
-                          controller.countryCodeEditingController.value.text =
-                              value.dialCode.toString();
-                        },
-                        initialSelection:
-                        controller.countryCodeEditingController.value.text,
-                        countryFilter: ['IN'], // <-- Only allow India
-                        showDropDownButton: false, // optional: hides the dropdown arrow
-                        showFlag: true, // optional: show flag
-                        textStyle: TextStyle(
-                          fontSize: 14,
-                          color: themeChange.getThem()
-                              ? AppThemeData.grey50
-                              : AppThemeData.grey900,
-                          fontFamily: AppThemeData.medium,
+                    const SizedBox(height: 16),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 600),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Obx(() => TextFieldWidget(
+                        title: 'Email Address'.tr,
+                        textInputType: TextInputType.emailAddress,
+                        controller: controller.emailEditingController.value,
+                        hintText: 'Enter Email Address'.tr,
+                        enable: controller.type.value == "google" ||
+                                controller.type.value == "apple"
+                            ? false
+                            : true,
+                        prefix: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: SvgPicture.asset(
+                            "assets/icons/ic_mail.svg",
+                            colorFilter: ColorFilter.mode(
+                              themeChange.getThem()
+                                  ? AppThemeData.grey300
+                                  : AppThemeData.grey600,
+                              BlendMode.srcIn,
+                            ),
+                          ),
                         ),
-                        dialogTextStyle: TextStyle(
+                      )),
+                    ),
+                    const SizedBox(height: 16),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 700),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Obx(() => TextFieldWidget(
+                        title: 'Phone Number'.tr,
+                        controller: controller.phoneNUmberEditingController.value,
+                        hintText: 'Enter Phone Number'.tr,
+                        enable: controller.type.value == "mobileNumber" ? false : true,
+                        textInputType: const TextInputType.numberWithOptions(
+                            signed: true, decimal: true),
+                        textInputAction: TextInputAction.done,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp('[0-9]')),
+                        ],
+                        prefix: CountryCodePicker(
+                          enabled: controller.type.value == "mobileNumber" ? false : true,
+                          onChanged: (value) {
+                            controller.countryCodeEditingController.value.text =
+                                value.dialCode.toString();
+                          },
+                          initialSelection:
+                          controller.countryCodeEditingController.value.text,
+                          countryFilter: const ['IN'], // Only allow India
+                          showDropDownButton: false,
+                          showFlag: true,
+                          textStyle: TextStyle(
+                            fontSize: 14,
                             color: themeChange.getThem()
                                 ? AppThemeData.grey50
                                 : AppThemeData.grey900,
-                            fontWeight: FontWeight.w500,
-                            fontFamily: AppThemeData.medium),
-                        dialogBackgroundColor: themeChange.getThem()
-                            ? AppThemeData.grey800
-                            : AppThemeData.grey100,
-                      ),
+                            fontFamily: AppThemeData.medium,
+                          ),
+                          dialogTextStyle: TextStyle(
+                              color: themeChange.getThem()
+                                  ? AppThemeData.grey50
+                                  : AppThemeData.grey900,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: AppThemeData.medium),
+                          dialogBackgroundColor: themeChange.getThem()
+                              ? AppThemeData.grey800
+                              : AppThemeData.grey100,
+                        ),
+                      )),
                     ),
                     // TextFieldWidget(
                     //   title: 'Phone Number'.tr,
@@ -248,21 +312,33 @@ class SignupScreen extends StatelessWidget {
                     //         fontFamily: AppThemeData.medium),
                     //   ),
                     // ),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Zone".tr,
-                            style: TextStyle(
-                                fontFamily: AppThemeData.semiBold,
-                                fontSize: 14,
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey100
-                                    : AppThemeData.grey800)),
-                        const SizedBox(
-                          height: 5,
-                        ),
-                        DropdownButtonFormField<ZoneModel>(
+                    const SizedBox(height: 16),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.0, end: 1.0),
+                      duration: const Duration(milliseconds: 800),
+                      curve: Curves.easeOut,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 20 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Zone".tr,
+                              style: TextStyle(
+                                  fontFamily: AppThemeData.semiBold,
+                                  fontSize: 14,
+                                  color: themeChange.getThem()
+                                      ? AppThemeData.grey100
+                                      : AppThemeData.grey800)),
+                          const SizedBox(height: 5),
+                          Obx(() => DropdownButtonFormField<ZoneModel>(
                             hint: Text(
                               'Select zone'.tr,
                               style: TextStyle(
@@ -344,116 +420,155 @@ class SignupScreen extends StatelessWidget {
                                 value: item,
                                 child: Text(item.name.toString()),
                               );
-                            }).toList()),
-                      ],
+                            }).toList(),
+                          )),
+                        ],
+                      ),
                     ),
-                    const SizedBox(
-                      height: 10,
-                    ),
-                    controller.type.value == "google" ||
+                    const SizedBox(height: 10),
+                    Obx(() => controller.type.value == "google" ||
                             controller.type.value == "apple" ||
                             controller.type.value == "mobileNumber"
                         ? const SizedBox()
                         : Column(
                             children: [
-                              TextFieldWidget(
-                                title: 'Password'.tr,
-                                controller:
-                                    controller.passwordEditingController.value,
-                                hintText: 'Enter Password'.tr,
-                                obscureText: controller.passwordVisible.value,
-                                prefix: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: SvgPicture.asset(
-                                    "assets/icons/ic_lock.svg",
-                                    colorFilter: ColorFilter.mode(
-                                      themeChange.getThem()
-                                          ? AppThemeData.grey300
-                                          : AppThemeData.grey600,
-                                      BlendMode.srcIn,
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 900),
+                                curve: Curves.easeOut,
+                                builder: (context, value, child) {
+                                  return Opacity(
+                                    opacity: value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, 20 * (1 - value)),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Obx(() => TextFieldWidget(
+                                  title: 'Password'.tr,
+                                  controller:
+                                      controller.passwordEditingController.value,
+                                  hintText: 'Enter Password'.tr,
+                                  obscureText: controller.passwordVisible.value,
+                                  prefix: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: SvgPicture.asset(
+                                      "assets/icons/ic_lock.svg",
+                                      colorFilter: ColorFilter.mode(
+                                        themeChange.getThem()
+                                            ? AppThemeData.grey300
+                                            : AppThemeData.grey600,
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                suffix: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: InkWell(
-                                      onTap: () {
-                                        controller.passwordVisible.value =
-                                            !controller.passwordVisible.value;
-                                      },
-                                      child: controller.passwordVisible.value
-                                          ? SvgPicture.asset(
-                                              "assets/icons/ic_password_show.svg",
-                                              colorFilter: ColorFilter.mode(
-                                                themeChange.getThem()
-                                                    ? AppThemeData.grey300
-                                                    : AppThemeData.grey600,
-                                                BlendMode.srcIn,
-                                              ),
-                                            )
-                                          : SvgPicture.asset(
-                                              "assets/icons/ic_password_close.svg",
-                                              colorFilter: ColorFilter.mode(
-                                                themeChange.getThem()
-                                                    ? AppThemeData.grey300
-                                                    : AppThemeData.grey600,
-                                                BlendMode.srcIn,
-                                              ),
-                                            )),
-                                ),
+                                  suffix: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: InkWell(
+                                        onTap: () {
+                                          controller.passwordVisible.value =
+                                              !controller.passwordVisible.value;
+                                        },
+                                        child: AnimatedSwitcher(
+                                          duration: const Duration(milliseconds: 200),
+                                          child: controller.passwordVisible.value
+                                              ? SvgPicture.asset(
+                                                  "assets/icons/ic_password_show.svg",
+                                                  key: const ValueKey('show'),
+                                                  colorFilter: ColorFilter.mode(
+                                                    themeChange.getThem()
+                                                        ? AppThemeData.grey300
+                                                        : AppThemeData.grey600,
+                                                    BlendMode.srcIn,
+                                                  ),
+                                                )
+                                              : SvgPicture.asset(
+                                                  "assets/icons/ic_password_close.svg",
+                                                  key: const ValueKey('hide'),
+                                                  colorFilter: ColorFilter.mode(
+                                                    themeChange.getThem()
+                                                        ? AppThemeData.grey300
+                                                        : AppThemeData.grey600,
+                                                    BlendMode.srcIn,
+                                                  ),
+                                                ),
+                                        )),
+                                  ),
+                                )),
                               ),
-                              TextFieldWidget(
-                                title: 'Confirm Password'.tr,
-                                controller: controller
-                                    .conformPasswordEditingController.value,
-                                hintText: 'Enter Confirm Password'.tr,
-                                obscureText:
-                                    controller.conformPasswordVisible.value,
-                                prefix: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: SvgPicture.asset(
-                                    "assets/icons/ic_lock.svg",
-                                    colorFilter: ColorFilter.mode(
-                                      themeChange.getThem()
-                                          ? AppThemeData.grey300
-                                          : AppThemeData.grey600,
-                                      BlendMode.srcIn,
+                              const SizedBox(height: 16),
+                              TweenAnimationBuilder<double>(
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 1000),
+                                curve: Curves.easeOut,
+                                builder: (context, value, child) {
+                                  return Opacity(
+                                    opacity: value,
+                                    child: Transform.translate(
+                                      offset: Offset(0, 20 * (1 - value)),
+                                      child: child,
+                                    ),
+                                  );
+                                },
+                                child: Obx(() => TextFieldWidget(
+                                  title: 'Confirm Password'.tr,
+                                  controller: controller
+                                      .conformPasswordEditingController.value,
+                                  hintText: 'Enter Confirm Password'.tr,
+                                  obscureText:
+                                      controller.conformPasswordVisible.value,
+                                  prefix: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: SvgPicture.asset(
+                                      "assets/icons/ic_lock.svg",
+                                      colorFilter: ColorFilter.mode(
+                                        themeChange.getThem()
+                                            ? AppThemeData.grey300
+                                            : AppThemeData.grey600,
+                                        BlendMode.srcIn,
+                                      ),
                                     ),
                                   ),
-                                ),
-                                suffix: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: InkWell(
-                                      onTap: () {
-                                        controller
-                                                .conformPasswordVisible.value =
-                                            !controller
-                                                .conformPasswordVisible.value;
-                                      },
-                                      child: controller
-                                              .conformPasswordVisible.value
-                                          ? SvgPicture.asset(
-                                              "assets/icons/ic_password_show.svg",
-                                              colorFilter: ColorFilter.mode(
-                                                themeChange.getThem()
-                                                    ? AppThemeData.grey300
-                                                    : AppThemeData.grey600,
-                                                BlendMode.srcIn,
-                                              ),
-                                            )
-                                          : SvgPicture.asset(
-                                              "assets/icons/ic_password_close.svg",
-                                              colorFilter: ColorFilter.mode(
-                                                themeChange.getThem()
-                                                    ? AppThemeData.grey300
-                                                    : AppThemeData.grey600,
-                                                BlendMode.srcIn,
-                                              ),
-                                            )),
-                                ),
+                                  suffix: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: InkWell(
+                                        onTap: () {
+                                          controller
+                                                  .conformPasswordVisible.value =
+                                              !controller
+                                                  .conformPasswordVisible.value;
+                                        },
+                                        child: AnimatedSwitcher(
+                                          duration: const Duration(milliseconds: 200),
+                                          child: controller
+                                                  .conformPasswordVisible.value
+                                              ? SvgPicture.asset(
+                                                  "assets/icons/ic_password_show.svg",
+                                                  key: const ValueKey('show'),
+                                                  colorFilter: ColorFilter.mode(
+                                                    themeChange.getThem()
+                                                        ? AppThemeData.grey300
+                                                        : AppThemeData.grey600,
+                                                    BlendMode.srcIn,
+                                                  ),
+                                                )
+                                              : SvgPicture.asset(
+                                                  "assets/icons/ic_password_close.svg",
+                                                  key: const ValueKey('hide'),
+                                                  colorFilter: ColorFilter.mode(
+                                                    themeChange.getThem()
+                                                        ? AppThemeData.grey300
+                                                        : AppThemeData.grey600,
+                                                    BlendMode.srcIn,
+                                                  ),
+                                                ),
+                                        )),
+                                  ),
+                                )),
                               ),
                             ],
-                          ),
+                          )),
                   ],
                 ),
               ),
@@ -462,119 +577,99 @@ class SignupScreen extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Column(
-                  //   mainAxisSize: MainAxisSize.min,
-                  //   children: [
-                  //     Text.rich(
-                  //       TextSpan(
-                  //         children: [
-                  //           TextSpan(
-                  //               text: 'Log in with'.tr,
-                  //               style: TextStyle(
-                  //                 color: themeChange.getThem()
-                  //                     ? AppThemeData.grey50
-                  //                     : AppThemeData.grey900,
-                  //                 fontFamily: AppThemeData.medium,
-                  //                 fontWeight: FontWeight.w500,
-                  //               )),
-                  //           const WidgetSpan(
-                  //               child: SizedBox(
-                  //             width: 10,
-                  //           )),
-                  //           TextSpan(
-                  //               recognizer: TapGestureRecognizer()
-                  //                 ..onTap = () {
-                  //                   Get.to(const PhoneNumberScreen());
-                  //                 },
-                  //               text: 'Mobile Number'.tr,
-                  //               style: const TextStyle(
-                  //                   color: AppThemeData.secondary300,
-                  //                   fontFamily: AppThemeData.medium,
-                  //                   fontWeight: FontWeight.w500,
-                  //                   decoration: TextDecoration.underline,
-                  //                   decorationColor: AppThemeData.secondary300)),
-                  //         ],
-                  //       ),
-                  //     ),
-                  //   ],
-                  // ),
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  InkWell(
-                    onTap: () {
-                      if (controller.type.value == "google" ||
-                          controller.type.value == "apple" ||
-                          controller.type.value == "mobileNumber") {
-                        if (controller
-                            .firstNameEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast("Please enter first name".tr);
-                        } else if (controller
-                            .lastNameEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast("Please enter last name".tr);
-                        } else if (controller
-                            .emailEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast(
-                              "Please enter valid email".tr);
-                        } else if (controller
-                            .phoneNUmberEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast(
-                              "Please enter Phone number".tr);
-                        } else if (controller.selectedZone.value.id == null) {
-                          ShowToastDialog.showToast("Please select zone".tr);
-                        } else {
-                          controller.signUpWithEmailAndPassword();
-                        }
-                      } else {
-                        if (controller
-                            .firstNameEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast("Please enter first name".tr);
-                        } else if (controller
-                            .lastNameEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast("Please enter last name".tr);
-                        } else if (controller
-                            .emailEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast(
-                              "Please enter valid email".tr);
-                        } else if (controller
-                            .phoneNUmberEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast(
-                              "Please enter Phone number".tr);
-                        } else if (controller
-                            .passwordEditingController.value.text.isEmpty) {
-                          ShowToastDialog.showToast("Please enter password");
-                        } else if (controller.conformPasswordEditingController
-                            .value.text.isEmpty) {
-                          ShowToastDialog.showToast(
-                              "Please enter Confirm password".tr);
-                        } else if (controller
-                                .passwordEditingController.value.text !=
-                            controller
-                                .conformPasswordEditingController.value.text) {
-                          ShowToastDialog.showToast(
-                              "Password and Confirm password doesn't match".tr);
-                        } else if (controller.selectedZone.value.id == null) {
-                          ShowToastDialog.showToast("Please select zone".tr);
-                        } else {
-                          controller.signUpWithEmailAndPassword();
-                        }
-                      }
+                  const SizedBox(height: 10),
+                  // Signup button with smooth animation
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: const Duration(milliseconds: 1100),
+                    curve: Curves.easeOut,
+                    builder: (context, value, child) {
+                      return Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, 20 * (1 - value)),
+                          child: child,
+                        ),
+                      );
                     },
-                    child: Container(
-                      color: AppThemeData.driverApp300,
-                      width: Responsive.width(100, context),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: Text(
-                          "Sign up".tr,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: themeChange.getThem()
-                                ? AppThemeData.grey50
-                                : AppThemeData.grey50,
-                            fontSize: 16,
-                            fontFamily: AppThemeData.medium,
-                            fontWeight: FontWeight.w400,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          if (controller.type.value == "google" ||
+                              controller.type.value == "apple" ||
+                              controller.type.value == "mobileNumber") {
+                            if (controller
+                                .firstNameEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast("Please enter first name".tr);
+                            } else if (controller
+                                .lastNameEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast("Please enter last name".tr);
+                            } else if (controller
+                                .emailEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast(
+                                  "Please enter valid email".tr);
+                            } else if (controller
+                                .phoneNUmberEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast(
+                                  "Please enter Phone number".tr);
+                            } else if (controller.selectedZone.value.id == null) {
+                              ShowToastDialog.showToast("Please select zone".tr);
+                            } else {
+                              controller.signUpWithEmailAndPassword();
+                            }
+                          } else {
+                            if (controller
+                                .firstNameEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast("Please enter first name".tr);
+                            } else if (controller
+                                .lastNameEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast("Please enter last name".tr);
+                            } else if (controller
+                                .emailEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast(
+                                  "Please enter valid email".tr);
+                            } else if (controller
+                                .phoneNUmberEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast(
+                                  "Please enter Phone number".tr);
+                            } else if (controller
+                                .passwordEditingController.value.text.isEmpty) {
+                              ShowToastDialog.showToast("Please enter password");
+                            } else if (controller.conformPasswordEditingController
+                                .value.text.isEmpty) {
+                              ShowToastDialog.showToast(
+                                  "Please enter Confirm password".tr);
+                            } else if (controller
+                                    .passwordEditingController.value.text !=
+                                controller
+                                    .conformPasswordEditingController.value.text) {
+                              ShowToastDialog.showToast(
+                                  "Password and Confirm password doesn't match".tr);
+                            } else if (controller.selectedZone.value.id == null) {
+                              ShowToastDialog.showToast("Please select zone".tr);
+                            } else {
+                              controller.signUpWithEmailAndPassword();
+                            }
+                          }
+                        },
+                        child: Container(
+                          color: AppThemeData.driverApp300,
+                          width: Responsive.width(100, context),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Text(
+                              "Sign up".tr,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: themeChange.getThem()
+                                    ? AppThemeData.grey50
+                                    : AppThemeData.grey50,
+                                fontSize: 16,
+                                fontFamily: AppThemeData.medium,
+                                fontWeight: FontWeight.w400,
+                              ),
+                            ),
                           ),
                         ),
                       ),

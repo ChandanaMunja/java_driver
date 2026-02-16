@@ -167,22 +167,26 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       create: (_) => themeChangeProvider,
       child: Consumer<DarkThemeProvider>(
         builder: (context, value, child) {
+          // Cache theme calculation to avoid recalculation on every rebuild
+          final isDarkMode = themeChangeProvider.darkTheme == 0
+              ? true
+              : themeChangeProvider.darkTheme == 1
+                  ? false
+                  : false;
+          
           return GetMaterialApp(
             title: 'Driver'.tr,
             debugShowCheckedModeBanner: false,
-            theme: Styles.themeData(
-              themeChangeProvider.darkTheme == 0
-                  ? true
-                  : themeChangeProvider.darkTheme == 1
-                  ? false
-                  : false,
-              context,
-            ),
+            // Use cached theme value
+            theme: Styles.themeData(isDarkMode, context),
             localizationsDelegates: const [CountryLocalizations.delegate],
             locale: LocalizationService.locale,
             fallbackLocale: LocalizationService.locale,
             translations: LocalizationService(),
             builder: EasyLoading.init(),
+            // Optimize route transitions for smoother navigation
+            transitionDuration: const Duration(milliseconds: 300),
+            defaultTransition: Transition.rightToLeft,
             home: GetBuilder<GlobalSettingController>(
               init: GlobalSettingController(),
               builder: (_) => const SplashScreen(),
