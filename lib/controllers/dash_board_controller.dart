@@ -11,6 +11,8 @@ import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
+import 'package:jippydriver_driver/utils/version_utils.dart';
+import 'package:jippydriver_driver/app/mandatory_update_screen.dart';
 import 'package:get/get.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 import 'package:geolocator/geolocator.dart' as geolocator;
@@ -42,12 +44,29 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     AppLogger.log('DashBoardController onInit() called', tag: 'Controller');
     WidgetsBinding.instance.addObserver(this);
     
+    // Check for mandatory update when user is already logged in
+    _checkMandatoryUpdate();
+    
     getUser();
     updateDriverOrder();
     getThem();
     // Initialize HomeController to ensure it's available for HomeScreen
     Get.put(HomeController());
     super.onInit();
+  }
+  
+  /// Check for mandatory update (for already logged-in users)
+  Future<void> _checkMandatoryUpdate() async {
+    try {
+      await FireStoreUtils.getForceUpdateConfig();
+      final updateRequired = await isMandatoryUpdateRequired();
+      if (updateRequired) {
+        AppLogger.log('Mandatory update required (logged-in user) -> MandatoryUpdateScreen', tag: 'Update');
+        Get.offAll(const MandatoryUpdateScreen());
+      }
+    } catch (e) {
+      AppLogger.log('Error checking mandatory update: $e', tag: 'Update');
+    }
   }
 
   @override
@@ -66,6 +85,11 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     // Flush pending updates when app comes to foreground
     if (_isAppInForeground && _pendingLocationUpdates.isNotEmpty) {
       _flushPendingUpdates();
+    }
+    
+    // Check for mandatory update when app comes to foreground
+    if (_isAppInForeground) {
+      _checkMandatoryUpdate();
     }
   }
 

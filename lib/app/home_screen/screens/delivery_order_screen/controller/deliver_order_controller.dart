@@ -373,7 +373,12 @@ class DeliverOrderController extends GetxController {
       ShowToastDialog.closeLoader();
       print("[DeliverOrderController] Order completed, closing loader and going back");
       isCompletingOrder.value = false;
-      Get.back(result: true);
+      // Mark as completed immediately so API refresh can't re-add it before .then runs
+      try {
+        Get.find<HomeController>().markOrderAsCompleted(orderModel.value.id);
+      } catch (_) {}
+      // Pass order ID so HomeScreen can mark it completed even if currentOrder was cleared by race
+      Get.back(result: orderModel.value.id ?? true);
     } catch (e) {
       print("[DeliverOrderController] Error in completedOrder: $e");
       ShowToastDialog.closeLoader();

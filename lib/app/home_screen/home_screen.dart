@@ -2176,15 +2176,20 @@ Obx(
                 })!
                     .then(
                   (value) async {
-                    if (value == true) {
-                      // Order delivery completed - clear everything
-                      final completedOrderId = controller.currentOrder.value.id;
+                    if (value == true || value is String) {
+                      // Order delivery completed - clear everything (sound already played in DeliverOrderController)
+                      // value can be orderId (String) if passed from DeliverOrderController, or true
+                      final completedOrderId = (value is String ? value : null) ?? 
+                          controller.currentOrder.value.id?.toString();
                       
-                      await AudioPlayerService.playSound(false);
-                      
-                      // Remove from inProgressOrderID
-                      controller.driverModel.value.inProgressOrderID!
-                          .remove(completedOrderId);
+                      if (completedOrderId != null) {
+                        controller.markOrderAsCompleted(completedOrderId);
+                        // Remove from inProgressOrderID and orderRequestData
+                        controller.driverModel.value.inProgressOrderID
+                            ?.removeWhere((id) => id?.toString() == completedOrderId);
+                        controller.driverModel.value.orderRequestData
+                            ?.removeWhere((id) => id?.toString() == completedOrderId);
+                      }
                       
                       // Invalidate cache for completed order to prevent it from showing again
                       if (completedOrderId != null) {

@@ -4,12 +4,14 @@ import 'package:http/http.dart' as http;
 import 'package:jippydriver_driver/app/auth_screen/login_screen.dart';
 import 'package:jippydriver_driver/app/auth_screen/signup_screen.dart';
 import 'package:jippydriver_driver/app/dash_board_screen/dash_board_screen.dart';
+import 'package:jippydriver_driver/app/mandatory_update_screen.dart';
 import 'package:jippydriver_driver/app/on_boarding_screen.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart';
+import 'package:jippydriver_driver/utils/version_utils.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -39,12 +41,19 @@ class LoginController extends GetxController {
         if (isLogin == true) {
           log(' [32m$fromScreen -> Getting user profile... [0m');
           UserModel? userModel = await FireStoreUtils.getUserProfile(userId);
-          await  FireStoreUtils.getSettings();
+          await FireStoreUtils.getSettings();
+          await FireStoreUtils.getForceUpdateConfig();
           print("FireStoreUtils.getUserProfile ${userModel?.firebaseId} ");
           if (userModel != null) {
             log(' [32m$fromScreen -> User profile loaded: ${userModel.toJson().toString()} [0m');
             if (userModel.role == Constant.userRoleDriver) {
               if (userModel.active == true) {
+                final updateRequired = await isMandatoryUpdateRequired();
+                if (updateRequired) {
+                  log(' [33m$fromScreen -> Mandatory update required -> MandatoryUpdateScreen [0m');
+                  Get.offAll(const MandatoryUpdateScreen());
+                  return;
+                }
                 log(' [32m$fromScreen -> Getting FCM token... [0m');
                 userModel.fcmToken = await NotificationService.getToken();
                 log(' [32m$fromScreen -> ${userModel.fcmToken} Updating user with FCM token... [0m');
@@ -114,8 +123,8 @@ class LoginController extends GetxController {
           await _saveUserToSharedPreferences(userData);
           if (userModel.role == Constant.userRoleDriver) {
             if (userModel.active == true || userModel.isActive == true) {
-              // userModel.fcmToken = await NotificationService.getToken();
-              // await FireStoreUtils.updateUser(userModel);
+              userModel.fcmToken = await NotificationService.getToken();
+              await FireStoreUtils.updateUser(userModel);
               redirectScreen();
               // Get.offAll(const DashBoardScreen());
               log('\u001b[32mLoginScreen -> DashBoardScreen\u001b[0m');

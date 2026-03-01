@@ -22,6 +22,8 @@ class Preferences {
   static const orangeMoneySettings = "orangeMoneySettings";
   static const xenditSettings = "xenditSettings";
   static const orderRingtone = "audioSound";
+  static const cachedTermsAndConditions = "cachedTermsAndConditions";
+  static const cachedPrivacyPolicy = "cachedPrivacyPolicy";
 
   static late SharedPreferences pref;
 

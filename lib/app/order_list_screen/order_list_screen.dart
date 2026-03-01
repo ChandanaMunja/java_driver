@@ -23,11 +23,26 @@ class OrderListScreen extends StatefulWidget {
 
 class _OrderListScreenState extends State<OrderListScreen> {
   final orderListController = Get.put(OrderListController());
-  
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
-    // getOrder() is already called in controller's onInit(), no need to call it again
+    _scrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      orderListController.loadMore();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
   }
   
   @override
@@ -114,9 +129,20 @@ class _OrderListScreenState extends State<OrderListScreen> {
                             ? Constant.showEmptyView(
                                 message: "Order Not found".tr)
                             : ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: controller.orderList.length,
+                                controller: _scrollController,
+                                itemCount: controller.orderList.length +
+                                    (controller.hasMore.value ? 1 : 0),
                                 itemBuilder: (context, index) {
+                                  if (index >= controller.orderList.length) {
+                                    return controller.isLoadingMore.value
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(16),
+                                            child: Center(
+                                                child:
+                                                    CircularProgressIndicator()),
+                                          )
+                                        : const SizedBox.shrink();
+                                  }
                                   OrderModel orderModel =
                                       controller.orderList[index];
                                   return Padding(

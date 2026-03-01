@@ -83,6 +83,11 @@ void main() async {
     await NotificationService().initInfo();
     // Initialize other services
     await Preferences.initPref();
+    // Restore cached terms & privacy so they're visible before getSettings runs
+    final cachedTerms = Preferences.getString(Preferences.cachedTermsAndConditions);
+    final cachedPrivacy = Preferences.getString(Preferences.cachedPrivacyPolicy);
+    if (cachedTerms.isNotEmpty) Constant.termsAndConditions = cachedTerms;
+    if (cachedPrivacy.isNotEmpty) Constant.privacyPolicy = cachedPrivacy;
     await AudioPlayerService.initAudio();
     // Initialize Play Integrity services
     print('🚀 Initializing Play Integrity Service...');

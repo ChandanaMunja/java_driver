@@ -7,6 +7,7 @@ class CartProductModel {
   String? photo;
   String? price;
   String? discountPrice;
+  String? merchantPrice;
   String? vendorID;
   int? quantity;
   String? extrasPrice;
@@ -20,6 +21,7 @@ class CartProductModel {
     this.photo,
     this.price,
     this.discountPrice,
+    this.merchantPrice,
     this.vendorID,
     this.quantity,
     this.extrasPrice,
@@ -37,6 +39,9 @@ class CartProductModel {
     vendorID = json['vendorID']?.toString();
     quantity = json['quantity'];
     extrasPrice = json['extras_price']?.toString();
+
+    // Parse merchant_price: if missing or zero, fallback to price
+    merchantPrice = _parseMerchantPrice(json);
 
     extras = json['extras'] != null
         ? "String" == json['extras'].runtimeType.toString()
@@ -57,6 +62,30 @@ class CartProductModel {
 
   }
 
+  /// Parse merchant_price from JSON, falling back to price if missing or zero
+  String _parseMerchantPrice(Map<String, dynamic> json) {
+    // Try merchant_price field (can be string or number)
+    final merchantPriceValue = json['merchant_price'] ?? json['merchantPrice'];
+    
+    if (merchantPriceValue != null) {
+      final parsed = double.tryParse(merchantPriceValue.toString());
+      if (parsed != null && parsed > 0) {
+        return parsed.toString();
+      }
+    }
+    
+    // Fallback to price if merchant_price is missing or zero
+    final priceValue = json['price'] ?? json['discountPrice'];
+    if (priceValue != null) {
+      final parsed = double.tryParse(priceValue.toString());
+      if (parsed != null) {
+        return parsed.toString();
+      }
+    }
+    
+    return "0.0";
+  }
+
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['id'] = id;
@@ -65,6 +94,10 @@ class CartProductModel {
     data['photo'] = photo;
     data['price'] = price;
     data['discountPrice'] = discountPrice;
+    // Include merchant_price in serialization so it's sent when updating orders
+    if (merchantPrice != null && merchantPrice!.isNotEmpty) {
+      data['merchant_price'] = merchantPrice;
+    }
     data['vendorID'] = vendorID;
     data['quantity'] = quantity;
     data['extras_price'] = extrasPrice;

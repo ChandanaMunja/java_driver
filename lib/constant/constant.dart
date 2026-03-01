@@ -28,7 +28,7 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.0.25:8000/api/";
+  static String baseUrl  = "http://192.168.88.8:8000/api/";
   // static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
@@ -53,6 +53,12 @@ class Constant {
   static String googlePlayLink = "";
   static String appStoreLink = "";
   static String appVersion = "";
+  /// When true, backend requires all users to update (no skip).
+  static bool forceUpdateRequired = false;
+  /// Minimum app version required (e.g. "2.2.5"). Empty = not enforced.
+  static String minAppVersion = "";
+  /// When true, backend wants to show the update screen (check version).
+  static bool showUpdate = false;
   static String termsAndConditions = "";
   static String privacyPolicy = "";
   static String supportURL = "";

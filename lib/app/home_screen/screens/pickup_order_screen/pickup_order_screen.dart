@@ -523,10 +523,16 @@ class PickupOrderScreen extends StatelessWidget {
                         ShowToastDialog.showToast("Conform pickup order".tr);
                       } else {
                         ShowToastDialog.showLoader("Please wait".tr);
-                        controller.orderModel.value.status =
-                            Constant.orderInTransit;
-                        await FireStoreUtils.setOrder(
-                            controller.orderModel.value);
+                        // Update only status field instead of entire order
+                        final orderId = controller.orderModel.value.id ?? '';
+                        if (orderId.isNotEmpty) {
+                          await FireStoreUtils.updateOrderStatus(
+                            orderId: orderId,
+                            status: Constant.orderInTransit,
+                          );
+                          // Update local model for UI consistency
+                          controller.orderModel.value.status = Constant.orderInTransit;
+                        }
                         ShowToastDialog.closeLoader();
                         Get.back(result: true);
                       }

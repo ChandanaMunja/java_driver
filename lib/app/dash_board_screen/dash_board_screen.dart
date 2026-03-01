@@ -167,7 +167,7 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
                                           ? const ChangeLanguageScreen()
                                           : controller.drawerIndex.value == 7
                                               ? const TermsAndConditionScreen(
-                                                  type: "temsandcondition")
+                                                  type: "termsandcondition")
                                               : const TermsAndConditionScreen(
                                                   type: "privacy"),
             );

@@ -892,6 +892,50 @@ if(arrowDrop.value){
   Rx<OrderModel> currentOrder = OrderModel().obs;
   Rx<UserModel> driverModel = UserModel().obs;
 
+  /// Recently completed order IDs - prevents stale API data from re-showing completed orders.
+  /// Cleared after 5 min or when backend has had time to sync.
+  static const Duration _completedOrderRetention = Duration(minutes: 5);
+  final Map<String, DateTime> _recentlyCompletedOrderIds = {};
+
+  void markOrderAsCompleted(String? orderId) {
+    if (orderId == null || orderId.isEmpty) return;
+    _recentlyCompletedOrderIds[orderId] = DateTime.now();
+    AppLogger.log('Marked order as completed (will filter from API): $orderId', tag: 'Order');
+  }
+
+  void _cleanupOldCompletedIds() {
+    final cutoff = DateTime.now().subtract(_completedOrderRetention);
+    _recentlyCompletedOrderIds.removeWhere((_, time) => time.isBefore(cutoff));
+  }
+
+  /// Removes recently completed order IDs from user model lists before applying API data.
+  /// Prevents stale backend responses from re-adding completed orders.
+  void _filterCompletedOrdersFromUserModel(UserModel model) {
+    _cleanupOldCompletedIds();
+    if (_recentlyCompletedOrderIds.isEmpty) return;
+    final completedIds = _recentlyCompletedOrderIds.keys.toSet();
+    bool changed = false;
+    if (model.inProgressOrderID != null) {
+      final before = model.inProgressOrderID!.length;
+      model.inProgressOrderID!.removeWhere((id) => completedIds.contains(id?.toString()));
+      if (model.inProgressOrderID!.length != before) {
+        changed = true;
+        AppLogger.log('Filtered ${before - model.inProgressOrderID!.length} completed orders from inProgressOrderID', tag: 'Order');
+      }
+    }
+    if (model.orderRequestData != null) {
+      final before = model.orderRequestData!.length;
+      model.orderRequestData!.removeWhere((id) => completedIds.contains(id?.toString()));
+      if (model.orderRequestData!.length != before) {
+        changed = true;
+        AppLogger.log('Filtered ${before - model.orderRequestData!.length} completed orders from orderRequestData', tag: 'Order');
+      }
+    }
+    if (changed) {
+      AppLogger.log('inProgressOrderID: ${model.inProgressOrderID}, orderRequestData: ${model.orderRequestData}', tag: 'Order');
+    }
+  }
+
   getArgument() {
     dynamic argumentData = Get.arguments;
     if (argumentData != null) {
@@ -1358,6 +1402,7 @@ if(arrowDrop.value){
     }
     // Try to fetch order with fallback mechanism
     bool orderFetched = false;
+    OrderModel? fetchedOrder; // Parse into temp so we never show completed orders (avoids glitch)
     // METHOD 1: Try primary endpoint first
     // Always exclude completed orders - they should not be shown again
     final excludeStatuses = (inProgress?.contains(firstOrderId) ?? false)
@@ -1388,14 +1433,8 @@ if(arrowDrop.value){
           try {
       final data = jsonDecode(response.body);
       if (data['success'] == true && data['order'] != null) {
-        currentOrder.value = OrderModel.fromJson(data['order']);
-        _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
-        
-        // Track status for optimization
-        _lastKnownOrderStatus = currentOrder.value.status;
-        _lastStatusChangeTime = DateTime.now();
-        
-        AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+        fetchedOrder = OrderModel.fromJson(data['order']);
+        AppLogger.log('✅ Order fetched via PRIMARY endpoint - ID: ${fetchedOrder.id}', tag: 'API');
         orderFetched = true;
       }
           } catch (e) {
@@ -1434,14 +1473,8 @@ if(arrowDrop.value){
             try {
               final data = jsonDecode(response.body);
               if (data['success'] == true && data['data'] != null) {
-                currentOrder.value = OrderModel.fromJson(data['data']);
-                _lastFetchedOrderId = currentOrder.value.id; // Track fetched order
-                
-                // Track status for optimization
-                _lastKnownOrderStatus = currentOrder.value.status;
-                _lastStatusChangeTime = DateTime.now();
-                
-                AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${currentOrder.value.id}', tag: 'API');
+                fetchedOrder = OrderModel.fromJson(data['data']);
+                AppLogger.log('✅ Order fetched via FALLBACK endpoint - ID: ${fetchedOrder.id}', tag: 'API');
                 orderFetched = true;
               }
             } catch (e) {
@@ -1455,7 +1488,25 @@ if(arrowDrop.value){
     }
     
     // If order was successfully fetched, process it
-    if (orderFetched && currentOrder.value.id != null) {
+    if (orderFetched && fetchedOrder != null && fetchedOrder.id != null) {
+      // Never show completed orders (avoids glitch where completed order flashes after delivery)
+      if (fetchedOrder.status == Constant.orderCompleted ||
+          fetchedOrder.status == "Order Completed") {
+        AppLogger.log('⚠️ Completed order detected (before display) - clearing: ${fetchedOrder.id}', tag: 'Order');
+        markOrderAsCompleted(fetchedOrder.id);
+        driverModel.value.inProgressOrderID?.remove(fetchedOrder.id);
+        driverModel.value.orderRequestData?.remove(fetchedOrder.id);
+        await FireStoreUtils.updateUser(driverModel.value);
+        final httpClient = HttpClientService();
+        await httpClient.invalidateCache('orders/${fetchedOrder.id}');
+        resetStatusTracking();
+        update();
+        return;
+      }
+      currentOrder.value = fetchedOrder;
+      _lastFetchedOrderId = currentOrder.value.id;
+      _lastKnownOrderStatus = currentOrder.value.status;
+      _lastStatusChangeTime = DateTime.now();
       try {
         AppLogger.log('Order fetched successfully - ID: ${currentOrder.value.id}, Status: ${currentOrder.value.status}', tag: 'API');
         // Ensure order status is set correctly for accept/reject buttons to show
@@ -1501,33 +1552,6 @@ if(arrowDrop.value){
         
         // Track fetched order ID
         _lastFetchedOrderId = currentOrder.value.id;
-        
-        // Don't display completed orders - they should be cleared
-        if (currentOrder.value.status == Constant.orderCompleted || 
-            currentOrder.value.status == "Order Completed") {
-          AppLogger.log('⚠️ Completed order detected - clearing: ${currentOrder.value.id}', tag: 'Order');
-          // Remove from driver lists
-          driverModel.value.inProgressOrderID?.remove(currentOrder.value.id);
-          driverModel.value.orderRequestData?.remove(currentOrder.value.id);
-          await FireStoreUtils.updateUser(driverModel.value);
-          
-          // Clear order and cache
-          final orderId = currentOrder.value.id;
-          currentOrder.value = OrderModel();
-          await clearMap();
-          
-          // Invalidate cache
-          if (orderId != null) {
-            final httpClient = HttpClientService();
-            await httpClient.invalidateCache('orders/$orderId');
-          }
-          
-          // Reset status tracking
-          resetStatusTracking();
-          
-          update();
-          return;
-        }
         
         // Process and display order if:
         // 1. It's in inProgressOrderID or orderRequestData, OR
@@ -1821,7 +1845,9 @@ if(arrowDrop.value){
         var jsonResponse = jsonDecode(response.body);
         if (jsonResponse["success"] == true && jsonResponse["data"] != null) {
           final previousOrderRequestData = driverModel.value.orderRequestData?.toList();
-          driverModel.value = UserModel.fromJson(jsonResponse["data"]);
+          final parsedUser = UserModel.fromJson(jsonResponse["data"]);
+          _filterCompletedOrdersFromUserModel(parsedUser);
+          driverModel.value = parsedUser;
           if (driverModel.value.id != null) {
             isLoading.value = false;
             update();
@@ -2563,6 +2589,7 @@ if(arrowDrop.value){
               // Don't update if order is completed - clear it instead
               if (newStatus == Constant.orderCompleted || newStatus == "Order Completed") {
                 AppLogger.log('⚠️ Completed order detected in refresh - clearing: ${currentOrder.value.id}', tag: 'Order');
+                markOrderAsCompleted(currentOrder.value.id);
                 
                 // Remove from driver lists
                 driverModel.value.inProgressOrderID?.remove(currentOrder.value.id);
@@ -2756,8 +2783,10 @@ if(arrowDrop.value){
         final responseData = jsonDecode(response.body);
 
         if (responseData['success'] == true) {
-          /// Convert to UserModel from response.data
-          driverModel.value = UserModel.fromJson(responseData['data']);
+          /// Convert to UserModel from response.data - filter completed orders to prevent re-showing
+          final parsedUser = UserModel.fromJson(responseData['data']);
+          _filterCompletedOrdersFromUserModel(parsedUser);
+          driverModel.value = parsedUser;
           AppLogger.log("Driver data refreshed from API", tag: "API");
           AppLogger.log("orderRequestData: ${driverModel.value.orderRequestData}", tag: "API");
           AppLogger.log("inProgressOrderID: ${driverModel.value.inProgressOrderID}", tag: "API");

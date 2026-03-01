@@ -243,6 +243,79 @@ class FireStoreUtils {
     }
   }
 
+  /// Fallback parser for Terms & Conditions / Privacy HTML when json.decode fails
+  /// Exposed as public so UI screens can call it directly when needed.
+  static Future<String> extractHtmlFromSettings({
+    required bool isPrivacy,
+  }) async {
+    try {
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/settings'),
+        cacheStrategy: CacheStrategy.settings,
+        useCache: true,
+        timeout: const Duration(seconds: 15),
+      );
+      if (response.statusCode != 200) return '';
+
+      // Work on a sanitized copy (remove control characters only)
+      final body = response.body.replaceAll(
+        RegExp(r'[\u0000-\u001F]'),
+        '',
+      );
+
+      // Remove all whitespace so we can reliably find keys regardless of formatting/newlines
+      final text = body.replaceAll(RegExp(r'\s+'), '');
+
+      // Choose the JSON path prefix where the HTML string starts
+      final prefix = isPrivacy
+          ? '"privacyPolicy":{"privacy_policy":"'
+          : '"termsAndConditions":{"termsAndConditions":"';
+
+      final start = text.indexOf(prefix);
+      if (start == -1) {
+        log('extractHtmlFromSettings: prefix not found (isPrivacy=$isPrivacy)');
+        return '';
+      }
+
+      final valueStart = start + prefix.length;
+      final buffer = StringBuffer();
+      bool escaped = false;
+
+      // Manually parse until the closing unescaped quote of this JSON string
+      for (int i = valueStart; i < text.length; i++) {
+        final ch = text[i];
+        if (escaped) {
+          buffer.write('\\$ch'); // keep escape sequences (we'll unescape later)
+          escaped = false;
+        } else if (ch == r'\\') {
+          escaped = true;
+        } else if (ch == '"') {
+          // End of this JSON string value
+          break;
+        } else {
+          buffer.write(ch);
+        }
+      }
+
+      var escapedHtml = buffer.toString();
+
+      // Unescape common JSON string escapes to get clean HTML
+      var html = escapedHtml
+          .replaceAll(r'\"', '"')
+          .replaceAll(r'\\n', '\n')
+          .replaceAll(r'\\r', '')
+          .replaceAll(r'\\t', '\t')
+          .replaceAll(r'\\\\', '\\');
+
+      log('extractHtmlFromSettings: extracted length=${html.length} isPrivacy=$isPrivacy');
+      return html;
+    } catch (e, stack) {
+      log('_extractHtmlFromSettings error: $e\n$stack');
+      return '';
+    }
+  }
+
   /// Update user without walletAmount and deliveryAmount fields
   /// This is used during order completion to avoid overwriting wallet/delivery amounts
   /// that are managed by separate APIs (driver-sql/wallet/update and driver-sql/delivery-amount/update)
@@ -442,7 +515,21 @@ class FireStoreUtils {
           log('getSettings - Received HTML response instead of JSON');
           return;
         }
-        final jsonResponse = json.decode(response.body);
+        // Some backends may include invalid control characters in the JSON string,
+        // which can cause `json.decode` to throw "Invalid argument (string): Contains invalid characters".
+        // Sanitize the body before decoding using runes (code points) to avoid bad surrogate pairs.
+        final cleaned = String.fromCharCodes(
+          response.body.runes.where(
+            (int rune) =>
+                rune == 0x9 || // tab
+                rune == 0xA || // LF
+                rune == 0xD || // CR
+                (rune >= 0x20 &&
+                    rune <= 0x10FFFF &&
+                    (rune < 0xD800 || rune > 0xDFFF)),
+          ),
+        );
+        final jsonResponse = json.decode(cleaned);
         log('getSettings - Response decoded, success: ${jsonResponse['success']}');
         if (jsonResponse['success'] == true) {
           final data = jsonResponse['data'];
@@ -519,19 +606,29 @@ class FireStoreUtils {
           // Process privacyPolicy
           final privacyPolicy = data['privacyPolicy'];
           if (privacyPolicy != null) {
-            Constant.privacyPolicy = privacyPolicy["privacy_policy"] ?? '';
+            final html = privacyPolicy["privacy_policy"] ?? '';
+            Constant.privacyPolicy = html;
+            if (html.isNotEmpty) {
+              await Preferences.setString(Preferences.cachedPrivacyPolicy, html);
+            }
           }
           // Process termsAndConditions
           final termsAndConditions = data['termsAndConditions'];
           if (termsAndConditions != null) {
-            Constant.termsAndConditions = termsAndConditions["termsAndConditions"] ?? '';
+            final html = termsAndConditions["termsAndConditions"] ?? '';
+            Constant.termsAndConditions = html;
+            if (html.isNotEmpty) {
+              await Preferences.setString(Preferences.cachedTermsAndConditions, html);
+            }
           }
-          // Process Version
+          // Process Version (includes mandatory update control from backend)
           final version = data['Version'];
           if (version != null) {
             Constant.googlePlayLink = version["googlePlayLink"] ?? '';
             Constant.appStoreLink = version["appStoreLink"] ?? '';
             Constant.appVersion = version["app_version"] ?? '';
+            Constant.forceUpdateRequired = version["force_update"] == true;
+            Constant.minAppVersion = (version["min_app_version"] ?? version["minAppVersion"] ?? '').toString().trim();
           }
           // Process referral_amount
           final referralAmount = data['referral_amount'];
@@ -573,6 +670,34 @@ class FireStoreUtils {
       }
     } catch (e) {
       log(e.toString());
+    }
+  }
+
+  /// Fetches force-update config from GET driver-sql/forceupdate.
+  /// Response: { googlePlayLink, appStoreLink, app_version, force_update, min_app_version }
+  /// or { success: true, data: { ... } }. Updates Constant and returns true on success.
+  static Future<bool> getForceUpdateConfig() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/forceupdate'),
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+      );
+      if (response.statusCode != 200) return false;
+      final decoded = json.decode(response.body);
+      final Map<String, dynamic> data = decoded is Map && decoded['data'] != null
+          ? Map<String, dynamic>.from(decoded['data'] as Map)
+          : Map<String, dynamic>.from(decoded as Map);
+      Constant.googlePlayLink = (data['googlePlayLink'] ?? '').toString();
+      Constant.appStoreLink = (data['appStoreLink'] ?? '').toString();
+      Constant.appVersion = (data['app_version'] ?? '').toString();
+      Constant.forceUpdateRequired = data['force_update'] == true;
+      Constant.minAppVersion = (data['min_app_version'] ?? data['minAppVersion'] ?? '').toString().trim();
+      Constant.showUpdate = data['show_update'] == true;
+      log('getForceUpdateConfig: min_app_version=${Constant.minAppVersion}, force_update=${Constant.forceUpdateRequired}, show_update=${Constant.showUpdate}');
+      return true;
+    } catch (e) {
+      log('getForceUpdateConfig error: $e');
+      return false;
     }
   }
 
@@ -1010,6 +1135,109 @@ class FireStoreUtils {
     }
     return isAdded;
   }
+
+  /// Update only the status field of an order (optimized - doesn't update entire order)
+  /// This is more efficient than setOrder when only status needs to be changed
+  /// Uses dedicated driver-sql endpoint for status-only updates to avoid full order replacement
+  static Future<bool?> updateOrderStatus({
+    required String orderId,
+    required String status,
+  }) async {
+    bool isUpdated = false;
+    try {
+      log("updateOrderStatus - Order ID: $orderId, Status: $status");
+      
+      // Try dedicated driver-sql endpoint for status updates first (if it exists)
+      // This endpoint should only update status field, not entire order
+      try {
+        final response = await http.post(
+          Uri.parse('${Constant.baseUrl}driver-sql/orders/$orderId/status'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'status': status,
+          }),
+        ).timeout(const Duration(seconds: 10));
+        
+        log("Status update response status (driver-sql): ${response.statusCode}");
+        log("Status update response body: ${response.body}");
+        
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final jsonResponse = jsonDecode(response.body);
+          if (jsonResponse['success'] == true) {
+            isUpdated = true;
+            log("Order status updated successfully via driver-sql endpoint");
+            return isUpdated;
+          }
+        }
+      } catch (driverSqlError) {
+        log("driver-sql status endpoint not available, trying PATCH: $driverSqlError");
+      }
+      
+      // Try PATCH method for partial update
+      try {
+        final response = await http.patch(
+          Uri.parse('${Constant.baseUrl}restaurant/orders/$orderId'),
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'status': status,
+          }),
+        ).timeout(const Duration(seconds: 30));
+        
+        log("Status update response status (PATCH): ${response.statusCode}");
+        log("Status update response body: ${response.body}");
+        
+        if (response.statusCode == 200 || response.statusCode == 201 || response.statusCode == 204) {
+          isUpdated = true;
+          log("Order status updated successfully via PATCH");
+          return isUpdated;
+        }
+      } catch (patchError) {
+        log("PATCH method not supported: $patchError");
+      }
+      
+      // Last resort: Use POST but warn that backend needs to support partial updates
+      // NOTE: This will only work if backend merges updates instead of full replace
+      // If backend does full replace, this will overwrite other fields with null/defaults
+      log("⚠️ WARNING: Using POST fallback - backend must support partial updates");
+      log("⚠️ If backend does full replace, this will overwrite order data!");
+      
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}restaurant/orders'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Partial-Update': 'true', // Hint to backend this is a partial update
+        },
+        body: jsonEncode({
+          'id': orderId,
+          'status': status,
+        }),
+      ).timeout(const Duration(seconds: 30));
+      
+      log("Status update response status (POST fallback): ${response.statusCode}");
+      log("Status update response body: ${response.body}");
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        isUpdated = true;
+        log("Order status updated via POST fallback (backend must merge, not replace)");
+      } else {
+        log("🔥 Failed to update order status: ${response.statusCode} - ${response.body}");
+        isUpdated = false;
+      }
+    } on TimeoutException catch (e) {
+      log("🔥 Timeout while updating order status: $e");
+      isUpdated = false;
+    } catch (error) {
+      log("🔥 Failed to update order status: $error");
+      log("🔥 Stack trace: ${StackTrace.current}");
+      isUpdated = false;
+    }
+    return isUpdated;
+  }
+
 // Helper function to sanitize data for JSON encoding
   static dynamic _sanitizeForJson(dynamic data) {
     if (data == null) return null;
