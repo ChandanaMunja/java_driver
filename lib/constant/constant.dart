@@ -50,7 +50,7 @@ class Constant {
   static String jsonNotificationFileURL = '';
   static String distanceType = "km";
   static String? referralAmount = "0.0";
-  static String googlePlayLink = "";
+  static String googlePlayLink = "https://play.google.com/store/apps/details?id=com.jippymart.driver";
   static String appStoreLink = "";
   static String appVersion = "";
   /// When true, backend requires all users to update (no skip).

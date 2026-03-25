@@ -3,8 +3,60 @@ import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:location/location.dart';
 import 'package:map_launcher/map_launcher.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Utils {
+  static Future<bool> openGoogleMaps(
+    double originLat,
+    double originLng,
+    double destLat,
+    double destLng,
+  ) async {
+    final isValid = originLat.isFinite &&
+        originLng.isFinite &&
+        destLat.isFinite &&
+        destLng.isFinite &&
+        originLat.abs() <= 90 &&
+        destLat.abs() <= 90 &&
+        originLng.abs() <= 180 &&
+        destLng.abs() <= 180;
+    if (!isValid) return false;
+
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&origin=$originLat,$originLng'
+      '&destination=$destLat,$destLng'
+      '&travelmode=driving',
+    );
+
+    final openedExternally =
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (openedExternally) return true;
+    return launchUrl(url, mode: LaunchMode.platformDefault);
+  }
+
+  static Future<bool> openGoogleMapsToDestination(
+    double destLat,
+    double destLng,
+  ) async {
+    final isValid = destLat.isFinite &&
+        destLng.isFinite &&
+        destLat.abs() <= 90 &&
+        destLng.abs() <= 180;
+    if (!isValid) return false;
+
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=$destLat,$destLng'
+      '&travelmode=driving',
+    );
+
+    final openedExternally =
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (openedExternally) return true;
+    return launchUrl(url, mode: LaunchMode.platformDefault);
+  }
+
   static Future<Position?> getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;

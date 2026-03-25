@@ -8,6 +8,12 @@
       "languageVersion": "3.2"
     },
     {
+      "name": "aadhar_auth_service",
+      "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/aadhar_auth_service-0.0.5",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
+    },
+    {
       "name": "android_pip",
       "rootUri": "file:///Users/jippymart/.pub-cache/hosted/pub.dev/android_pip-2.0.1",
       "packageUri": "lib/",

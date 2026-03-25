@@ -102,6 +102,7 @@ dependencies:
   flutter_background_service: ^5.1.0
   connectivity_plus: ^6.1.0
   package_info_plus: ^8.0.0
+  aadhar_auth_service: ^0.0.5
 
 dev_dependencies:
   flutter_test:

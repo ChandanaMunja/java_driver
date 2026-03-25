@@ -2,7 +2,14 @@ class DriverDocumentModel {
   List<Documents>? documents;
   String? id;
   String? type;
-  DriverDocumentModel({this.documents, this.id});
+  String? aadharNo;
+  String? drivingLicenseNumber;
+  DriverDocumentModel({
+    this.documents,
+    this.id,
+    this.aadharNo,
+    this.drivingLicenseNumber,
+  });
 
   DriverDocumentModel.fromJson(Map<String, dynamic> json) {
     if (json['data'] != null && json['data']['documents'] != null) {
@@ -13,6 +20,9 @@ class DriverDocumentModel {
     }
     id = json['data']?['id'];
     type = json['data']?['type'];
+    aadharNo = json['data']?['aadhar_no']?.toString();
+    drivingLicenseNumber =
+        json['data']?['driving_license_number']?.toString();
   }
 
   Map<String, dynamic> toJson() {
@@ -22,6 +32,8 @@ class DriverDocumentModel {
     }
     data['id'] = id;
     data['type'] = type;
+    data['aadhar_no'] = aadharNo;
+    data['driving_license_number'] = drivingLicenseNumber;
     return data;
   }
 }

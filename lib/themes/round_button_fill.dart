@@ -19,36 +19,42 @@ class RoundedButtonFill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = onPress != null;
     return InkWell(
-      onTap: () {
-        FocusManager.instance.primaryFocus?.unfocus();
-        onPress!();
-      },
-      child: Container(
-        width: Responsive.width(width ?? 100, context),
-        height: Responsive.height(height ?? 6, context),
-        decoration: ShapeDecoration(
-          color: color,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(borderRadius ?? 10),
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            (isRight == false) ? Padding(padding: const EdgeInsets.only(right: 5), child: icon) : const SizedBox(),
-            Text(
-              title.toString(),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: AppThemeData.semiBold,
-                color: textColor ?? AppThemeData.grey800,
-                fontSize: fontSizes ?? 14,
-              ),
+      onTap: isEnabled
+          ? () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              onPress?.call();
+            }
+          : null,
+      child: Opacity(
+        opacity: isEnabled ? 1 : 0.7,
+        child: Container(
+          width: Responsive.width(width ?? 100, context),
+          height: Responsive.height(height ?? 6, context),
+          decoration: ShapeDecoration(
+            color: color,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(borderRadius ?? 10),
             ),
-            (isRight == true) ? Padding(padding: const EdgeInsets.only(left: 5), child: icon) : const SizedBox(),
-          ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              (isRight == false) ? Padding(padding: const EdgeInsets.only(right: 5), child: icon) : const SizedBox(),
+              Text(
+                title.toString(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontFamily: AppThemeData.semiBold,
+                  color: textColor ?? AppThemeData.grey800,
+                  fontSize: fontSizes ?? 14,
+                ),
+              ),
+              (isRight == true) ? Padding(padding: const EdgeInsets.only(left: 5), child: icon) : const SizedBox(),
+            ],
+          ),
         ),
       ),
     );

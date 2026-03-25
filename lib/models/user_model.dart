@@ -590,9 +590,27 @@ class UserLocation {
 
   UserLocation({this.latitude, this.longitude});
 
+  static double? _coordFromJson(Map<String, dynamic> json, List<String> keys) {
+    for (final k in keys) {
+      final v = json[k];
+      if (v == null) continue;
+      if (v is double) return v;
+      if (v is int) return v.toDouble();
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.trim());
+    }
+    return null;
+  }
+
   UserLocation.fromJson(Map<String, dynamic> json) {
-    latitude = json['latitude'];
-    longitude = json['longitude'];
+    latitude = _coordFromJson(json, const ['latitude', 'lat', 'Lat', '_latitude']);
+    longitude = _coordFromJson(json, const [
+      'longitude',
+      'lng',
+      'long',
+      'Lon',
+      '_longitude',
+    ]);
   }
 
   Map<String, dynamic> toJson() {

@@ -6,6 +6,7 @@ import 'package:jippydriver_driver/app/auth_screen/signup_screen.dart';
 import 'package:jippydriver_driver/app/dash_board_screen/dash_board_screen.dart';
 import 'package:jippydriver_driver/app/mandatory_update_screen.dart';
 import 'package:jippydriver_driver/app/on_boarding_screen.dart';
+import 'package:jippydriver_driver/app/verification_screen/verification_screen.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
@@ -60,6 +61,11 @@ class LoginController extends GetxController {
                 await FireStoreUtils.updateUser(userModel);
                 log(' [32m$fromScreen -> DashBoardScreen [0m');
                 Get.offAll(() => DashBoardScreen(userModel: userModel));
+                if (userModel.isDocumentVerify != true) {
+                  Future.delayed(const Duration(milliseconds: 100), () {
+                    Get.to(() => const VerificationScreen());
+                  });
+                }
               } else {
                 log(' [32m$fromScreen -> User inactive, signing out... [0m');
                 Get.offAll(const LoginScreen());
