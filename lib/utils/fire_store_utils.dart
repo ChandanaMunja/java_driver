@@ -54,6 +54,8 @@ import 'package:video_compress/video_compress.dart';
 
 class FireStoreUtils {
   static FirebaseFirestore fireStore = FirebaseFirestore.instance;
+  // Bust old (24h) charges cache once per app run after upgrade.
+  static bool _driverChargesCacheBustedOnce = false;
 
   static Future<String> getCurrentUid() async{
     return await LoginController.getFirebaseId();
@@ -469,32 +471,99 @@ class FireStoreUtils {
       return false;
     }
   }
-  static Future<Map<String, dynamic>> getDriverCharges() async {
-    try {
-      final response = await http.get(
-        Uri.parse('${Constant.baseUrl}driver-sql/charges'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      );
-      if (response.statusCode == 200) {
-        final jsonResponse = json.decode(response.body);
+  static Future<Map<String, dynamic>> getDriverCharges({
+    bool forceRefresh = false,
+  }) async {
+    // Fallback defaults (kept in sync with HomeController defaults)
+    const pickupDefault = 3.0;
+    const deliveryFirstSlabKmDefault = 4.0;
+    const deliveryRsPerKmFirstSlabDefault = 8.0;
+    const deliveryRsPerKmBeyondDefault = 10.0;
 
-        if (jsonResponse["success"] == true) {
-          final data = jsonResponse["data"];
-          return {
-            "pickup_charges": data["pickup_charges"] ?? "0",
-            "user_delivery_charge": data["user_delivery_charge"] ?? "0",
-          };
-        } else {
-          throw Exception("API returned unsuccessful response");
-        }
-      } else {
-        throw Exception("HTTP request failed with status: ${response.statusCode}");
+    double toDouble(dynamic v, double fallback) {
+      if (v == null) return fallback;
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v.trim()) ?? fallback;
+      return fallback;
+    }
+
+    try {
+      final httpClient = HttpClientService();
+      if (!_driverChargesCacheBustedOnce) {
+        _driverChargesCacheBustedOnce = true;
+        // Previously this endpoint was cached with a 24h TTL (settings strategy).
+        // Clear it once so updated backend prices reflect quickly.
+        try {
+          await httpClient.invalidateCache('driver-sql/charges');
+        } catch (_) {}
       }
+      final response = await httpClient.get(
+        Uri.parse('${Constant.baseUrl}driver-sql/charges'),
+        headers: const {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        // Charges should be cached, but not for 24h (backend may update).
+        cacheStrategy: CacheStrategy.custom,
+        customTTL: const Duration(hours: 1),
+        useCache: true,
+        forceRefresh: forceRefresh,
+        timeout: const Duration(seconds: 8),
+        enableRetry: true,
+      );
+
+      final body = response.body.trim();
+      if (response.statusCode != 200 || body.startsWith('<')) {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+
+      final jsonResponse = json.decode(body);
+      if (jsonResponse is! Map<String, dynamic>) {
+        throw Exception('Unexpected JSON shape');
+      }
+
+      if (jsonResponse['success'] != true) {
+        throw Exception('API returned success=false');
+      }
+
+      final dataRaw = jsonResponse['data'];
+      final data =
+          dataRaw is Map ? Map<String, dynamic>.from(dataRaw) : <String, dynamic>{};
+
+      final pickup = toDouble(data['pickup_rs_per_km'], pickupDefault);
+      final firstSlabKm =
+          toDouble(data['delivery_first_slab_km'], deliveryFirstSlabKmDefault);
+      final firstSlabRate = toDouble(
+        data['delivery_rs_per_km_first_slab'],
+        deliveryRsPerKmFirstSlabDefault,
+      );
+      final beyondRate = toDouble(
+        data['delivery_rs_per_km_beyond'],
+        deliveryRsPerKmBeyondDefault,
+      );
+
+      log(
+        'Driver charges loaded '
+        '(forceRefresh=$forceRefresh) '
+        'pickup=$pickup firstSlabKm=$firstSlabKm '
+        'firstSlabRate=$firstSlabRate beyondRate=$beyondRate',
+      );
+
+      return {
+        'pickup_rs_per_km': pickup,
+        'delivery_first_slab_km': firstSlabKm,
+        'delivery_rs_per_km_first_slab': firstSlabRate,
+        'delivery_rs_per_km_beyond': beyondRate,
+      };
     } catch (e) {
-      print("❌ Error fetching driver charges: $e");
-      rethrow;
+      // Don't break the app if charges fetch fails; caller will use defaults.
+      print('❌ Error fetching driver charges (using defaults): $e');
+      return {
+        'pickup_rs_per_km': pickupDefault,
+        'delivery_first_slab_km': deliveryFirstSlabKmDefault,
+        'delivery_rs_per_km_first_slab': deliveryRsPerKmFirstSlabDefault,
+        'delivery_rs_per_km_beyond': deliveryRsPerKmBeyondDefault,
+      };
     }
   }
 
@@ -759,37 +828,25 @@ class FireStoreUtils {
     print("Returning ${zoneList.length} zones");
     return zoneList;
   }
-  static Future<List<WalletTransactionModel>?> getWalletTransaction() async {
+  static Future<WalletTransactionsApiResponse?> getWalletTransaction({
+    int page = 1,
+    int perPage = 10,
+  }) async {
     try {
       final String driverId = await FireStoreUtils.getCurrentUid();
       final response = await http.get(
-        Uri.parse('${Constant.baseUrl}driver-sql/wallet/transactions?driver_id=$driverId'),
+        Uri.parse('${Constant.baseUrl}driver-sql/wallet/transactions?page=$page&per_page=$perPage&driver_id=$driverId'),
       );
 
       if (response.statusCode == 200) {
-        final jsonResponse = json.decode(response.body);
-        if (jsonResponse['success'] == true) {
-          List<WalletTransactionModel> walletTransactionList = [];
-
-          final data = jsonResponse['data'];
-          if (data is List) {
-            for (var element in data) {
-              WalletTransactionModel walletTransactionModel =
-              WalletTransactionModel.fromJson(element);
-              walletTransactionList.add(walletTransactionModel);
-            }
-          }
-
-          // Sort by date in descending order with null safety
-          walletTransactionList.sort((a, b) {
-            // Handle null dates - consider null as the earliest possible date
-            if (a.date == null && b.date == null) return 0;
-            if (a.date == null) return 1; // Put null dates at the end
-            if (b.date == null) return -1; // Put null dates at the end
-            return b.date!.compareTo(a.date!); // Both dates are non-null
-          });
-
-          return walletTransactionList;
+        final decoded = json.decode(response.body);
+        if (decoded is! Map<String, dynamic>) {
+          log('Wallet API returned unexpected payload');
+          return null;
+        }
+        final parsed = WalletTransactionsApiResponse.fromJson(decoded);
+        if (parsed.success) {
+          return parsed;
         } else {
           log('API returned success: false');
           return null;
@@ -805,63 +862,54 @@ class FireStoreUtils {
   }
 
 
-  static Future<List<DriverAmountWalletTransactionModel>?> getDriverAmountWalletTransaction() async {
-    List<DriverAmountWalletTransactionModel> driverAmountWalletTransactionModelList = [];
-
+  static Future<DriverAmountWalletApiResponse?> getDriverAmountWalletTransactionsPage({
+    int page = 1,
+    int perPage = 10,
+  }) async {
     try {
-      final response = await http.get(
-        Uri.parse('${Constant.baseUrl}driver-sql/wallet/delivery-records?driver_id=${FireStoreUtils.getCurrentUid()}'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final responseData = json.decode(response.body);
-
-        // Assuming the API returns a list of transactions
-        if (responseData is List) {
-          for (var element in responseData) {
-            DriverAmountWalletTransactionModel driverAmountWalletTransactionModel =
-            DriverAmountWalletTransactionModel.fromJson(element);
-            driverAmountWalletTransactionModelList.add(driverAmountWalletTransactionModel);
-          }
-        }
-        // If the API returns an object with a data field containing the list
-        else if (responseData is Map && responseData['data'] is List) {
-          for (var element in responseData['data']) {
-            DriverAmountWalletTransactionModel driverAmountWalletTransactionModel =
-            DriverAmountWalletTransactionModel.fromJson(element);
-            driverAmountWalletTransactionModelList.add(driverAmountWalletTransactionModel);
-          }
-        }
-
-        // Sort by date descending with null safety
-        driverAmountWalletTransactionModelList.sort((a, b) {
-          final dateA = a.date;
-          final dateB = b.date;
-
-          // Handle null cases - put nulls at the end
-          if (dateA == null && dateB == null) return 0;
-          if (dateA == null) return 1;
-          if (dateB == null) return -1;
-
-          return dateB.compareTo(dateA);
-        });
-
-      } else {
-        log("getDriverAmountWalletTransaction API error: ${response.statusCode} - ${response.body}");
+      final driverId = await FireStoreUtils.getCurrentUid();
+      if (driverId == null || driverId.isEmpty) {
+        log("Driver ID is empty");
         return null;
       }
+
+      final response = await http.get(
+        Uri.parse(
+          '${Constant.baseUrl}driver-sql/wallet/delivery-records?driver_id=$driverId&page=$page&per_page=$perPage',
+        ),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode != 200) {
+        log("API error: ${response.statusCode} - ${response.body}");
+        return null;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        log("Unexpected response shape for delivery records API");
+        return null;
+      }
+
+      final parsed = DriverAmountWalletApiResponse.fromJson(decoded);
+      if (!parsed.success) {
+        log("Delivery records API returned success=false");
+      }
+      return parsed;
     } catch (error) {
-      log("getDriverAmountWalletTransaction ${error.toString()}");
+      log("Exception: ${error.toString()}");
       return null;
     }
-
-    return driverAmountWalletTransactionModelList;
   }
 
-  static Future getPaymentSettingsData() async {
+  static Future<List<DriverAmountWalletTransactionModel>?> getDriverAmountWalletTransaction() async {
+    final response = await getDriverAmountWalletTransactionsPage(page: 1, perPage: 10);
+    return response?.data;
+  }
+  /// Fetches payment gateway settings, persists them to [Preferences], and
+  /// returns the raw `data` map (useful for fields not stored in prefs, e.g.
+  /// withdraw method).
+  static Future<Map<String, dynamic>?> getPaymentSettingsData() async {
     try {
       final response = await http.get(
         Uri.parse('${Constant.baseUrl}settings/payment'),
@@ -980,15 +1028,16 @@ class FireStoreUtils {
                 jsonEncode(xendit.toJson())
             );
           }
-        } else {
-          throw Exception('Failed to load payment settings: ${responseData['message']}');
+          return paymentData;
         }
-      } else {
-        throw Exception('HTTP error ${response.statusCode}: ${response.body}');
+        print('Failed to load payment settings: ${responseData['message']}');
+        return null;
       }
+      print('HTTP error ${response.statusCode}: ${response.body}');
+      return null;
     } catch (e) {
       print('Error fetching payment settings: $e');
-      rethrow;
+      return null;
     }
   }
 

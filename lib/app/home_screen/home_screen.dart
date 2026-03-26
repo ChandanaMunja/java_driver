@@ -4279,7 +4279,7 @@ class _ChargeBreakdown extends StatelessWidget {
         if (isVendorDriver) ...[
           _row(
             'Delivery Charge'.tr,
-            '${d2r.toStringAsFixed(0)} + ${r2c.toStringAsFixed(0)} = ${(d2r + r2c).toStringAsFixed(0)}',
+            '${d2r.toStringAsFixed(2)} + ${r2c.toStringAsFixed(2)} = ${(d2r + r2c).toStringAsFixed(2)}',
           ),
           const SizedBox(height: 4),
         ],
@@ -4369,7 +4369,7 @@ class _ChargeBreakdown extends StatelessWidget {
             )),
       ),
       Text(
-        total.toInt().toString(),
+        total.toStringAsFixed(2),
         style: const TextStyle(
           fontFamily: AppThemeData.bold,
           color: AppThemeData.primary500,
@@ -4815,8 +4815,10 @@ class _ActionButton extends StatelessWidget {
   Future<void> _handleTap(BuildContext ctx) async {
     final s = order.status ?? '';
     if (s == Constant.orderShipped || s == Constant.driverAccepted) {
-      final result = await Get.to(const PickupOrderScreen(),
-          arguments: {'orderModel': order});
+      final result = await Get.to(
+        const PickupOrderScreen(),
+        arguments: {'orderModel': order},
+      );
       if (result == true) {
         final cached = ctrl.currentOrder.value;
         cached.status = Constant.orderInTransit;
@@ -4825,28 +4827,31 @@ class _ActionButton extends StatelessWidget {
         await Future.delayed(const Duration(milliseconds: 800));
         await ctrl.refreshCurrentOrder(forceRefresh: true);
       }
-    } else {
-      final result = await Get.to(const DeliverOrderScreen(),
-          arguments: {'orderModel': order});
-      if (result == true || result is String) {
-        final completedId =
-            (result is String ? result : null) ?? order.id?.toString();
-        if (completedId != null) {
-          ctrl.markOrderAsCompleted(completedId);
-          ctrl.driverModel.value.inProgressOrderID
-              ?.removeWhere((id) => id?.toString() == completedId);
-          ctrl.driverModel.value.orderRequestData
-              ?.removeWhere((id) => id?.toString() == completedId);
-          final h = HttpClientService();
-          await h.invalidateCache('orders/$completedId');
-        }
-        await FireStoreUtils.updateUser(ctrl.driverModel.value);
-        ctrl.currentOrder.value = OrderModel();
-        await ctrl.clearMap();
-        ctrl.resetStatusTracking();
-        ctrl.update();
-        if (Constant.singleOrderReceive == false) Get.back();
+      return;
+    }
+
+    final result = await Get.to(
+      const DeliverOrderScreen(),
+      arguments: {'orderModel': order},
+    );
+    if (result == true || result is String) {
+      final completedId =
+          (result is String ? result : null) ?? order.id?.toString();
+      if (completedId != null) {
+        ctrl.markOrderAsCompleted(completedId);
+        ctrl.driverModel.value.inProgressOrderID
+            ?.removeWhere((id) => id?.toString() == completedId);
+        ctrl.driverModel.value.orderRequestData
+            ?.removeWhere((id) => id?.toString() == completedId);
+        final h = HttpClientService();
+        await h.invalidateCache('orders/$completedId');
       }
+      await FireStoreUtils.updateUser(ctrl.driverModel.value);
+      ctrl.currentOrder.value = OrderModel();
+      await ctrl.clearMap();
+      ctrl.resetStatusTracking();
+      ctrl.update();
+      if (Constant.singleOrderReceive == false) Get.back();
     }
   }
 }

@@ -102,11 +102,20 @@ class Constant {
   static bool isSelfDeliveryFeature = false;
 
   static String amountShow({required String? amount}) {
+    final raw = amount?.trim();
+    final safe = (raw == null ||
+            raw.isEmpty ||
+            raw == 'null' ||
+            raw == 'NaN')
+        ? '0'
+        : raw;
+    final value = double.tryParse(safe) ?? 0.0;
+    final digits = currencyModel!.decimalDigits ?? 0;
+    final fixed = value.toStringAsFixed(digits);
     if (currencyModel!.symbolAtRight == true) {
-      return "${double.parse(amount.toString()).toStringAsFixed(currencyModel!.decimalDigits ?? 0)} ${currencyModel!.symbol.toString()}";
-    } else {
-      return "${currencyModel!.symbol.toString()} ${amount == null || amount.isEmpty ? "0.0" : double.parse(amount.toString()).toStringAsFixed(currencyModel?.decimalDigits ?? 0)}";
+      return "$fixed ${currencyModel!.symbol.toString()}";
     }
+    return "${currencyModel!.symbol.toString()} $fixed";
   }
 
   static Color statusText({required String? status}) {

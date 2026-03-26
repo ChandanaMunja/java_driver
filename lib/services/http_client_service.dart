@@ -255,6 +255,7 @@ class HttpClientService {
           // Determine if we should save to persistent cache
           final shouldSavePersistent = cacheStrategy == CacheStrategy.vendor ||
                                       cacheStrategy == CacheStrategy.settings ||
+                                      cacheStrategy == CacheStrategy.custom ||
                                       (cacheStrategy == null && 
                                        (urlString.contains('/restaurant/vendors/') ||
                                         urlString.contains('/settings')));

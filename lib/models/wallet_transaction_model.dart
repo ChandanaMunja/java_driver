@@ -29,13 +29,30 @@ class WalletTransactionModel {
     id = json['id'];
     userId = json['user_id'];
     paymentMethod = json['payment_method'];
-    amount = double.parse("${json['amount'] ?? 0.0}");
-    isTopup = json['isTopUp'];
+    final hasLegacyAmount = json.containsKey('amount');
+    if (hasLegacyAmount) {
+      amount = _toDouble(json['amount']);
+      isTopup = json['isTopUp'] == true;
+    } else {
+      final credit = _toDouble(json['credit']);
+      final debit = _toDouble(json['debit']);
+
+      if (debit > 0) {
+        amount = debit;
+        isTopup = true;
+      } else if (credit != 0) {
+        amount = credit.abs();
+        isTopup = credit > 0;
+      } else {
+        amount = 0.0;
+        isTopup = false;
+      }
+    }
     orderId = json['order_id'];
     paymentStatus = json['payment_status'];
-    date = json['date'];
+    date = _parseTimestamp(json['date']);
     transactionUser = json['transactionUser'] ?? 'customer';
-    note = json['note'] ?? 'Wallet Top-up';
+    note = json['note'] ?? (isTopup == true ? 'Wallet Top-up' : 'Wallet Transaction');
   }
 
   Map<String, dynamic> toJson() {
@@ -51,5 +68,74 @@ class WalletTransactionModel {
     data['transactionUser'] = transactionUser;
     data['note'] = note;
     return data;
+  }
+
+  static double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
+  }
+
+  static Timestamp? _parseTimestamp(dynamic value) {
+    if (value == null) return null;
+    if (value is Timestamp) return value;
+    if (value is DateTime) return Timestamp.fromDate(value);
+    if (value is String) {
+      final parsed = DateTime.tryParse(value);
+      if (parsed != null) return Timestamp.fromDate(parsed);
+    }
+    return null;
+  }
+}
+
+class WalletTransactionsApiResponse {
+  final bool success;
+  final List<WalletTransactionModel> data;
+  final double totalWalletAmount;
+  final String? message;
+
+  WalletTransactionsApiResponse({
+    required this.success,
+    required this.data,
+    required this.totalWalletAmount,
+    this.message,
+  });
+
+  factory WalletTransactionsApiResponse.fromJson(Map<String, dynamic> json) {
+    final rawList = json['data'];
+    final records = <WalletTransactionModel>[];
+    if (rawList is List) {
+      for (final item in rawList) {
+        if (item is Map<String, dynamic>) {
+          records.add(WalletTransactionModel.fromJson(item));
+        }
+      }
+    }
+    records.sort((a, b) {
+      final dateA = a.date;
+      final dateB = b.date;
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateB.compareTo(dateA);
+    });
+
+    final summary = json['summary'];
+    final totalAmount = summary is Map<String, dynamic>
+        ? _toAmount(summary['total_wallet_amount'])
+        : 0.0;
+
+    return WalletTransactionsApiResponse(
+      success: json['success'] == true,
+      data: records,
+      totalWalletAmount: totalAmount,
+      message: json['message']?.toString(),
+    );
+  }
+
+  static double _toAmount(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 }

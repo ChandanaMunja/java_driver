@@ -1,15 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:jippydriver_driver/app/wallet_screen/payment_list_screen.dart';
-import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
-import 'package:jippydriver_driver/app/wallet_screen/controller/wallet_controller.dart';
-import 'package:jippydriver_driver/controllers/login_controller.dart';
-import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+
+import 'package:jippydriver_driver/app/wallet_screen/controller/wallet_controller.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
+import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/wallet_transaction_model.dart';
 import 'package:jippydriver_driver/models/withdrawal_model.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
@@ -18,1331 +16,651 @@ import 'package:jippydriver_driver/themes/round_button_fill.dart';
 import 'package:jippydriver_driver/themes/text_field_widget.dart';
 import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
-import 'package:jippydriver_driver/utils/app_logger.dart';
+import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/widget/my_separator.dart';
 
 class WalletScreen extends StatelessWidget {
-  final bool? isAppBarShow;
+  final bool isAppBarShow;
 
-  const WalletScreen({super.key, required this.isAppBarShow});
+  const WalletScreen({super.key, this.isAppBarShow = false});
 
   @override
   Widget build(BuildContext context) {
-    AppLogger.log('WalletScreen build() called', tag: 'Screen');
-    final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
-        init: WalletController(),
-        builder: (controller) {
+    final theme = Provider.of<DarkThemeProvider>(context);
+    final bool isDark = theme.getThem();
+
+    return GetX<WalletController>(
+      init: WalletController(),
+      builder: (controller) {
+        if (controller.isLoading.value) {
           return Scaffold(
-            appBar: isAppBarShow == true
-                ? AppBar(
-                    backgroundColor: themeChange.getThem()
-                        ? AppThemeData.grey900
-                        : AppThemeData.grey50,
-                    centerTitle: false,
-                    iconTheme: IconThemeData(
-                        color: themeChange.getThem()
-                            ? AppThemeData.grey50
-                            : AppThemeData.grey900,
-                        size: 20),
-                    title: Text(
-                      "Wallet".tr,
-                      style: TextStyle(
-                          color: themeChange.getThem()
-                              ? AppThemeData.grey50
-                              : AppThemeData.grey900,
-                          fontSize: 18,
-                          fontFamily: AppThemeData.medium),
-                    ),
-                  )
-                : null,
-            body: controller.isLoading.value
-                ? Constant.loader()
-                : Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        child: Container(
-                          width: Responsive.width(100, context),
-                          decoration: const BoxDecoration(
-                            borderRadius: BorderRadius.all(Radius.circular(20)),
-                            image: DecorationImage(
-                              image: AssetImage("assets/images/wallet.png"),
-                              fit: BoxFit.fill,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 20),
-                            child: Column(
-                              children: [
-                                Text(
-                                  "My Wallet".tr,
-                                  maxLines: 1,
-                                  style: TextStyle(
-                                    color: themeChange.getThem()
-                                        ? AppThemeData.grey900
-                                        : AppThemeData.grey900,
-                                    fontSize: 16,
-                                    overflow: TextOverflow.ellipsis,
-                                    fontFamily: AppThemeData.regular,
-                                  ),
-                                ),
-                                Text(
-                                  Constant.amountShow(
-                                      amount: controller
-                                          .userModel.value.walletAmount
-                                          .toString()),
-                                  maxLines: 1,
-                                  style: TextStyle(
-                                    color: themeChange.getThem()
-                                        ? AppThemeData.grey900
-                                        : AppThemeData.grey900,
-                                    fontSize: 40,
-                                    overflow: TextOverflow.ellipsis,
-                                    fontFamily: AppThemeData.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                // Wallet status indicator (show only if wallet is below -1000)
-                                if ((controller.userModel.value.walletAmount ?? 0.0).toDouble() < -1000)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(
-                                        color: Colors.red,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      "Please Contact Your fleet Manager",
-                                      style: TextStyle(
-                                        color: Colors.red,
-                                        fontSize: 15,
-                                        fontFamily: AppThemeData.bold,
-                                      ),
-                                    ),
-                                  ),
-                                const SizedBox(
-                                  height: 20,
-                                ),
-                                (Constant.isDriverVerification == false &&
-                                        controller.userModel.value
-                                                .isDocumentVerify ==
-                                            false)
-                                    ? const SizedBox()
-                                    : Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: RoundedButtonFill(
-                                                title: "Withdraw".tr,
-                                                width: 24,
-                                                height: 5.5,
-                                                color: AppThemeData.grey50,
-                                                textColor: AppThemeData.grey900,
-                                                borderRadius: 200,
-                                                onPress: () {
-                                                  if ((Constant.userModel!
-                                                                  .userBankDetails !=
-                                                              null &&
-                                                          Constant
-                                                              .userModel!
-                                                              .userBankDetails!
-                                                              .accountNumber
-                                                              .isNotEmpty) ||
-                                                      controller
-                                                              .withdrawMethodModel
-                                                              .value
-                                                              .id !=
-                                                          null) {
-                                                    withdrawalCardBottomSheet(
-                                                        context, controller);
-                                                  } else {
-                                                    ShowToastDialog.showToast(
-                                                        "Please enter payment method"
-                                                            .tr);
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                            const SizedBox(
-                                              width: 20,
-                                            ),
-                                            Visibility(
-                                              visible: true,
-                                              child: Expanded(
-                                                child: RoundedButtonFill(
-                                                  title: "Top up".tr,
-                                                  width: 24,
-                                                  height: 5.5,
-                                                  borderRadius: 200,
-                                                  color:
-                                                      AppThemeData.driverApp300,
-                                                  textColor: AppThemeData.grey50,
-                                                  onPress: () {
-                                                    Get.to(
-                                                        const PaymentListScreen());
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      )
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: DefaultTabController(
-                          length: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TabBar(
-                                onTap: (value) {
-                                  controller.selectedTabIndex.value = value;
-                                },
-                                tabAlignment: TabAlignment.start,
-                                labelStyle: const TextStyle(
-                                    fontFamily: AppThemeData.semiBold),
-                                labelColor: themeChange.getThem()
-                                    ? AppThemeData.secondary300
-                                    : AppThemeData.secondary300,
-                                unselectedLabelStyle: const TextStyle(
-                                    fontFamily: AppThemeData.medium),
-                                unselectedLabelColor: themeChange.getThem()
-                                    ? AppThemeData.grey400
-                                    : AppThemeData.grey500,
-                                indicatorColor: AppThemeData.secondary300,
-                                indicatorWeight: 1,
-                                isScrollable: true,
-                                dividerColor: Colors.transparent,
-                                tabs: [
-                                  Tab(
-                                    text: "Transaction History".tr,
-                                  ),
-                                  Tab(
-                                    text: "Top up History".tr,
-                                  ),
-                                  Tab(
-                                    text: "Withdrawal History".tr,
-                                  ),
-                                ],
-                              ),
-                              Expanded(
-                                child: TabBarView(
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 16, vertical: 10),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          SizedBox(
-                                            width: 120,
-                                            child: DropdownButtonFormField<
-                                                    String>(
-                                                borderRadius:
-                                                    const BorderRadius.all(
-                                                        Radius.circular(0)),
-                                                hint: Text(
-                                                  'Select zone'.tr,
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: themeChange.getThem()
-                                                        ? AppThemeData.grey700
-                                                        : AppThemeData.grey700,
-                                                    fontFamily:
-                                                        AppThemeData.regular,
-                                                  ),
-                                                ),
-                                                decoration: InputDecoration(
-                                                  errorStyle: const TextStyle(
-                                                      color: Colors.red),
-                                                  isDense: true,
-                                                  filled: true,
-                                                  fillColor:
-                                                      themeChange.getThem()
-                                                          ? AppThemeData.grey900
-                                                          : AppThemeData.grey50,
-                                                  disabledBorder:
-                                                      UnderlineInputBorder(
-                                                    borderRadius:
-                                                        const BorderRadius.all(
-                                                            Radius.circular(
-                                                                400)),
-                                                    borderSide: BorderSide(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey900
-                                                            : AppThemeData
-                                                                .grey50,
-                                                        width: 1),
-                                                  ),
-                                                  focusedBorder:
-                                                      OutlineInputBorder(
-                                                    borderRadius:
-                                                        const BorderRadius.all(
-                                                            Radius.circular(
-                                                                400)),
-                                                    borderSide: BorderSide(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .secondary300
-                                                            : AppThemeData
-                                                                .secondary300,
-                                                        width: 1),
-                                                  ),
-                                                  enabledBorder:
-                                                      OutlineInputBorder(
-                                                    borderRadius:
-                                                        const BorderRadius.all(
-                                                            Radius.circular(
-                                                                400)),
-                                                    borderSide: BorderSide(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey900
-                                                            : AppThemeData
-                                                                .grey50,
-                                                        width: 1),
-                                                  ),
-                                                  errorBorder:
-                                                      OutlineInputBorder(
-                                                    borderRadius:
-                                                        const BorderRadius.all(
-                                                            Radius.circular(
-                                                                400)),
-                                                    borderSide: BorderSide(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey900
-                                                            : AppThemeData
-                                                                .grey50,
-                                                        width: 1),
-                                                  ),
-                                                  border: OutlineInputBorder(
-                                                    borderRadius:
-                                                        const BorderRadius.all(
-                                                            Radius.circular(
-                                                                400)),
-                                                    borderSide: BorderSide(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey900
-                                                            : AppThemeData
-                                                                .grey50,
-                                                        width: 1),
-                                                  ),
-                                                ),
-                                                value: controller
-                                                    .selectedDropDownValue
-                                                    .value,
-                                                onChanged: (value) {
-                                                  controller
-                                                      .selectedDropDownValue
-                                                      .value = value!;
-                                                  controller.update();
-                                                },
-                                                style: TextStyle(
-                                                    fontSize: 14,
-                                                    color: themeChange.getThem()
-                                                        ? AppThemeData.grey50
-                                                        : AppThemeData.grey900,
-                                                    fontFamily:
-                                                        AppThemeData.medium),
-                                                items: controller.dropdownValue
-                                                    .map((item) {
-                                                  return DropdownMenuItem<
-                                                      String>(
-                                                    value: item,
-                                                    child:
-                                                        Text(item.toString()),
-                                                  );
-                                                }).toList()),
-                                          ),
-                                          const SizedBox(
-                                            height: 10,
-                                          ),
-                                          Expanded(
-                                            child: Container(
-                                              decoration: ShapeDecoration(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey900
-                                                    : AppThemeData.grey50,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                child: transactionCardForOrder(
-                                                  themeChange,
-                                                  controller.selectedDropDownValue
-                                                              .value ==
-                                                          "Daily"
-                                                      ? controller
-                                                          .dailyEarningList
-                                                      : controller.selectedDropDownValue
-                                                                  .value ==
-                                                              "Monthly"
-                                                          ? controller
-                                                              .monthlyEarningList
-                                                          : controller
-                                                              .yearlyEarningList,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                    controller.walletTopTransactionList.isEmpty
-                                        ? Constant.showEmptyView(
-                                            message:
-                                                "Transaction history not found"
-                                                    .tr)
-                                        : Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 10),
-                                            child: Container(
-                                              decoration: ShapeDecoration(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey900
-                                                    : AppThemeData.grey50,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                child: ListView.separated(
-                                                  padding: EdgeInsets.zero,
-                                                  shrinkWrap: true,
-                                                  itemCount: controller
-                                                      .walletTopTransactionList
-                                                      .length,
-                                                  itemBuilder:
-                                                      (context, index) {
-                                                    WalletTransactionModel
-                                                        walletTractionModel =
-                                                        controller
-                                                                .walletTopTransactionList[
-                                                            index];
-                                                    return transactionCard(
-                                                        controller,
-                                                        themeChange,
-                                                        walletTractionModel);
-                                                  },
-                                                  separatorBuilder:
-                                                      (BuildContext context,
-                                                          int index) {
-                                                    return Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          vertical: 5),
-                                                      child: MySeparator(
-                                                          color: themeChange
-                                                                  .getThem()
-                                                              ? AppThemeData
-                                                                  .grey700
-                                                              : AppThemeData
-                                                                  .grey200),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                    controller.withdrawalList.isEmpty
-                                        ? Constant.showEmptyView(
-                                            message:
-                                                "Withdrawal history not found"
-                                                    .tr)
-                                        : Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 16, vertical: 10),
-                                            child: Container(
-                                              decoration: ShapeDecoration(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey900
-                                                    : AppThemeData.grey50,
-                                                shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                              ),
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                child: ListView.separated(
-                                                  padding: EdgeInsets.zero,
-                                                  shrinkWrap: true,
-                                                  itemCount: controller
-                                                      .withdrawalList.length,
-                                                  itemBuilder:
-                                                      (context, index) {
-                                                    WithdrawalModel
-                                                        walletTractionModel =
-                                                        controller
-                                                                .withdrawalList[
-                                                            index];
-                                                    return transactionCardWithdrawal(
-                                                        controller,
-                                                        themeChange,
-                                                        walletTractionModel);
-                                                  },
-                                                  separatorBuilder:
-                                                      (BuildContext context,
-                                                          int index) {
-                                                    return Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          vertical: 5),
-                                                      child: MySeparator(
-                                                          color: themeChange
-                                                                  .getThem()
-                                                              ? AppThemeData
-                                                                  .grey700
-                                                              : AppThemeData
-                                                                  .grey200),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                  ],
-                                ),
-                              )
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+            backgroundColor:
+            isDark ? AppThemeData.grey900 : AppThemeData.grey50,
+            appBar: _buildAppBar(isDark),
+            body: const Center(child: CircularProgressIndicator()),
           );
-        });
+        }
+
+        return Scaffold(
+          backgroundColor: isDark ? AppThemeData.grey900 : AppThemeData.grey50,
+          appBar: isAppBarShow ? _buildAppBar(isDark) : null,
+          body: RefreshIndicator(
+            onRefresh: controller.refresh,
+            child: CustomScrollView(
+              controller: controller.scrollController,
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                // ── Wallet Balance Card ─────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: _WalletBalanceCard(
+                    controller: controller,
+                    isDark: isDark,
+                  ),
+                ),
+
+                // ── Section Header ──────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                    child: Text(
+                      'Transaction History'.tr,
+                      style: TextStyle(
+                        fontFamily: AppThemeData.semiBold,
+                        fontSize: 15,
+                        color: isDark
+                            ? AppThemeData.grey100
+                            : AppThemeData.grey800,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Transaction List ────────────────────────────────────────
+                controller.transactions.isEmpty
+                    ? SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Constant.showEmptyView(
+                      message: 'Transaction history not found'.tr,
+                    ),
+                  ),
+                )
+                    : SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  sliver: SliverList.separated(
+                    itemCount: controller.transactions.length,
+                    itemBuilder: (_, index) => _TransactionTile(
+                      model: controller.transactions[index],
+                      isDark: isDark,
+                    ),
+                    separatorBuilder: (_, __) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: MySeparator(
+                        color: isDark
+                            ? AppThemeData.grey700
+                            : AppThemeData.grey200,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // ── Pagination Footer ───────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Obx(() {
+                    if (controller.isFetchingMore.value) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (!controller.hasMore.value &&
+                        controller.transactions.isNotEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: Text(
+                            'No more transactions'.tr,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontFamily: AppThemeData.medium,
+                              color: isDark
+                                  ? AppThemeData.grey500
+                                  : AppThemeData.grey400,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  }),
+                ),
+
+                // ── Bottom safe area ────────────────────────────────────────
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
-  withdrawalCardBottomSheet(BuildContext context, WalletController controller) {
-    return showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        isDismissible: true,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(30),
+  AppBar? _buildAppBar(bool isDark) {
+    return AppBar(
+      backgroundColor: isDark ? AppThemeData.grey900 : AppThemeData.grey50,
+      centerTitle: false,
+      iconTheme: IconThemeData(
+        color: isDark ? AppThemeData.grey50 : AppThemeData.grey900,
+        size: 20,
+      ),
+      title: Text(
+        'Wallet'.tr,
+        style: TextStyle(
+          color: isDark ? AppThemeData.grey50 : AppThemeData.grey900,
+          fontSize: 18,
+          fontFamily: AppThemeData.medium,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wallet Balance Card
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WalletBalanceCard extends StatelessWidget {
+  final WalletController controller;
+  final bool isDark;
+
+  const _WalletBalanceCard({
+    required this.controller,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isOverdrawn = controller.totalWalletAmount.value < -1000;
+    final bool canVerify = Constant.isDriverVerification == false &&
+        controller.userModel.value.isDocumentVerify == false;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Container(
+        width: double.infinity,
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.all(Radius.circular(20)),
+          image: DecorationImage(
+            image: AssetImage('assets/images/wallet.png'),
+            fit: BoxFit.fill,
           ),
         ),
-        clipBehavior: Clip.antiAliasWithSaveLayer,
-        builder: (context) => FractionallySizedBox(
-              heightFactor: 0.8,
-              child: StatefulBuilder(builder: (context1, setState) {
-                final themeChange = Provider.of<DarkThemeProvider>(context);
-                return Obx(
-                  () => Scaffold(
-                    body: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      "Withdrawal".tr,
-                                      style: TextStyle(
-                                          color: themeChange.getThem()
-                                              ? AppThemeData.grey100
-                                              : AppThemeData.grey800,
-                                          fontSize: 18,
-                                          fontFamily: AppThemeData.semiBold),
-                                    ),
-                                  ),
-                                  InkWell(
-                                      onTap: () {
-                                        Get.back();
-                                      },
-                                      child: const Icon(Icons.close)),
-                                ],
-                              ),
-                            ),
-                            TextFieldWidget(
-                              title: 'Withdrawal amount'.tr,
-                              controller:
-                                  controller.amountTextFieldController.value,
-                              hintText: 'Enter withdrawal amount'.tr,
-                              textInputType:
-                                  const TextInputType.numberWithOptions(
-                                      signed: true, decimal: true),
-                              textInputAction: TextInputAction.done,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.allow(
-                                    RegExp('[0-9]')),
-                              ],
-                              prefix: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 14),
-                                child: Text(
-                                  "${Constant.currencyModel!.symbol}".tr,
-                                  style: TextStyle(
-                                      color: themeChange.getThem()
-                                          ? AppThemeData.grey50
-                                          : AppThemeData.grey900,
-                                      fontFamily: AppThemeData.semiBold,
-                                      fontSize: 18),
-                                ),
-                              ),
-                            ),
-                            TextFieldWidget(
-                              title: 'Notes'.tr,
-                              controller:
-                                  controller.noteTextFieldController.value,
-                              hintText: 'Add Notes'.tr,
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: Text(
-                                "Select Withdraw Method".tr,
-                                style: TextStyle(
-                                    color: themeChange.getThem()
-                                        ? AppThemeData.grey100
-                                        : AppThemeData.grey800,
-                                    fontSize: 16,
-                                    fontFamily: AppThemeData.medium),
-                              ),
-                            ),
-                            Container(
-                              decoration: BoxDecoration(
-                                  borderRadius: const BorderRadius.all(
-                                      Radius.circular(20)),
-                                  color: themeChange.getThem()
-                                      ? AppThemeData.grey900
-                                      : AppThemeData.grey50),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 10),
-                                child: Column(
-                                  children: [
-                                    Constant.userModel!.userBankDetails ==
-                                                null ||
-                                            Constant.userModel!.userBankDetails!
-                                                .accountNumber.isEmpty
-                                        ? const SizedBox()
-                                        : InkWell(
-                                            onTap: () {
-                                              controller.selectedValue.value =
-                                                  0;
-                                            },
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 50,
-                                                  height: 50,
-                                                  decoration: ShapeDecoration(
-                                                    shape:
-                                                        RoundedRectangleBorder(
-                                                      side: BorderSide(
-                                                          width: 1,
-                                                          color: themeChange
-                                                                  .getThem()
-                                                              ? AppThemeData
-                                                                  .grey700
-                                                              : AppThemeData
-                                                                  .grey200),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              8),
-                                                    ),
-                                                  ),
-                                                  child: Padding(
-                                                    padding:
-                                                        const EdgeInsets.all(
-                                                            10),
-                                                    child: SvgPicture.asset(
-                                                        "assets/icons/ic_building_four.svg"),
-                                                  ),
-                                                ),
-                                                const SizedBox(
-                                                  width: 10,
-                                                ),
-                                                Expanded(
-                                                  child: Text(
-                                                    "Bank Transfer".tr,
-                                                    style: TextStyle(
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey50
-                                                            : AppThemeData
-                                                                .grey900,
-                                                        fontSize: 16,
-                                                        fontFamily: AppThemeData
-                                                            .medium),
-                                                  ),
-                                                ),
-                                                Radio(
-                                                  value: 0,
-                                                  groupValue: controller
-                                                      .selectedValue.value,
-                                                  activeColor:
-                                                      AppThemeData.secondary300,
-                                                  onChanged: (value) {
-                                                    controller.selectedValue
-                                                        .value = value!;
-                                                  },
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                    const SizedBox(
-                                      height: 10,
-                                    ),
-                                    Visibility(
-                                      visible: false,
-                                      child: Column(
-                                        children: [
-                                          controller.withdrawMethodModel.value.flutterWave == null ||
-                                                  (controller.flutterWaveModel.value.isWithdrawEnabled == false)
-                                              ? const SizedBox()
-                                              : InkWell(
-                                                  onTap: () {
-                                                    controller.selectedValue.value = 1;
-                                                  },
-                                                  child: Row(
-                                                    children: [
-                                                      Container(
-                                                        width: 50,
-                                                        height: 50,
-                                                        decoration: ShapeDecoration(
-                                                          shape: RoundedRectangleBorder(
-                                                            side: BorderSide(
-                                                                width: 1,
-                                                                color: themeChange.getThem()
-                                                                    ? AppThemeData.grey700
-                                                                    : AppThemeData.grey200),
-                                                            borderRadius: BorderRadius.circular(8),
-                                                          ),
-                                                        ),
-                                                        child: Padding(
-                                                          padding: const EdgeInsets.all(10),
-                                                          child: Image.asset("assets/images/flutterwave.png"),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        width: 10,
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          "Flutter wave".tr,
-                                                          style: TextStyle(
-                                                              color: themeChange.getThem()
-                                                                  ? AppThemeData.grey50
-                                                                  : AppThemeData.grey900,
-                                                              fontSize: 16,
-                                                              fontFamily: AppThemeData.medium),
-                                                        ),
-                                                      ),
-                                                      Radio(
-                                                        value: 1,
-                                                        groupValue: controller.selectedValue.value,
-                                                        activeColor: AppThemeData.secondary300,
-                                                        onChanged: (value) {
-                                                          controller.selectedValue.value = value!;
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                          const SizedBox(
-                                            height: 10,
-                                          ),
-                                          controller.withdrawMethodModel.value.paypal == null ||
-                                                  (controller.payPalModel.value.isWithdrawEnabled == false)
-                                              ? const SizedBox()
-                                              : InkWell(
-                                                  onTap: () {
-                                                    controller.selectedValue.value = 2;
-                                                  },
-                                                  child: Row(
-                                                    children: [
-                                                      Container(
-                                                        width: 50,
-                                                        height: 50,
-                                                        decoration: ShapeDecoration(
-                                                          shape: RoundedRectangleBorder(
-                                                            side: BorderSide(
-                                                                width: 1,
-                                                                color: themeChange.getThem()
-                                                                    ? AppThemeData.grey700
-                                                                    : AppThemeData.grey200),
-                                                            borderRadius: BorderRadius.circular(8),
-                                                          ),
-                                                        ),
-                                                        child: Padding(
-                                                          padding: const EdgeInsets.all(10),
-                                                          child: Image.asset("assets/images/paypal.png"),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        width: 10,
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          "PayPal".tr,
-                                                          style: TextStyle(
-                                                              color: themeChange.getThem()
-                                                                  ? AppThemeData.grey50
-                                                                  : AppThemeData.grey900,
-                                                              fontSize: 16,
-                                                              fontFamily: AppThemeData.medium),
-                                                        ),
-                                                      ),
-                                                      Radio(
-                                                        value: 2,
-                                                        groupValue: controller.selectedValue.value,
-                                                        activeColor: AppThemeData.secondary300,
-                                                        onChanged: (value) {
-                                                          controller.selectedValue.value = value!;
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                          const SizedBox(
-                                            height: 10,
-                                          ),
-                                          controller.withdrawMethodModel.value.razorpay == null ||
-                                                  (controller.razorPayModel.value.isWithdrawEnabled == false)
-                                              ? const SizedBox()
-                                              : InkWell(
-                                                  onTap: () {
-                                                    controller.selectedValue.value = 3;
-                                                  },
-                                                  child: Row(
-                                                    children: [
-                                                      Container(
-                                                        width: 50,
-                                                        height: 50,
-                                                        decoration: ShapeDecoration(
-                                                          shape: RoundedRectangleBorder(
-                                                            side: BorderSide(
-                                                                width: 1,
-                                                                color: themeChange.getThem()
-                                                                    ? AppThemeData.grey700
-                                                                    : AppThemeData.grey200),
-                                                            borderRadius: BorderRadius.circular(8),
-                                                          ),
-                                                        ),
-                                                        child: Padding(
-                                                          padding: const EdgeInsets.all(10),
-                                                          child: Image.asset("assets/images/razorpay.png"),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        width: 10,
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          "RazorPay".tr,
-                                                          style: TextStyle(
-                                                              color: themeChange.getThem()
-                                                                  ? AppThemeData.grey50
-                                                                  : AppThemeData.grey900,
-                                                              fontSize: 16,
-                                                              fontFamily: AppThemeData.medium),
-                                                        ),
-                                                      ),
-                                                      Radio(
-                                                        value: 3,
-                                                        groupValue: controller.selectedValue.value,
-                                                        activeColor: AppThemeData.secondary300,
-                                                        onChanged: (value) {
-                                                          controller.selectedValue.value = value!;
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                          const SizedBox(
-                                            height: 10,
-                                          ),
-                                          controller.withdrawMethodModel.value.stripe == null ||
-                                                  (controller.stripeModel.value.isWithdrawEnabled == false)
-                                              ? const SizedBox()
-                                              : InkWell(
-                                                  onTap: () {
-                                                    controller.selectedValue.value = 4;
-                                                  },
-                                                  child: Row(
-                                                    children: [
-                                                      Container(
-                                                        width: 50,
-                                                        height: 50,
-                                                        decoration: ShapeDecoration(
-                                                          shape: RoundedRectangleBorder(
-                                                            side: BorderSide(
-                                                                width: 1,
-                                                                color: themeChange.getThem()
-                                                                    ? AppThemeData.grey700
-                                                                    : AppThemeData.grey200),
-                                                            borderRadius: BorderRadius.circular(8),
-                                                          ),
-                                                        ),
-                                                        child: Padding(
-                                                          padding: const EdgeInsets.all(10),
-                                                          child: Image.asset("assets/images/stripe.png"),
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        width: 10,
-                                                      ),
-                                                      Expanded(
-                                                        child: Text(
-                                                          "Stripe".tr,
-                                                          style: TextStyle(
-                                                              color: themeChange.getThem()
-                                                                  ? AppThemeData.grey50
-                                                                  : AppThemeData.grey900,
-                                                              fontSize: 16,
-                                                              fontFamily: AppThemeData.medium),
-                                                        ),
-                                                      ),
-                                                      Radio(
-                                                        value: 4,
-                                                        groupValue: controller.selectedValue.value,
-                                                        activeColor: AppThemeData.secondary300,
-                                                        onChanged: (value) {
-                                                          controller.selectedValue.value = value!;
-                                                        },
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                    ),
-                    bottomNavigationBar: Container(
-                      color: themeChange.getThem()
-                          ? AppThemeData.grey900
-                          : AppThemeData.grey50,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 20),
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
-                        child: RoundedButtonFill(
-                          title: "Withdraw".tr,
-                          height: 5.5,
-                          color: AppThemeData.primary300,
-                          textColor: AppThemeData.grey50,
-                          fontSizes: 16,
-                          onPress: () async {
-                            if (controller
-                                .amountTextFieldController.value.text.isEmpty) {
-                              ShowToastDialog.showToast(
-                                  "Please enter amount".tr);
-                            } else if (double.parse(
-                                    Constant.minimumAmountToWithdrawal) >
-                                double.parse(controller
-                                    .amountTextFieldController.value.text)) {
-                              ShowToastDialog.showToast(
-                                  "${'Withdraw amount must be greater or equal to'.tr} ${Constant.amountShow(amount: Constant.minimumAmountToWithdrawal)}");
-                            } else {
-                              WithdrawalModel withdrawHistory = WithdrawalModel(
-                                amount: controller
-                                    .amountTextFieldController.value.text,
-                                driverID: controller.userModel.value.id,
-                                paymentStatus: "Pending",
-                                paidDate: Timestamp.now(),
-                                id: Constant.getUuid(),
-                                note: controller
-                                    .noteTextFieldController.value.text,
-                                withdrawMethod: controller
-                                            .selectedValue.value ==
-                                        0
-                                    ? "bank"
-                                    : controller.selectedValue.value == 1
-                                        ? "flutterwave"
-                                        : controller.selectedValue.value == 2
-                                            ? "paypal"
-                                            : controller.selectedValue.value ==
-                                                    3
-                                                ? "razorpay"
-                                                : "stripe",
-                              );
-                              await FireStoreUtils.withdrawWalletAmount(
-                                  withdrawHistory);
-                              String? userId = await LoginController.getFirebaseId();
-                              await FireStoreUtils.updateUserWallet(
-                                      amount:
-                                          "-${controller.amountTextFieldController.value.text}",
-                                      userId:userId)
-                                  .then((value) {
-                                Get.back();
-                                FireStoreUtils.sendPayoutMail(
-                                    amount: controller
-                                        .amountTextFieldController.value.text,
-                                    payoutrequestid:
-                                        withdrawHistory.id.toString());
-                                controller.getWalletTransaction();
-                              });
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ));
-  }
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          child: Column(
+            children: [
+              // ── Label ──────────────────────────────────────────────────────
+              Text(
+                'My Wallet'.tr,
+                style: const TextStyle(
+                  color: AppThemeData.grey900,
+                  fontSize: 16,
+                  fontFamily: AppThemeData.regular,
+                ),
+              ),
 
-  transactionCardWithdrawal(WalletController controller, themeChange,
-      WithdrawalModel transactionModel) {
-    return InkWell(
-      onTap: () async {},
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Row(
-          children: [
-            Container(
-              decoration: ShapeDecoration(
-                shape: RoundedRectangleBorder(
-                  side: BorderSide(
-                      width: 1,
-                      color: themeChange.getThem()
-                          ? AppThemeData.grey800
-                          : AppThemeData.grey100),
-                  borderRadius: BorderRadius.circular(8),
+              // ── Balance ────────────────────────────────────────────────────
+              Text(
+                Constant.amountShow(
+                  amount: controller.totalWalletAmount.value.toString(),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppThemeData.grey900,
+                  fontSize: 40,
+                  fontFamily: AppThemeData.bold,
                 ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: SvgPicture.asset(
-                  "assets/icons/ic_debit.svg",
-                  height: 16,
-                  width: 16,
+
+              // ── Overdrawn warning ──────────────────────────────────────────
+              if (isOverdrawn) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.red),
+                  ),
+                  child: const Text(
+                    'Please Contact Your Fleet Manager',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 13,
+                      fontFamily: AppThemeData.bold,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            const SizedBox(
-              width: 10,
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              transactionModel.note.toString(),
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontFamily: AppThemeData.semiBold,
-                                fontWeight: FontWeight.w600,
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey100
-                                    : AppThemeData.grey800,
-                              ),
-                            ),
-                            Text(
-                              "(${transactionModel.withdrawMethod!.capitalizeString()})",
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontFamily: AppThemeData.medium,
-                                fontWeight: FontWeight.w600,
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey100
-                                    : AppThemeData.grey800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        "-${Constant.amountShow(amount: transactionModel.amount.toString())}",
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontFamily: AppThemeData.medium,
-                          color: AppThemeData.danger300,
-                        ),
-                      )
-                    ],
+              ],
+
+              const SizedBox(height: 20),
+
+              // ── Withdraw Button ────────────────────────────────────────────
+              if (!canVerify)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: RoundedButtonFill(
+                      title: 'Withdraw'.tr,
+                      width: 24,
+                      height: 5.5,
+                      color: AppThemeData.grey50,
+                      textColor: AppThemeData.grey900,
+                      borderRadius: 200,
+                      onPress: () {
+                        if (controller.hasValidPaymentMethod) {
+                          _showWithdrawalSheet(context, controller);
+                        } else {
+                          ShowToastDialog.showToast(
+                            'Please enter payment method'.tr,
+                          );
+                        }
+                      },
+                    ),
                   ),
-                  const SizedBox(
-                    height: 2,
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          transactionModel.paymentStatus.toString(),
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontFamily: AppThemeData.semiBold,
-                            fontWeight: FontWeight.w600,
-                            color: transactionModel.paymentStatus == "Success"
-                                ? AppThemeData.success400
-                                : transactionModel.paymentStatus == "Pending"
-                                    ? AppThemeData.primary300
-                                    : AppThemeData.danger300,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        Constant.timestampToDateTime(
-                            transactionModel.paidDate!),
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: AppThemeData.medium,
-                            fontWeight: FontWeight.w500,
-                            color: themeChange.getThem()
-                                ? AppThemeData.grey200
-                                : AppThemeData.grey700),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  transactionCardForOrder(themeChange, List<OrderModel> list) {
-    return list.isEmpty
-        ? Constant.showEmptyView(message: "Transaction history not found".tr)
-        : ListView.separated(
-            padding: EdgeInsets.zero,
-            shrinkWrap: true,
-            itemCount: list.length,
-            itemBuilder: (context, index) {
-              OrderModel walletTractionModel = list[index];
+  void _showWithdrawalSheet(
+      BuildContext context, WalletController controller) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      clipBehavior: Clip.antiAliasWithSaveLayer,
+      builder: (_) => FractionallySizedBox(
+        heightFactor: 0.8,
+        child: _WithdrawalSheet(controller: controller),
+      ),
+    );
+  }
+}
 
-              double amount = 0;
-              if (walletTractionModel.deliveryCharge != null &&
-                  walletTractionModel.deliveryCharge!.isNotEmpty) {
-                amount += double.parse(walletTractionModel.deliveryCharge!);
-              }
+// ─────────────────────────────────────────────────────────────────────────────
+// Transaction Tile  (const-constructable for ListView reuse)
+// ─────────────────────────────────────────────────────────────────────────────
 
-              if (walletTractionModel.tipAmount != null &&
-                  walletTractionModel.tipAmount!.isNotEmpty) {
-                amount += double.parse(walletTractionModel.tipAmount!);
-              }
+class _TransactionTile extends StatelessWidget {
+  final WalletTransactionModel model;
+  final bool isDark;
 
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: Row(
+  const _TransactionTile({required this.model, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isCredit = model.isTopup == true;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          // ── Icon ────────────────────────────────────────────────────────
+          _iconBox(
+            assetPath: isCredit
+                ? 'assets/icons/ic_credit.svg'
+                : 'assets/icons/ic_debit.svg',
+            isDark: isDark,
+          ),
+          const SizedBox(width: 12),
+
+          // ── Details ──────────────────────────────────────────────────────
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Container(
-                      decoration: ShapeDecoration(
-                        shape: RoundedRectangleBorder(
-                          side: BorderSide(
-                              width: 1,
-                              color: themeChange.getThem()
-                                  ? AppThemeData.grey800
-                                  : AppThemeData.grey100),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: SvgPicture.asset(
-                          "assets/icons/ic_credit.svg",
-                          height: 16,
-                          width: 16,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(
-                      width: 10,
-                    ),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  "Completed Delivery".tr,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontFamily: AppThemeData.semiBold,
-                                    fontWeight: FontWeight.w600,
-                                    color: themeChange.getThem()
-                                        ? AppThemeData.grey100
-                                        : AppThemeData.grey800,
-                                  ),
-                                ),
-                              ),
-                              Text("23.00",
-                                //Constant.amountShow(amount: amount.toString()),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontFamily: AppThemeData.medium,
-                                  color: AppThemeData.success400,
-                                ),
-                              )
-                            ],
-                          ),
-                          const SizedBox(
-                            height: 2,
-                          ),
-                          Text(
-                            Constant.timestampToDateTime(
-                                walletTractionModel.createdAt!),
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontFamily: AppThemeData.medium,
-                                fontWeight: FontWeight.w500,
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey200
-                                    : AppThemeData.grey700),
-                          ),
-                        ],
+                      child: Text(
+                        model.note.toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontFamily: AppThemeData.semiBold,
+                          color: isDark
+                              ? AppThemeData.grey100
+                              : AppThemeData.grey800,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      isCredit
+                          ? Constant.amountShow(
+                          amount: model.amount.toString())
+                          : '-${Constant.amountShow(amount: model.amount.toString())}',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontFamily: AppThemeData.medium,
+                        color: isCredit
+                            ? AppThemeData.success400
+                            : AppThemeData.danger300,
                       ),
                     ),
                   ],
                 ),
-              );
-            },
-            separatorBuilder: (BuildContext context, int index) {
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 5),
-                child: MySeparator(
-                    color: themeChange.getThem()
-                        ? AppThemeData.grey700
-                        : AppThemeData.grey200),
-              );
-            },
-          );
+                const SizedBox(height: 2),
+                Text(
+                  model.date == null
+                      ? '-'
+                      : Constant.timestampToDateTime(model.date!),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: AppThemeData.medium,
+                    color:
+                    isDark ? AppThemeData.grey400 : AppThemeData.grey500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  transactionCard(WalletController controller, themeChange,
-      WalletTransactionModel transactionModel) {
-    return InkWell(
-      onTap: () async {},
+  Widget _iconBox({required String assetPath, required bool isDark}) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: ShapeDecoration(
+        shape: RoundedRectangleBorder(
+          side: BorderSide(
+            color: isDark ? AppThemeData.grey800 : AppThemeData.grey100,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
+        padding: const EdgeInsets.all(12),
+        child: SvgPicture.asset(assetPath),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Withdrawal Bottom Sheet  (extracted to its own widget for clarity)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WithdrawalSheet extends StatelessWidget {
+  final WalletController controller;
+
+  const _WithdrawalSheet({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Provider.of<DarkThemeProvider>(context);
+    final bool isDark = theme.getThem();
+
+    return Obx(
+          () => Scaffold(
+        backgroundColor:
+        isDark ? AppThemeData.grey900 : AppThemeData.grey50,
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ────────────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Withdrawal'.tr,
+                        style: TextStyle(
+                          color: isDark
+                              ? AppThemeData.grey100
+                              : AppThemeData.grey800,
+                          fontSize: 18,
+                          fontFamily: AppThemeData.semiBold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: Get.back,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Amount field ──────────────────────────────────────────
+              TextFieldWidget(
+                title: 'Withdrawal amount'.tr,
+                controller: controller.amountController,
+                hintText: 'Enter withdrawal amount'.tr,
+                textInputType: const TextInputType.numberWithOptions(
+                  signed: true,
+                  decimal: true,
+                ),
+                textInputAction: TextInputAction.done,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp('[0-9]')),
+                ],
+                prefix: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  child: Text(
+                    Constant.currencyModel!.symbol.toString(),
+                    style: TextStyle(
+                      color:
+                      isDark ? AppThemeData.grey50 : AppThemeData.grey900,
+                      fontFamily: AppThemeData.semiBold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Notes field ───────────────────────────────────────────
+              TextFieldWidget(
+                title: 'Notes'.tr,
+                controller: controller.noteController,
+                hintText: 'Add Notes'.tr,
+              ),
+
+              // ── Method selector (Bank only visible; others hidden) ─────
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: Text(
+                  'Select Withdraw Method'.tr,
+                  style: TextStyle(
+                    color:
+                    isDark ? AppThemeData.grey100 : AppThemeData.grey800,
+                    fontSize: 16,
+                    fontFamily: AppThemeData.medium,
+                  ),
+                ),
+              ),
+
+              _MethodOption(
+                value: 0,
+                groupValue: controller.selectedWithdrawMethod.value,
+                label: 'Bank Transfer'.tr,
+                iconPath: 'assets/icons/ic_building_four.svg',
+                isSvg: true,
+                isDark: isDark,
+                onChanged: (v) => controller.selectedWithdrawMethod.value = v,
+              ),
+            ],
+          ),
+        ),
+
+        bottomNavigationBar: Container(
+          color: isDark ? AppThemeData.grey900 : AppThemeData.grey50,
+          padding:
+          const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 32),
+          child: RoundedButtonFill(
+            title: 'Withdraw'.tr,
+            height: 5.5,
+            color: AppThemeData.primary300,
+            textColor: AppThemeData.grey50,
+            fontSizes: 16,
+            onPress: () => _submit(context, controller),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit(
+      BuildContext context, WalletController controller) async {
+    final rawAmount = controller.amountController.text.trim();
+
+    if (rawAmount.isEmpty) {
+      ShowToastDialog.showToast('Please enter amount'.tr);
+      return;
+    }
+
+    final double? amount = double.tryParse(rawAmount);
+    if (amount == null) {
+      ShowToastDialog.showToast('Invalid amount'.tr);
+      return;
+    }
+
+    if (amount < controller.minimumWithdrawal) {
+      ShowToastDialog.showToast(
+        '${'Withdraw amount must be greater or equal to'.tr} '
+            '${Constant.amountShow(amount: Constant.minimumAmountToWithdrawal)}',
+      );
+      return;
+    }
+
+    final withdrawHistory = WithdrawalModel(
+      amount: rawAmount,
+      driverID: controller.userModel.value.id,
+      paymentStatus: 'Pending',
+      paidDate: Timestamp.now(),
+      id: Constant.getUuid(),
+      note: controller.noteController.text.trim(),
+      withdrawMethod: controller.selectedMethodKey,
+    );
+
+    await FireStoreUtils.withdrawWalletAmount(withdrawHistory);
+
+    final userId = await LoginController.getFirebaseId();
+    await FireStoreUtils.updateUserWallet(
+      amount: '-$rawAmount',
+      userId: userId,
+    );
+
+    controller
+      ..deductFromWallet(amount)
+      ..amountController.clear()
+      ..noteController.clear();
+
+    Get.back();
+
+    FireStoreUtils.sendPayoutMail(
+      amount: rawAmount,
+      payoutrequestid: withdrawHistory.id.toString(),
+    );
+
+    // Refresh transaction list in background
+    controller.refresh();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Payment method radio row
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MethodOption extends StatelessWidget {
+  final int value;
+  final int groupValue;
+  final String label;
+  final String iconPath;
+  final bool isSvg;
+  final bool isDark;
+  final ValueChanged<int> onChanged;
+
+  const _MethodOption({
+    required this.value,
+    required this.groupValue,
+    required this.label,
+    required this.iconPath,
+    required this.isSvg,
+    required this.isDark,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => onChanged(value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
         child: Row(
           children: [
+            // Icon box
             Container(
+              width: 50,
+              height: 50,
               decoration: ShapeDecoration(
                 shape: RoundedRectangleBorder(
                   side: BorderSide(
-                      width: 1,
-                      color: themeChange.getThem()
-                          ? AppThemeData.grey800
-                          : AppThemeData.grey100),
+                    color: isDark
+                        ? AppThemeData.grey700
+                        : AppThemeData.grey200,
+                  ),
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: transactionModel.isTopup == false
-                    ? SvgPicture.asset(
-                        "assets/icons/ic_debit.svg",
-                        height: 16,
-                        width: 16,
-                      )
-                    : SvgPicture.asset(
-                        "assets/icons/ic_credit.svg",
-                        height: 16,
-                        width: 16,
-                      ),
+                padding: const EdgeInsets.all(10),
+                child: isSvg
+                    ? SvgPicture.asset(iconPath)
+                    : Image.asset(iconPath),
               ),
             ),
-            const SizedBox(
-              width: 10,
-            ),
+            const SizedBox(width: 12),
+
+            // Label
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          transactionModel.note.toString(),
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontFamily: AppThemeData.semiBold,
-                            fontWeight: FontWeight.w600,
-                            color: themeChange.getThem()
-                                ? AppThemeData.grey100
-                                : AppThemeData.grey800,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        transactionModel.isTopup == false
-                            ? "-${Constant.amountShow(amount: transactionModel.amount.toString())}"
-                            : Constant.amountShow(
-                                amount: transactionModel.amount.toString()),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontFamily: AppThemeData.medium,
-                          color: transactionModel.isTopup == true
-                              ? AppThemeData.success400
-                              : AppThemeData.danger300,
-                        ),
-                      )
-                    ],
-                  ),
-                  const SizedBox(
-                    height: 2,
-                  ),
-                  Text(
-                    Constant.timestampToDateTime(transactionModel.date!),
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: AppThemeData.medium,
-                        fontWeight: FontWeight.w500,
-                        color: themeChange.getThem()
-                            ? AppThemeData.grey200
-                            : AppThemeData.grey700),
-                  ),
-                ],
+              child: Text(
+                label,
+                style: TextStyle(
+                  color:
+                  isDark ? AppThemeData.grey50 : AppThemeData.grey900,
+                  fontSize: 15,
+                  fontFamily: AppThemeData.medium,
+                ),
               ),
+            ),
+
+            // Radio
+            Radio<int>(
+              value: value,
+              groupValue: groupValue,
+              activeColor: AppThemeData.secondary300,
+              onChanged: (v) => onChanged(v!),
             ),
           ],
         ),

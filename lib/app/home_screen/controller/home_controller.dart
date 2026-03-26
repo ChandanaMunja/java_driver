@@ -3128,24 +3128,28 @@ class HomeController extends GetxController {
   final RxDouble toPayAmount                  = 0.0.obs;
   final RxBool isNavigatingToMap              = false.obs;
 
-  // Driver→restaurant (pickup) and restaurant→customer (delivery) — fixed product rules.
-  static const double _pickupRsPerKm            = 3.0;
-  static const double _deliveryFirstSlabKm      = 4.0;
-  static const double _deliveryRsPerKmFirstSlab = 8.0;
-  static const double _deliveryRsPerKmBeyond    = 10.0;
+  // Driver→restaurant (pickup) and restaurant→customer (delivery)
+  // coefficients (fetched once and cached). Defaults are used immediately.
+  double _pickupRsPerKm = 3.0;
+  double _deliveryFirstSlabKm = 4.0;
+  double _deliveryRsPerKmFirstSlab = 8.0;
+  double _deliveryRsPerKmBeyond = 10.0;
 
   double _pickupChargeFromKm(double km) {
     if (km <= 0) return 0;
-    return (km * _pickupRsPerKm).roundToDouble();
+    // Bill pickup by full started kilometer (ceil), at configured Rs/km.
+    final billableKm = km.ceilToDouble();
+    return (billableKm * _pickupRsPerKm).roundToDouble();
   }
 
-  /// First [ _deliveryFirstSlabKm ] km @ ₹8/km (pro‑rata when total ≤ 4 km).
+  /// First [ _deliveryFirstSlabKm ] km has minimum base charge at first slab rate.
   /// Above that: fixed **₹32** for the first 4 km + **₹10 × ceil(extra km)** for the rest
   /// (e.g. 4.786 km → 4×₹8 + 1×₹10 = 42).
   double _deliveryChargeFromKm(double km) {
     if (km <= 0) return 0;
     if (km <= _deliveryFirstSlabKm) {
-      return (km * _deliveryRsPerKmFirstSlab).roundToDouble();
+      final raw = (km * _deliveryRsPerKmFirstSlab).roundToDouble();
+      return math.max(_deliveryRsPerKmFirstSlab, raw).toDouble();
     }
     final beyondKm = km - _deliveryFirstSlabKm;
     final billableBeyondKm = beyondKm.ceil();
@@ -3255,6 +3259,11 @@ class HomeController extends GetxController {
   // ── Misc guards ───────────────────────────────────────────────────────
   bool      _isAcceptingOrder     = false;
   bool      _isCalculatingCharges = false;
+  bool      _driverChargesWarmupInFlight = false;
+  bool      _driverChargesApplied = false;
+  DateTime? _driverChargesAppliedAt;
+  bool      _hasCalculatedBaseCharges = false;
+  bool      _driverChargesNeedsRecalc = false;
   Timer?    _chargesRecalcDebounce;
   DateTime? _lastGetOrderTime;
   static const Duration _minOrderInterval = Duration(seconds: 2);
@@ -3280,6 +3289,8 @@ class HomeController extends GetxController {
     _initLocalNotifications();
     _initConnectivity();
     getDriver();
+    // Warm up driver charges from cache (non-blocking).
+    unawaited(_warmUpDriverCharges());
     // Lightweight call; cached. Keeps UI smooth and avoids heavy recompute.
     ensureTodayDashboardLoaded();
     _startPolling();
@@ -3295,6 +3306,87 @@ class HomeController extends GetxController {
     _connectivitySub?.cancel();
     _tryCleanupCache();
     super.onClose();
+  }
+
+  Future<void> _warmUpDriverCharges() async {
+    if (_driverChargesWarmupInFlight || _driverChargesApplied) return;
+    _driverChargesWarmupInFlight = true;
+    try {
+      // Force refresh once on warmup so stale cache does not keep old rates.
+      final c = await FireStoreUtils.getDriverCharges(forceRefresh: true);
+
+      double toDouble(dynamic v, double fallback) {
+        if (v == null) return fallback;
+        if (v is num) return v.toDouble();
+        if (v is String) return double.tryParse(v.trim()) ?? fallback;
+        return fallback;
+      }
+
+      final pickup = toDouble(c['pickup_rs_per_km'], _pickupRsPerKm);
+      final deliveryFirstSlabKm =
+          toDouble(c['delivery_first_slab_km'], _deliveryFirstSlabKm);
+      final deliveryRsPerKmFirstSlab = toDouble(
+          c['delivery_rs_per_km_first_slab'], _deliveryRsPerKmFirstSlab);
+      final deliveryRsPerKmBeyond = toDouble(
+          c['delivery_rs_per_km_beyond'], _deliveryRsPerKmBeyond);
+
+      AppLogger.log(
+        'Driver charges warmup fetched: '
+        'pickup=$pickup '
+        'firstSlabKm=$deliveryFirstSlabKm '
+        'firstSlabRate=$deliveryRsPerKmFirstSlab '
+        'beyondRate=$deliveryRsPerKmBeyond',
+        tag: 'Charges',
+      );
+
+      if (pickup == 3.0 &&
+          deliveryFirstSlabKm == 4.0 &&
+          deliveryRsPerKmFirstSlab == 8.0 &&
+          deliveryRsPerKmBeyond == 10.0) {
+        AppLogger.log(
+          'Driver charges are at fallback defaults (3/4/8/10). '
+          'If this is unexpected, verify driver-sql/charges API payload.',
+          tag: 'Charges',
+        );
+      }
+
+      final changed = pickup != _pickupRsPerKm ||
+          deliveryFirstSlabKm != _deliveryFirstSlabKm ||
+          deliveryRsPerKmFirstSlab != _deliveryRsPerKmFirstSlab ||
+          deliveryRsPerKmBeyond != _deliveryRsPerKmBeyond;
+
+      _pickupRsPerKm = pickup;
+      _deliveryFirstSlabKm = deliveryFirstSlabKm;
+      _deliveryRsPerKmFirstSlab = deliveryRsPerKmFirstSlab;
+      _deliveryRsPerKmBeyond = deliveryRsPerKmBeyond;
+
+      _driverChargesApplied = true;
+      _driverChargesAppliedAt = DateTime.now();
+
+      // If we already calculated base charges for the current order,
+      // re-calc locally using the new coefficients (no surge/to-pay network).
+      //
+      // If a charge calculation is currently in-flight, wait briefly (max 4s)
+      // so the base UI updates with the new coefficients.
+      if (changed &&
+          currentOrder.value.id != null &&
+          currentOrder.value.vendor != null) {
+        // If we're currently calculating (likely waiting on surge/to-pay),
+        // request a follow-up recalculation once that finishes.
+        if (_isCalculatingCharges) {
+          _driverChargesNeedsRecalc = true;
+        } else {
+          await calculateOrderChargesInitial(fetchSurgeAndToPay: false);
+          _updateOrderWithCharges();
+          update();
+          currentOrder.refresh();
+        }
+      }
+    } catch (e) {
+      AppLogger.log('Driver charges warmup failed: $e', tag: 'Charges');
+    } finally {
+      _driverChargesWarmupInFlight = false;
+    }
   }
 
   /// Ensures dashboard data is available without spamming the API.
@@ -3611,7 +3703,8 @@ class HomeController extends GetxController {
   //  Charge calculations
   // ══════════════════════════════════════════════════════════════════════
 
-  Future<void> calculateOrderChargesInitial() async {
+  Future<void> calculateOrderChargesInitial(
+      {bool fetchSurgeAndToPay = true}) async {
     if (currentOrder.value.id == null || _isCalculatingCharges) return;
     _isCalculatingCharges = true;
     try {
@@ -3630,23 +3723,52 @@ class HomeController extends GetxController {
       }
       _calcTotalCharge();
 
-      final fee = await _fetchSurgeFee(currentOrder.value.id.toString());
-      surgeFee.value = fee ?? 0.0;
+      if (fetchSurgeAndToPay) {
+        final fee = await _fetchSurgeFee(currentOrder.value.id.toString());
+        surgeFee.value = fee ?? 0.0;
 
-      if (currentOrder.value.paymentMethod?.toLowerCase() == 'cod') {
-        final tp = await _fetchToPay(currentOrder.value.id.toString());
-        toPayAmount.value = tp ?? 0.0;
+        if (currentOrder.value.paymentMethod?.toLowerCase() == 'cod') {
+          final tp = await _fetchToPay(currentOrder.value.id.toString());
+          toPayAmount.value = tp ?? 0.0;
+        }
+      } else {
+        // Keep surgeFee as-is; only re-derive COD amount locally.
+        if (currentOrder.value.paymentMethod?.toLowerCase() == 'cod') {
+          final tip = double.tryParse(
+                  currentOrder.value.tipAmount?.toString() ?? '0') ??
+              0.0;
+          toPayAmount.value =
+              totalCalculatedCharge.value + surgeFee.value + tip;
+        }
       }
     } catch (e) {
       AppLogger.log('Charge calc error: $e', tag: 'Charges');
     } finally {
       _isCalculatingCharges = false;
+      _hasCalculatedBaseCharges = true;
+
+      // If driver charge coefficients arrived while we were calculating,
+      // do a quick local recalculation (no surge/to-pay network).
+      if (_driverChargesNeedsRecalc &&
+          _driverChargesApplied &&
+          currentOrder.value.id != null &&
+          currentOrder.value.vendor != null) {
+        _driverChargesNeedsRecalc = false;
+        unawaited(() async {
+          try {
+            await calculateOrderChargesInitial(fetchSurgeAndToPay: false);
+            _updateOrderWithCharges();
+            update();
+            currentOrder.refresh();
+          } catch (_) {}
+        }());
+      }
     }
   }
 
   Future<void> calculateOrderCharges() async {
     await calculateOrderChargesInitial();
-    await _updateOrderWithCharges();
+    _updateOrderWithCharges();
   }
 
   /// Called from [DashBoardController] when GPS delivers non-null lat/lng.
@@ -3837,14 +3959,13 @@ class HomeController extends GetxController {
       return;
     }
 
-    final dist = Geolocator.distanceBetween(
-      driver.lat,
-      driver.lng,
-      vp.lat,
-      vp.lng,
+    final routeKm = await _resolveLegDistanceKm(
+      origin: LatLng(driver.lat, driver.lng),
+      destination: LatLng(vp.lat, vp.lng),
+      legTag: 'Driver->Restaurant',
     );
-    driverToRestaurantDistance.value = dist / 1000;
-    driverToRestaurantDuration.value = (dist / 1000 / 30) * 60;
+    driverToRestaurantDistance.value = routeKm;
+    driverToRestaurantDuration.value = (routeKm / 30) * 60;
     driverToRestaurantCharge.value =
         _pickupChargeFromKm(driverToRestaurantDistance.value);
     AppLogger.log(
@@ -3873,14 +3994,13 @@ class HomeController extends GetxController {
       );
       return;
     }
-    final dist = Geolocator.distanceBetween(
-      vp.lat,
-      vp.lng,
-      addr.latitude!,
-      addr.longitude!,
+    final routeKm = await _resolveLegDistanceKm(
+      origin: LatLng(vp.lat, vp.lng),
+      destination: LatLng(addr.latitude!, addr.longitude!),
+      legTag: 'Restaurant->Customer',
     );
-    restaurantToCustomerDistance.value = dist / 1000;
-    restaurantToCustomerDuration.value = (dist / 1000 / 30) * 60;
+    restaurantToCustomerDistance.value = routeKm;
+    restaurantToCustomerDuration.value = (routeKm / 30) * 60;
     restaurantToCustomerCharge.value =
         _deliveryChargeFromKm(restaurantToCustomerDistance.value);
     final dKm = restaurantToCustomerDistance.value;
@@ -3906,14 +4026,69 @@ class HomeController extends GetxController {
     }
   }
 
+  Future<double> _resolveLegDistanceKm({
+    required LatLng origin,
+    required LatLng destination,
+    required String legTag,
+  }) async {
+    final straightKm =
+        Geolocator.distanceBetween(origin.latitude, origin.longitude,
+                destination.latitude, destination.longitude) /
+            1000;
+
+    if (Constant.selectedMapType != 'google' || Constant.mapAPIKey.isEmpty) {
+      return straightKm;
+    }
+
+    try {
+      final result = await polylinePoints.value.getRouteBetweenCoordinates(
+        request: PolylineRequest(
+          origin: PointLatLng(origin.latitude, origin.longitude),
+          destination: PointLatLng(destination.latitude, destination.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+
+      final pts = result.points;
+      if (pts.length < 2) return straightKm;
+
+      var meters = 0.0;
+      for (var i = 0; i < pts.length - 1; i++) {
+        meters += Geolocator.distanceBetween(
+          pts[i].latitude,
+          pts[i].longitude,
+          pts[i + 1].latitude,
+          pts[i + 1].longitude,
+        );
+      }
+
+      final routeKm = meters / 1000;
+      if (routeKm <= 0) return straightKm;
+
+      AppLogger.log(
+        '$legTag routeKm=${routeKm.toStringAsFixed(3)} '
+        'straightKm=${straightKm.toStringAsFixed(3)} points=${pts.length}',
+        tag: 'Charges',
+      );
+      return routeKm;
+    } catch (e) {
+      AppLogger.log('$legTag route distance fallback to straight line: $e',
+          tag: 'Charges');
+      return straightKm;
+    }
+  }
+
   void _calcTotalCharge() {
     totalCalculatedCharge.value =
         driverToRestaurantCharge.value + restaurantToCustomerCharge.value;
   }
 
-  Future<void> _updateOrderWithCharges() async {
-    final surge = await _fetchSurgeFee(currentOrder.value.id.toString());
-    final tip   = double.tryParse(currentOrder.value.tipAmount?.toString() ?? '0') ?? 0.0;
+  void _updateOrderWithCharges() {
+    // Use already-computed `surgeFee` to avoid an extra network call.
+    final surge = surgeFee.value;
+    final tip =
+        double.tryParse(currentOrder.value.tipAmount?.toString() ?? '0') ??
+            0.0;
     currentOrder.value.calculatedCharges = {
       'driverToRestaurantDistance'  : driverToRestaurantDistance.value,
       'driverToRestaurantDuration'  : driverToRestaurantDuration.value,
@@ -3922,9 +4097,9 @@ class HomeController extends GetxController {
       'restaurantToCustomerDuration': restaurantToCustomerDuration.value,
       'restaurantToCustomerCharge'  : restaurantToCustomerCharge.value,
       'tipsAmount'                  : currentOrder.value.tipAmount,
-      'surgeAmount'                 : surge?.toString(),
+      'surgeAmount'                 : surge.toString(),
       'totalCalculatedCharge'       :
-      '${totalCalculatedCharge.value + (surge ?? 0) + tip}',
+      '${totalCalculatedCharge.value + surge + tip}',
       'calculatedAt'                : FieldValue.serverTimestamp(),
     };
   }

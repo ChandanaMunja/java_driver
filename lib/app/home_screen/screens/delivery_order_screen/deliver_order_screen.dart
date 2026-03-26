@@ -516,15 +516,15 @@ class DeliverOrderScreen extends StatelessWidget {
                     },
                     child: SafeArea(
                       child: Container(
-                        color: controller.isCompletingOrder.value 
-                            ? AppThemeData.grey400 
+                        color: controller.isCompletingOrder.value
+                            ? AppThemeData.grey400
                             : AppThemeData.driverApp300,
                         width: Responsive.width(100, context),
                         child: Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            controller.isCompletingOrder.value 
-                                ? "Processing...".tr 
+                            controller.isCompletingOrder.value
+                                ? "Processing...".tr
                                 : "Make Order Delivered".tr,
                             textAlign: TextAlign.center,
                             style: TextStyle(

@@ -1,631 +1,3 @@
-// import 'package:jippydriver_driver/constant/constant.dart';
-// import 'package:jippydriver_driver/controllers/dash_board_controller.dart';
-// import 'package:jippydriver_driver/controllers/order_list_controller.dart';
-// import 'package:jippydriver_driver/models/order_model.dart';
-// import 'package:jippydriver_driver/themes/app_them_data.dart';
-// import 'package:jippydriver_driver/themes/round_button_fill.dart';
-// import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
-// import 'package:jippydriver_driver/utils/app_logger.dart';
-// import 'package:jippydriver_driver/widget/my_separator.dart';
-// import 'package:flutter/material.dart';
-// import 'package:flutter_svg/flutter_svg.dart';
-// import 'package:get/get.dart';
-// import 'package:provider/provider.dart';
-// import 'package:timelines_plus/timelines_plus.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
-//
-// class OrderListScreen extends StatefulWidget {
-//   const OrderListScreen({super.key});
-//
-//   @override
-//   State<OrderListScreen> createState() => _OrderListScreenState();
-// }
-//
-// class _OrderListScreenState extends State<OrderListScreen> {
-//   final orderListController = Get.put(OrderListController());
-//   final ScrollController _scrollController = ScrollController();
-//
-//   @override
-//   void initState() {
-//     super.initState();
-//     _scrollController.addListener(_onScroll);
-//   }
-//
-//   void _onScroll() {
-//     if (_scrollController.position.pixels >=
-//         _scrollController.position.maxScrollExtent - 200) {
-//       orderListController.loadMore();
-//     }
-//   }
-//
-//   @override
-//   void dispose() {
-//     _scrollController.removeListener(_onScroll);
-//     _scrollController.dispose();
-//     super.dispose();
-//   }
-//
-//   @override
-//   Widget build(BuildContext context) {
-//     AppLogger.log('OrderListScreen build() called', tag: 'Screen');
-//     final themeChange = Provider.of<DarkThemeProvider>(context);
-//     return GetX<OrderListController>(
-//         init: orderListController,
-//         builder: (controller) {
-//           return Scaffold(
-//             body: controller.isLoading.value
-//                 ? Constant.loader()
-//                 : Constant.isDriverVerification == true &&
-//                         Constant.userModel?.isDocumentVerify == false
-//                     ? Padding(
-//                         padding: const EdgeInsets.symmetric(horizontal: 16),
-//                         child: Column(
-//                           mainAxisAlignment: MainAxisAlignment.center,
-//                           crossAxisAlignment: CrossAxisAlignment.center,
-//                           children: [
-//                             Container(
-//                               decoration: ShapeDecoration(
-//                                 color: themeChange.getThem()
-//                                     ? AppThemeData.grey700
-//                                     : AppThemeData.grey200,
-//                                 shape: RoundedRectangleBorder(
-//                                   borderRadius: BorderRadius.circular(120),
-//                                 ),
-//                               ),
-//                               child: Padding(
-//                                 padding: const EdgeInsets.all(20),
-//                                 child: SvgPicture.asset(
-//                                     "assets/icons/ic_document.svg"),
-//                               ),
-//                             ),
-//                             const SizedBox(
-//                               height: 12,
-//                             ),
-//                             Text(
-//                               "Document Verification in Pending".tr,
-//                               style: TextStyle(
-//                                   color: themeChange.getThem()
-//                                       ? AppThemeData.grey100
-//                                       : AppThemeData.grey800,
-//                                   fontSize: 22,
-//                                   fontFamily: AppThemeData.semiBold),
-//                             ),
-//                             const SizedBox(
-//                               height: 5,
-//                             ),
-//                             Text(
-//                               "Your documents are being reviewed. We will notify you once the verification is complete."
-//                                   .tr,
-//                               textAlign: TextAlign.center,
-//                               style: TextStyle(
-//                                   color: themeChange.getThem()
-//                                       ? AppThemeData.grey50
-//                                       : AppThemeData.grey500,
-//                                   fontSize: 16,
-//                                   fontFamily: AppThemeData.bold),
-//                             ),
-//                             const SizedBox(
-//                               height: 20,
-//                             ),
-//                             RoundedButtonFill(
-//                               title: "View Status".tr,
-//                               width: 55,
-//                               height: 5.5,
-//                               color: AppThemeData.secondary300,
-//                               textColor: AppThemeData.grey50,
-//                               onPress: () async {
-//                                 DashBoardController dashBoardController =
-//                                     Get.put(DashBoardController());
-//                                 dashBoardController.drawerIndex.value = 4;
-//                               },
-//                             ),
-//                           ],
-//                         ),
-//                       )
-//                     : Padding(
-//                         padding: const EdgeInsets.symmetric(
-//                             horizontal: 16, vertical: 10),
-//                         child: controller.orderList.isEmpty
-//                             ? Constant.showEmptyView(
-//                                 message: "Order Not found".tr)
-//                             : ListView.builder(
-//                                 controller: _scrollController,
-//                                 itemCount: controller.orderList.length +
-//                                     (controller.hasMore.value ? 1 : 0),
-//                                 itemBuilder: (context, index) {
-//                                   if (index >= controller.orderList.length) {
-//                                     return controller.isLoadingMore.value
-//                                         ? const Padding(
-//                                             padding: EdgeInsets.all(16),
-//                                             child: Center(
-//                                                 child:
-//                                                     CircularProgressIndicator()),
-//                                           )
-//                                         : const SizedBox.shrink();
-//                                   }
-//                                   OrderModel orderModel =
-//                                       controller.orderList[index];
-//                                   return Padding(
-//                                     padding:
-//                                         const EdgeInsets.symmetric(vertical: 5),
-//                                     child: InkWell(
-//                                       // onTap: () {
-//                                       //   Get.to(const OrderDetailsScreen(),
-//                                       //       arguments: {
-//                                       //         "orderModel": orderModel
-//                                       //       });
-//                                       // },
-//                                       child: Container(
-//                                         decoration: ShapeDecoration(
-//                                           color: themeChange.getThem()
-//                                               ? AppThemeData.grey900
-//                                               : AppThemeData.grey50,
-//                                           shape: RoundedRectangleBorder(
-//                                             borderRadius:
-//                                                 BorderRadius.circular(16),
-//                                           ),
-//                                         ),
-//                                         child: Padding(
-//                                           padding: const EdgeInsets.all(8.0),
-//                                           child: Column(
-//                                             children: [
-//                                               Row(
-//                                                 crossAxisAlignment:
-//                                                     CrossAxisAlignment.start,
-//                                                 children: [
-//                                                   Expanded(
-//                                                     child: Text(
-//                                                       "Order ID".tr,
-//                                                       textAlign:
-//                                                           TextAlign.start,
-//                                                       style: TextStyle(
-//                                                         fontFamily: AppThemeData
-//                                                             .regular,
-//                                                         color: themeChange
-//                                                                 .getThem()
-//                                                             ? AppThemeData
-//                                                                 .grey300
-//                                                             : AppThemeData
-//                                                                 .grey600,
-//                                                       ),
-//                                                     ),
-//                                                   ),
-//                                                   Text(
-//                                                     Constant.orderId(
-//                                                         orderId: orderModel.id
-//                                                             .toString()),
-//                                                     textAlign: TextAlign.start,
-//                                                     style: TextStyle(
-//                                                       fontFamily:
-//                                                           AppThemeData.semiBold,
-//                                                       color: themeChange
-//                                                               .getThem()
-//                                                           ? AppThemeData.grey50
-//                                                           : AppThemeData
-//                                                               .grey900,
-//                                                     ),
-//                                                   ),
-//                                                 ],
-//                                               ),
-//                                               const SizedBox(
-//                                                 height: 5,
-//                                               ),
-//                                               Row(
-//                                                 crossAxisAlignment:
-//                                                     CrossAxisAlignment.start,
-//                                                 children: [
-//                                                   Expanded(
-//                                                     child: Text(
-//                                                       "Status".tr,
-//                                                       textAlign:
-//                                                           TextAlign.start,
-//                                                       style: TextStyle(
-//                                                         fontFamily: AppThemeData
-//                                                             .regular,
-//                                                         color: themeChange
-//                                                                 .getThem()
-//                                                             ? AppThemeData
-//                                                                 .grey300
-//                                                             : AppThemeData
-//                                                                 .grey600,
-//                                                       ),
-//                                                     ),
-//                                                   ),
-//                                                   Text(
-//                                                     orderModel.status
-//                                                         .toString(),
-//                                                     textAlign: TextAlign.start,
-//                                                     style: TextStyle(
-//                                                       fontFamily:
-//                                                           AppThemeData.semiBold,
-//                                                       color:
-//                                                           Constant.statusColor(
-//                                                               status: orderModel
-//                                                                   .status),
-//                                                     ),
-//                                                   ),
-//                                                 ],
-//                                               ),
-//                                               const SizedBox(
-//                                                 height: 5,
-//                                               ),
-//                                               Row(
-//                                                 crossAxisAlignment:
-//                                                     CrossAxisAlignment.start,
-//                                                 children: [
-//                                                   Expanded(
-//                                                     child: Text(
-//                                                       "Date".tr,
-//                                                       textAlign:
-//                                                           TextAlign.start,
-//                                                       style: TextStyle(
-//                                                         fontFamily: AppThemeData
-//                                                             .regular,
-//                                                         color: themeChange
-//                                                                 .getThem()
-//                                                             ? AppThemeData
-//                                                                 .grey300
-//                                                             : AppThemeData
-//                                                                 .grey600,
-//                                                       ),
-//                                                     ),
-//                                                   ),
-//                                                   Text(
-//                                                     Constant
-//                                                         .timestampToDateTime(
-//                                                             orderModel
-//                                                                 .createdAt ?? Timestamp.now()),
-//                                                     textAlign: TextAlign.start,
-//                                                     style: TextStyle(
-//                                                       fontFamily:
-//                                                           AppThemeData.semiBold,
-//                                                       color: themeChange
-//                                                               .getThem()
-//                                                           ? AppThemeData.grey50
-//                                                           : AppThemeData
-//                                                               .grey900,
-//                                                     ),
-//                                                   ),
-//                                                 ],
-//                                               ),
-//                                               Padding(
-//                                                 padding:
-//                                                     const EdgeInsets.symmetric(
-//                                                         vertical: 10),
-//                                                 child: MySeparator(
-//                                                     color: themeChange.getThem()
-//                                                         ? AppThemeData.grey700
-//                                                         : AppThemeData.grey200),
-//                                               ),
-//                                               Timeline.tileBuilder(
-//                                                 shrinkWrap: true,
-//                                                 padding: EdgeInsets.zero,
-//                                                 physics:
-//                                                     const NeverScrollableScrollPhysics(),
-//                                                 theme: TimelineThemeData(
-//                                                   nodePosition: 0,
-//                                                   // indicatorPosition: 0,
-//                                                 ),
-//                                                 builder: TimelineTileBuilder
-//                                                     .connected(
-//                                                   contentsAlign:
-//                                                       ContentsAlign.basic,
-//                                                   indicatorBuilder:
-//                                                       (context, index) {
-//                                                     return index == 0
-//                                                         ? Container(
-//                                                             decoration:
-//                                                                 ShapeDecoration(
-//                                                               color: AppThemeData
-//                                                                   .primary50,
-//                                                               shape:
-//                                                                   RoundedRectangleBorder(
-//                                                                 borderRadius:
-//                                                                     BorderRadius
-//                                                                         .circular(
-//                                                                             120),
-//                                                               ),
-//                                                             ),
-//                                                             child: Padding(
-//                                                               padding:
-//                                                                   const EdgeInsets
-//                                                                       .all(10),
-//                                                               child: SvgPicture
-//                                                                   .asset(
-//                                                                 "assets/icons/ic_building.svg",
-//                                                                 colorFilter: const ColorFilter
-//                                                                     .mode(
-//                                                                     AppThemeData
-//                                                                         .primary300,
-//                                                                     BlendMode
-//                                                                         .srcIn),
-//                                                               ),
-//                                                             ),
-//                                                           )
-//                                                         : Container(
-//                                                             decoration:
-//                                                                 ShapeDecoration(
-//                                                               color: AppThemeData
-//                                                                   .driverApp50,
-//                                                               shape:
-//                                                                   RoundedRectangleBorder(
-//                                                                 borderRadius:
-//                                                                     BorderRadius
-//                                                                         .circular(
-//                                                                             120),
-//                                                               ),
-//                                                             ),
-//                                                             child: Padding(
-//                                                               padding:
-//                                                                   const EdgeInsets
-//                                                                       .all(10),
-//                                                               child: SvgPicture
-//                                                                   .asset(
-//                                                                 "assets/icons/ic_location.svg",
-//                                                                 colorFilter: ColorFilter.mode(
-//                                                                     AppThemeData
-//                                                                         .driverApp300,
-//                                                                     BlendMode
-//                                                                         .srcIn),
-//                                                               ),
-//                                                             ),
-//                                                           );
-//                                                   },
-//                                                   connectorBuilder: (context,
-//                                                       index, connectorType) {
-//                                                     return const DashedLineConnector(
-//                                                       color:
-//                                                           AppThemeData.grey300,
-//                                                       gap: 3,
-//                                                     );
-//                                                   },
-//                                                   contentsBuilder:
-//                                                       (context, index) {
-//                                                     return Padding(
-//                                                       padding: const EdgeInsets
-//                                                           .symmetric(
-//                                                           horizontal: 10,
-//                                                           vertical: 10),
-//                                                       child: index == 0
-//                                                           ? Column(
-//                                                               crossAxisAlignment:
-//                                                                   CrossAxisAlignment
-//                                                                       .start,
-//                                                               children: [
-//                                                                 Text(
-//                                                                   "${orderModel.vendor?.title ?? 'Restaurant'}",
-//                                                                   textAlign:
-//                                                                       TextAlign
-//                                                                           .start,
-//                                                                   style:
-//                                                                       TextStyle(
-//                                                                     fontFamily:
-//                                                                         AppThemeData
-//                                                                             .semiBold,
-//                                                                     fontSize:
-//                                                                         16,
-//                                                                     color: themeChange.getThem()
-//                                                                         ? AppThemeData
-//                                                                             .grey50
-//                                                                         : AppThemeData
-//                                                                             .grey900,
-//                                                                   ),
-//                                                                 ),
-//                                                                 Text(
-//                                                                   "${orderModel.vendor?.location ?? 'Location not available'}",
-//                                                                   textAlign:
-//                                                                       TextAlign
-//                                                                           .start,
-//                                                                   style:
-//                                                                       TextStyle(
-//                                                                     fontFamily:
-//                                                                         AppThemeData
-//                                                                             .medium,
-//                                                                     fontSize:
-//                                                                         12,
-//                                                                     color: themeChange.getThem()
-//                                                                         ? AppThemeData
-//                                                                             .grey300
-//                                                                         : AppThemeData
-//                                                                             .grey600,
-//                                                                   ),
-//                                                                 ),
-//                                                               ],
-//                                                             )
-//                                                           : Column(
-//                                                               crossAxisAlignment:
-//                                                                   CrossAxisAlignment
-//                                                                       .start,
-//                                                               children: [
-//                                                                 Text(
-//                                                                   "Deliver to the"
-//                                                                       .tr,
-//                                                                   textAlign:
-//                                                                       TextAlign
-//                                                                           .start,
-//                                                                   style:
-//                                                                       TextStyle(
-//                                                                     fontFamily:
-//                                                                         AppThemeData
-//                                                                             .semiBold,
-//                                                                     fontSize:
-//                                                                         16,
-//                                                                     color: themeChange.getThem()
-//                                                                         ? AppThemeData
-//                                                                             .grey50
-//                                                                         : AppThemeData
-//                                                                             .grey900,
-//                                                                   ),
-//                                                                 ),
-//                                                                 Text(
-//                                                                   orderModel
-//                                                                       .address
-//                                                                       ?.getFullAddress() ?? 'Address not available',
-//                                                                   textAlign:
-//                                                                       TextAlign
-//                                                                           .start,
-//                                                                   style:
-//                                                                       TextStyle(
-//                                                                     fontFamily:
-//                                                                         AppThemeData
-//                                                                             .medium,
-//                                                                     fontSize:
-//                                                                         12,
-//                                                                     color: themeChange.getThem()
-//                                                                         ? AppThemeData
-//                                                                             .grey300
-//                                                                         : AppThemeData
-//                                                                             .grey600,
-//                                                                   ),
-//                                                                 ),
-//                                                               ],
-//                                                             ),
-//                                                     );
-//                                                   },
-//                                                   itemCount: 2,
-//                                                 ),
-//                                               ),
-//                                               Visibility(
-//                                                 visible: (Constant.userModel
-//                                                         ?.vendorID?.isEmpty ==
-//                                                     true),
-//                                                 child: Column(children: [
-//                                                   Padding(
-//                                                     padding: const EdgeInsets
-//                                                         .symmetric(vertical: 5),
-//                                                     child: MySeparator(
-//                                                         color: themeChange
-//                                                                 .getThem()
-//                                                             ? AppThemeData
-//                                                                 .grey700
-//                                                             : AppThemeData
-//                                                                 .grey200),
-//                                                   ),
-//                                                   const SizedBox(
-//                                                     height: 10,
-//                                                   ),
-//                                                   Row(
-//                                                     crossAxisAlignment:
-//                                                         CrossAxisAlignment
-//                                                             .start,
-//                                                     children: [
-//                                                       Expanded(
-//                                                         child: Text(
-//                                                           "Delivery Charge".tr,
-//                                                           textAlign:
-//                                                               TextAlign.start,
-//                                                           style: TextStyle(
-//                                                             fontFamily:
-//                                                                 AppThemeData
-//                                                                     .regular,
-//                                                             color: themeChange
-//                                                                     .getThem()
-//                                                                 ? AppThemeData
-//                                                                     .grey300
-//                                                                 : AppThemeData
-//                                                                     .grey600,
-//                                                             fontSize: 16,
-//                                                           ),
-//                                                         ),
-//                                                       ),
-//                                                       Text(
-//                                                         "${(double.tryParse(orderModel.calculatedCharges?['totalCalculatedCharge']?.toString().trim() ?? '0') ?? 0)-(double.tryParse(orderModel.tipAmount.toString().trim()) ?? 0)}",
-//                                                         // Constant.amountShow(
-//                                                         //     amount: orderModel
-//                                                         //         .deliveryCharge),
-//                                                         textAlign:
-//                                                             TextAlign.start,
-//                                                         style: TextStyle(
-//                                                           fontFamily:
-//                                                               AppThemeData
-//                                                                   .semiBold,
-//                                                           color: themeChange
-//                                                                   .getThem()
-//                                                               ? AppThemeData
-//                                                                   .grey50
-//                                                               : AppThemeData
-//                                                                   .grey900,
-//                                                           fontSize: 16,
-//                                                         ),
-//                                                       ),
-//                                                     ],
-//                                                   ),
-//                                                 ]),
-//                                               ),
-//                                               const SizedBox(
-//                                                 height: 5,
-//                                               ),
-//                                               orderModel.tipAmount == null ||
-//                                                       orderModel
-//                                                           .tipAmount?.isEmpty == true ||
-//                                                       double.parse(orderModel
-//                                                               .tipAmount
-//                                                               .toString()) <=
-//                                                           0
-//                                                   ? const SizedBox()
-//                                                   : Row(
-//                                                       crossAxisAlignment:
-//                                                           CrossAxisAlignment
-//                                                               .start,
-//                                                       children: [
-//                                                         Expanded(
-//                                                           child: Text(
-//                                                             "Tips".tr,
-//                                                             textAlign:
-//                                                                 TextAlign.start,
-//                                                             style: TextStyle(
-//                                                               fontFamily:
-//                                                                   AppThemeData
-//                                                                       .regular,
-//                                                               color: themeChange
-//                                                                       .getThem()
-//                                                                   ? AppThemeData
-//                                                                       .grey300
-//                                                                   : AppThemeData
-//                                                                       .grey600,
-//                                                               fontSize: 16,
-//                                                             ),
-//                                                           ),
-//                                                         ),
-//                                                         Text(
-//                                                           Constant.amountShow(
-//                                                               amount: orderModel
-//                                                                   .tipAmount),
-//                                                           textAlign:
-//                                                               TextAlign.start,
-//                                                           style: TextStyle(
-//                                                             fontFamily:
-//                                                                 AppThemeData
-//                                                                     .semiBold,
-//                                                             color: themeChange
-//                                                                     .getThem()
-//                                                                 ? AppThemeData
-//                                                                     .grey50
-//                                                                 : AppThemeData
-//                                                                     .grey900,
-//                                                             fontSize: 16,
-//                                                           ),
-//                                                         ),
-//                                                       ],
-//                                                     ),
-//                                               const SizedBox(
-//                                                 height: 10,
-//                                               ),
-//                                             ],
-//                                           ),
-//                                         ),
-//                                       ),
-//                                     ),
-//                                   );
-//                                 },
-//                               ),
-//                       ),
-//           );
-//         });
-//   }
-// }
-
-
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/controllers/dash_board_controller.dart';
 import 'package:jippydriver_driver/controllers/order_list_controller.dart';
@@ -654,6 +26,7 @@ class OrderListScreen extends StatefulWidget {
 class _OrderListScreenState extends State<OrderListScreen>
     with TickerProviderStateMixin {
   late final OrderListController _ctrl;
+  late final TabController _tabController;
   final ScrollController _scrollCtrl = ScrollController();
   final Set<int> _expanded = {};
   final Map<int, AnimationController> _animMap = {};
@@ -663,11 +36,30 @@ class _OrderListScreenState extends State<OrderListScreen>
   void initState() {
     super.initState();
     _ctrl = Get.put(OrderListController());
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: _ctrl.currentTabIndex,
+    );
+    _tabController.addListener(_onTabChanged);
     _scrollCtrl.addListener(_onScroll);
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    if (_tabController.index == _ctrl.currentTabIndex) return;
+    _ctrl.selectTabByIndex(_tabController.index);
+    if (_scrollCtrl.hasClients) {
+      _scrollCtrl.jumpTo(0);
+    }
+    setState(() => _expanded.clear());
   }
 
   @override
   void dispose() {
+    _tabController
+      ..removeListener(_onTabChanged)
+      ..dispose();
     _scrollCtrl
       ..removeListener(_onScroll)
       ..dispose();
@@ -730,14 +122,6 @@ class _OrderListScreenState extends State<OrderListScreen>
     return GetX<OrderListController>(
       init: _ctrl,
       builder: (ctrl) {
-        // ── Loading ────────────────────────────────────────────────────────
-        if (ctrl.isLoading.value) {
-          return Scaffold(
-            backgroundColor: _bg(isDark),
-            body: Center(child: Constant.loader()),
-          );
-        }
-
         // ── Doc verification pending ───────────────────────────────────────
         if (Constant.isDriverVerification == true &&
             Constant.userModel?.isDocumentVerify == false) {
@@ -747,12 +131,12 @@ class _OrderListScreenState extends State<OrderListScreen>
           );
         }
 
-        // ── Main list ──────────────────────────────────────────────────────
+        // ── Main list (tabs stay visible while a tab loads) ────────────────
         return Scaffold(
           backgroundColor: _bg(isDark),
           body: RefreshIndicator(
             color: AppThemeData.secondary300,
-            onRefresh: ctrl.getOrder,
+            onRefresh: ctrl.refreshCurrentTab,
             child: CustomScrollView(
               controller: _scrollCtrl,
               physics: const AlwaysScrollableScrollPhysics(),
@@ -762,6 +146,30 @@ class _OrderListScreenState extends State<OrderListScreen>
                   child: _DashboardHeader(
                     ctrl: ctrl,
                     isDark: isDark,
+                  ),
+                ),
+
+                SliverToBoxAdapter(
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: AppThemeData.secondary300,
+                    unselectedLabelColor:
+                        isDark ? const Color(0xFF7E8499) : const Color(0xFF6B7280),
+                    indicatorColor: AppThemeData.secondary300,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    labelStyle: TextStyle(
+                      fontFamily: AppThemeData.semiBold,
+                      fontSize: 14,
+                    ),
+                    unselectedLabelStyle: TextStyle(
+                      fontFamily: AppThemeData.regular,
+                      fontSize: 14,
+                    ),
+                    tabs: [
+                      Tab(text: 'Upcoming'.tr),
+                      Tab(text: 'Settled'.tr),
+                      Tab(text: 'All'.tr),
+                    ],
                   ),
                 ),
 
@@ -787,15 +195,22 @@ class _OrderListScreenState extends State<OrderListScreen>
                   ),
                 ),
 
-                // List / empty
-                ctrl.orderList.isEmpty
+                // List / loading / empty
+                ctrl.isLoading.value && ctrl.orderList.isEmpty
                     ? SliverFillRemaining(
-                  child: Center(
-                    child: Constant.showEmptyView(
-                        message: 'Order Not found'.tr),
-                  ),
-                )
-                    : SliverPadding(
+                        hasScrollBody: false,
+                        child: Center(child: Constant.loader()),
+                      )
+                    : ctrl.orderList.isEmpty
+                        ? SliverFillRemaining(
+                            hasScrollBody: false,
+                            child: Center(
+                              child: Constant.showEmptyView(
+                                message: 'Order Not found'.tr,
+                              ),
+                            ),
+                          )
+                        : SliverPadding(
                   padding: const EdgeInsets.fromLTRB(8, 0, 8, 100),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
