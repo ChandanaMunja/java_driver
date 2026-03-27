@@ -769,71 +769,84 @@ class _EarningsTab extends StatelessWidget {
           // ── Filter chips (replaces DropdownButtonFormField) ───────────────
           _FilterRow(controller: controller, isDark: isDark),
 
-          // ── List ────────────────────────────────────────────────────────
+          // ── List (scrollable — hosts pull-to-refresh) ───────────────────
           Expanded(
-            child: list.isEmpty
-                ? Center(
-              child: Constant.showEmptyView(
-                message: 'Transaction history not found'.tr,
-              ),
-            )
-                : CustomScrollView(
-              controller: controller.earningsScrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  sliver: SliverList.separated(
-                    itemCount: list.length,
-                    itemBuilder: (_, i) => EarningsTile(
-                      model: list[i],
-                      isDark: isDark,
-                    ),
-                    separatorBuilder: (_, __) => Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: MySeparator(
-                        color: isDark
-                            ? AppThemeData.grey700
-                            : AppThemeData.grey200,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Pagination footer ─────────────────────────────
-                SliverToBoxAdapter(
-                  child: Obx(() {
-                    if (controller.isFetchingMore.value) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child:
-                        Center(child: CircularProgressIndicator()),
-                      );
-                    }
-                    if (!controller.hasMore.value && list.isNotEmpty) {
-                      return Padding(
-                        padding:
-                        const EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text(
-                            'No more transactions'.tr,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontFamily: AppThemeData.medium,
-                              color: isDark
-                                  ? AppThemeData.grey500
-                                  : AppThemeData.grey400,
+            child: RefreshIndicator(
+              onRefresh: controller.refresh,
+              child: list.isEmpty
+                  ? CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: Center(
+                            child: Constant.showEmptyView(
+                              message: 'Transaction history not found'.tr,
                             ),
                           ),
                         ),
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  }),
-                ),
+                      ],
+                    )
+                  : CustomScrollView(
+                      controller: controller.earningsScrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          sliver: SliverList.separated(
+                            itemCount: list.length,
+                            itemBuilder: (_, i) => EarningsTile(
+                              model: list[i],
+                              isDark: isDark,
+                            ),
+                            separatorBuilder: (_, __) => Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 4),
+                              child: MySeparator(
+                                color: isDark
+                                    ? AppThemeData.grey700
+                                    : AppThemeData.grey200,
+                              ),
+                            ),
+                          ),
+                        ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+                        // ── Pagination footer ─────────────────────────────
+                        SliverToBoxAdapter(
+                          child: Obx(() {
+                            if (controller.isFetchingMore.value) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                    child: CircularProgressIndicator()),
+                              );
+                            }
+                            if (!controller.hasMore.value &&
+                                list.isNotEmpty) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 16),
+                                child: Center(
+                                  child: Text(
+                                    'No more transactions'.tr,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontFamily: AppThemeData.medium,
+                                      color: isDark
+                                          ? AppThemeData.grey500
+                                          : AppThemeData.grey400,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          }),
+                        ),
+
+                        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+                      ],
+                    ),
             ),
           ),
         ],

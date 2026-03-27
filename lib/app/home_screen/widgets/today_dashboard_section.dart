@@ -9,6 +9,7 @@ import 'package:jippydriver_driver/app/home_screen/widgets/dashboard_metric_card
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
 import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Incentive config
@@ -130,6 +131,12 @@ class _IncentiveCardState extends State<_IncentiveCard>
   bool   _bonusCredited  = false;
   String _creditStatus   = '';
 
+  String get _todayDateKey =>
+      DateTime.now().toLocal().toIso8601String().split('T').first;
+
+  String get _dailyBonusPrefKey =>
+      'driver_daily_bonus_claimed_date_${Constant.userModel?.id ?? 'unknown'}';
+
   @override
   void initState() {
     super.initState();
@@ -137,6 +144,7 @@ class _IncentiveCardState extends State<_IncentiveCard>
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
+    _restoreDailyBonusLock();
     _syncWheel();
   }
 
@@ -188,72 +196,101 @@ class _IncentiveCardState extends State<_IncentiveCard>
       ).timeout(const Duration(seconds: 10)); // FIX 2: timeout — no infinite hang
 
       if (!mounted) return;
-      if (res.statusCode == 200) {
+      if (res.statusCode == 200 || res.statusCode == 409) {
+        final alreadyClaimedToday = res.statusCode == 409;
+        await _persistDailyBonusLock();
+        if (!mounted) return;
         setState(() {
           _bonusCredited  = true;
           _creditingBonus = false;
-          _creditStatus   = '₹${_kBonusAmount.toInt()} credited to your wallet!';
+          _creditStatus = alreadyClaimedToday
+              ? 'Today bonus already claimed.'.tr
+              : '₹${_kBonusAmount.toInt()} credited to your wallet!';
         });
         return;
       }
-    } catch (_) {}
-
-    await _anthropicFallback();
-  }
-
-  Future<void> _anthropicFallback() async {
-    if (!mounted) return;
-    setState(() => _creditStatus = 'Verifying with AI...');
-
-    try {
-      final res = await http.post(
-        Uri.parse('https://api.anthropic.com/v1/messages'),
-        headers: {
-          'Content-Type'     : 'application/json',
-          'anthropic-version': '2023-06-01',
-        },
-        body: jsonEncode({
-          'model'     : 'claude-sonnet-4-20250514',
-          'max_tokens': 80,
-          'messages'  : [
-            {
-              'role'   : 'user',
-              'content': 'Driver ${Constant.userModel?.id} completed '
-                  '$_kBonusOrderTarget orders. '
-                  'Confirm ₹${_kBonusAmount.toInt()} bonus credit. '
-                  'JSON only: {"status":"ok","message":"<one sentence>"}',
-            }
-          ],
-        }),
-      ).timeout(const Duration(seconds: 10)); // FIX 2: timeout
-
-      String msg = '₹${_kBonusAmount.toInt()} bonus credited!';
-      if (res.statusCode == 200) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final txt  = (data['content'] as List).first['text'] as String;
-        try {
-          final j = jsonDecode(
-              txt.replaceAll(RegExp(r'```json|```'), '').trim())
-          as Map<String, dynamic>;
-          msg = (j['message'] as String?) ?? msg;
-        } catch (_) {}
-      }
-
-      if (!mounted) return;
       setState(() {
-        _bonusCredited  = true;
         _creditingBonus = false;
-        _creditStatus   = msg;
+        _creditStatus = 'Unable to credit bonus right now. Please try again.'.tr;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _bonusCredited  = true;
         _creditingBonus = false;
-        _creditStatus   = '₹${_kBonusAmount.toInt()} queued — will sync shortly.';
+        _creditStatus = 'Network issue while crediting bonus. Please retry.'.tr;
       });
     }
+
   }
+
+  Future<void> _restoreDailyBonusLock() async {
+    final prefs = await SharedPreferences.getInstance();
+    final claimedDate = prefs.getString(_dailyBonusPrefKey) ?? '';
+    if (!mounted || claimedDate != _todayDateKey) return;
+    setState(() {
+      _bonusCredited = true;
+      _creditStatus = 'Today bonus already claimed.'.tr;
+    });
+  }
+
+  Future<void> _persistDailyBonusLock() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_dailyBonusPrefKey, _todayDateKey);
+  }
+
+  // Future<void> _anthropicFallback() async {
+  //   if (!mounted) return;
+  //   setState(() => _creditStatus = 'Verifying with AI...');
+  //
+  //   try {
+  //     final res = await http.post(
+  //       Uri.parse('https://api.anthropic.com/v1/messages'),
+  //       headers: {
+  //         'Content-Type'     : 'application/json',
+  //         'anthropic-version': '2023-06-01',
+  //       },
+  //       body: jsonEncode({
+  //         'model'     : 'claude-sonnet-4-20250514',
+  //         'max_tokens': 80,
+  //         'messages'  : [
+  //           {
+  //             'role'   : 'user',
+  //             'content': 'Driver ${Constant.userModel?.id} completed '
+  //                 '$_kBonusOrderTarget orders. '
+  //                 'Confirm ₹${_kBonusAmount.toInt()} bonus credit. '
+  //                 'JSON only: {"status":"ok","message":"<one sentence>"}',
+  //           }
+  //         ],
+  //       }),
+  //     ).timeout(const Duration(seconds: 10)); // FIX 2: timeout
+  //
+  //     String msg = '₹${_kBonusAmount.toInt()} bonus credited!';
+  //     if (res.statusCode == 200) {
+  //       final data = jsonDecode(res.body) as Map<String, dynamic>;
+  //       final txt  = (data['content'] as List).first['text'] as String;
+  //       try {
+  //         final j = jsonDecode(
+  //             txt.replaceAll(RegExp(r'```json|```'), '').trim())
+  //         as Map<String, dynamic>;
+  //         msg = (j['message'] as String?) ?? msg;
+  //       } catch (_) {}
+  //     }
+  //
+  //     if (!mounted) return;
+  //     setState(() {
+  //       _bonusCredited  = true;
+  //       _creditingBonus = false;
+  //       _creditStatus   = msg;
+  //     });
+  //   } catch (_) {
+  //     if (!mounted) return;
+  //     setState(() {
+  //       _bonusCredited  = true;
+  //       _creditingBonus = false;
+  //       _creditStatus   = '₹${_kBonusAmount.toInt()} queued — will sync shortly.';
+  //     });
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {

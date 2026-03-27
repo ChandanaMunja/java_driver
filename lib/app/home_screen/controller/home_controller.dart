@@ -3669,7 +3669,12 @@ class HomeController extends GetxController {
 
   Future<void> forceRefreshOrders() async {
     if (_isRefreshing) return;
-    try { await refreshHomeScreen(); } catch (_) {}
+    try {
+      await refreshHomeScreen();
+    } catch (_) {}
+    try {
+      await fetchTodayDashboard(forceRefresh: true);
+    } catch (_) {}
   }
 
   // ══════════════════════════════════════════════════════════════════════

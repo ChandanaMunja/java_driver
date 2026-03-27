@@ -3887,20 +3887,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             Constant.userModel!.walletAmount?.toString() ?? '0') <
             double.parse(Constant.minimumDepositToRideAccept);
 
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      // Extra bottom padding so content is never hidden behind the bottom drawer
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 240),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Optional low-balance warning ──────────────────────────────
-          if (isLowBalance)
-            _LowBalanceBanner(theme: theme),
+    return RefreshIndicator(
+      onRefresh: () => ctrl.forceRefreshOrders(),
+      child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        // Extra bottom padding so content is never hidden behind the bottom drawer
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 240),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Optional low-balance warning ──────────────────────────────
+            if (isLowBalance)
+              _LowBalanceBanner(theme: theme),
 
-          // ── TODAY DASHBOARD (was previously missing / broken) ─────────
-          TodayDashboardSection(theme: theme, ctrl: ctrl),
-        ],
+            // ── TODAY DASHBOARD (was previously missing / broken) ─────────
+            TodayDashboardSection(theme: theme, ctrl: ctrl),
+          ],
+        ),
       ),
     );
   }

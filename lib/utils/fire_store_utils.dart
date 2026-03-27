@@ -1356,6 +1356,24 @@ class FireStoreUtils {
     }
     return emailTemplateModel;
   }
+
+  /// Total earnings shown on home `_ChargeBreakdown` / `_totalEarningsBox` (d2r + r2c + tip +
+  /// surge). The app stores that value on the order in [OrderModel.calculatedCharges]
+  /// `totalCalculatedCharge` via `HomeController._updateOrderWithCharges`.
+  static String _walletHomeScreenEarningsAmount(OrderModel order) {
+    final cc = order.calculatedCharges;
+    if (cc != null) {
+      final raw = cc['totalCalculatedCharge'];
+      if (raw != null) {
+        final v = double.tryParse(raw.toString().trim());
+        if (v != null) return v.toStringAsFixed(2);
+      }
+    }
+    final fallback =
+        double.tryParse(order.deliveryCharge?.toString().trim() ?? '') ?? 0.0;
+    return fallback.toStringAsFixed(2);
+  }
+
   static updateWallateAmount(OrderModel orderModel) async {
     log('[updateWallateAmount] START - Order ID: ${orderModel.id}');
     double subTotal = 0.0;
@@ -1419,9 +1437,10 @@ class FireStoreUtils {
     log('[updateWallateAmount] Calling updateUserWallet with amount: ${driverAmount.toString()}');
     await FireStoreUtils.updateUserWallet(
         userId: userId, amount: driverAmount.toString());
-    log('[updateWallateAmount] Calling updateUserWalletHomeScreen with amount: ${orderModel.deliveryCharge.toString()}');
+    final homeScreenEarnings = _walletHomeScreenEarningsAmount(orderModel);
+    log('[updateWallateAmount] Calling updateUserWalletHomeScreen with amount: $homeScreenEarnings');
     await FireStoreUtils.updateUserWalletHomeScreen(
-        userId: userId, amount: orderModel.deliveryCharge.toString());
+        userId: userId, amount: homeScreenEarnings);
     log('[updateWallateAmount] END - Order ID: ${orderModel.id}');
   }
 

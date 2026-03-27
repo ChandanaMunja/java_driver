@@ -201,24 +201,31 @@ class DeliveryAmountWalletController extends GetxController {
 
   // ─── Public API ─────────────────────────────────────────────────────────────
 
-  /// Hard refresh — invalidates cache, clears list, fetches page 1.
+  /// Pull-to-refresh / explicit reload — no full-screen loader.
   Future<void> refresh() async {
     _lastFetchedAt = null;
-    await _initialLoad(forceRefresh: true);
+    try {
+      await _fetchAll(forceRefresh: true);
+    } catch (e, st) {
+      log('DeliveryAmountWalletController.refresh error: $e\n$st');
+    }
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
 
+  Future<void> _fetchAll({required bool forceRefresh}) async {
+    await Future.wait([
+      _fetchTransactions(reset: true, force: forceRefresh),
+      // _fetchWithdrawals(force: forceRefresh),
+      _loadProfileAndPaymentMethod(),
+    ]);
+    _lastFetchedAt = DateTime.now();
+  }
+
   Future<void> _initialLoad({bool forceRefresh = false}) async {
     isLoading.value = true;
     try {
-      // Run profile + payment load in parallel with transactions.
-      await Future.wait([
-        _fetchTransactions(reset: true, force: forceRefresh),
-        _fetchWithdrawals(force: forceRefresh),
-        _loadProfileAndPaymentMethod(),
-      ]);
-      _lastFetchedAt = DateTime.now();
+      await _fetchAll(forceRefresh: forceRefresh);
     } catch (e, st) {
       log('DeliveryAmountWalletController._initialLoad error: $e\n$st');
     } finally {
@@ -276,15 +283,15 @@ class DeliveryAmountWalletController extends GetxController {
     }
   }
 
-  Future<void> _fetchWithdrawals({bool force = false}) async {
-    if (!force && _isCacheValid && withdrawalList.isNotEmpty) return;
-    try {
-      final result = await FireStoreUtils.getWithdrawHistory();
-      withdrawalList.assignAll(result ?? []);
-    } catch (e, st) {
-      log('_fetchWithdrawals error: $e\n$st');
-    }
-  }
+  // Future<void> _fetchWithdrawals({bool force = false}) async {
+  //   if (!force && _isCacheValid && withdrawalList.isNotEmpty) return;
+  //   try {
+  //     final result = await FireStoreUtils.getWithdrawHistory();
+  //     withdrawalList.assignAll(result ?? []);
+  //   } catch (e, st) {
+  //     log('_fetchWithdrawals error: $e\n$st');
+  //   }
+  // }
 
   Future<void> _loadProfileAndPaymentMethod() async {
     try {

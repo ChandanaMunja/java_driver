@@ -102,18 +102,12 @@ class DeliveryAmountWalletScreen extends StatelessWidget {
           backgroundColor:
           isDark ? AppThemeData.grey900 : AppThemeData.grey50,
           appBar: isAppBarShow ? _buildAppBar(isDark) : null,
-          body: RefreshIndicator(
-            onRefresh: controller.refresh,
-            // Column keeps the wallet card fixed while the tab views scroll.
-            child: Column(
-              children: [
-                // Wallet balance card (fixed, non-scrolling)
-                DeliveryWalletCard(controller: controller),
-
-                // Tab bar + paginated lists (fills remaining space)
-                DeliveryWalletTable(controller: controller),
-              ],
-            ),
+          // Pull-to-refresh lives on the earnings list (see DeliveryWalletTable).
+          body: Column(
+            children: [
+              DeliveryWalletCard(controller: controller),
+              DeliveryWalletTable(controller: controller),
+            ],
           ),
         );
       },
