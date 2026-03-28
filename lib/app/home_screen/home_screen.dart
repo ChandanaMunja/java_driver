@@ -389,15 +389,18 @@ class _AcceptRejectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final vendor  = ctrl.currentOrder.value.vendor;
     final address = ctrl.currentOrder.value.address;
+    final vLat    = vendor?.latitudeValue;
+    final vLng    = vendor?.longitudeValue;
+    final cLat    = address?.location?.latitude;
+    final cLng    = address?.location?.longitude;
     double km     = 0.0;
-    if (vendor != null && address?.location != null) {
-      km = Geolocator.distanceBetween(
-        vendor.latitude ?? 0.0,
-        vendor.longitude ?? 0.0,
-        address!.location!.latitude ?? 0.0,
-        address.location!.longitude ?? 0.0,
-      ) /
-          1000;
+    if (vendor != null &&
+        address != null &&
+        vLat != null &&
+        vLng != null &&
+        cLat != null &&
+        cLng != null) {
+      km = Geolocator.distanceBetween(vLat, vLng, cLat, cLng) / 1000;
     }
 
     return Padding(

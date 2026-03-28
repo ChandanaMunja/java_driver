@@ -11,7 +11,6 @@ import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/today_dashboard_response_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/models/vendor_model.dart';
-import 'package:jippydriver_driver/app/home_screen/screens/order_map_screen/order_map_screen.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/services/api_cache_service.dart';
 import 'package:jippydriver_driver/services/http_client_service.dart';
@@ -58,6 +57,8 @@ class HomeController extends GetxController {
   final RxDouble restaurantToCustomerDuration = 0.0.obs;
   final RxDouble driverToRestaurantCharge     = 0.0.obs;
   final RxDouble restaurantToCustomerCharge   = 0.0.obs;
+  /// Whole km used for restaurant→customer **pricing** (nearest km: 2.4→2, 2.5→3).
+  double _restaurantToCustomerBillableKm = 0;
   final RxDouble totalCalculatedCharge        = 0.0.obs;
   final RxDouble surgeFee                     = 0.0.obs;
   final RxDouble toPayAmount                  = 0.0.obs;
@@ -69,6 +70,9 @@ class HomeController extends GetxController {
   double _deliveryFirstSlabKm = 4.0;
   double _deliveryRsPerKmFirstSlab = 8.0;
   double _deliveryRsPerKmBeyond = 10.0;
+  /// Restaurant→customer: from `driver-sql/charges` (`delivery_short_trip_*`).
+  double _deliveryShortTripMaxKm = 2.0;
+  double _deliveryShortTripBaseCharge = 21.0;
 
   double _pickupChargeFromKm(double km) {
     if (km <= 0) return 0;
@@ -77,20 +81,46 @@ class HomeController extends GetxController {
     return (billableKm * _pickupRsPerKm).roundToDouble();
   }
 
-  /// First [ _deliveryFirstSlabKm ] km has minimum base charge at first slab rate.
-  /// Above that: fixed **₹32** for the first 4 km + **₹10 × ceil(extra km)** for the rest
-  /// (e.g. 4.786 km → 4×₹8 + 1×₹10 = 42).
-  double _deliveryChargeFromKm(double km) {
-    if (km <= 0) return 0;
-    if (km <= _deliveryFirstSlabKm) {
-      final raw = (km * _deliveryRsPerKmFirstSlab).roundToDouble();
-      return math.max(_deliveryRsPerKmFirstSlab, raw).toDouble();
+  /// Nearest whole kilometer for restaurant→customer **charge only** (not driver→restaurant).
+  /// Examples: 2.4 → 2, 2.49 → 2, 2.5 → 3, 2.6 → 3.
+  ///
+  /// Any **positive** leg still bills at least **1 km** so sub‑500m drops (e.g. 0.22 km)
+  /// do not round to 0 and wipe the delivery fee (was showing `3.00 + 0.00`).
+  double _billableRestaurantToCustomerKm(double rawKm) {
+    if (rawKm <= 0) return 0;
+    final rounded = rawKm.roundToDouble();
+    return math.max(1.0, rounded);
+  }
+
+  /// Restaurant→customer delivery only. [billableKm] = nearest whole km from
+  /// [_billableRestaurantToCustomerKm] (raw route is only for display/ETA).
+  ///
+  /// - **≤ [_deliveryShortTripMaxKm]** (e.g. 2 km): entire R→C leg is flat
+  ///   **[_deliveryShortTripBaseCharge]** (no per‑km slab in that band).
+  /// - **Above short‑trip max, ≤ [_deliveryFirstSlabKm]:** pro‑rata first slab,
+  ///   with **minimum [_deliveryShortTripBaseCharge]** when short trip is enabled.
+  /// - **Above [_deliveryFirstSlabKm]:** first slab block + beyond rate × ceil(extra km).
+  double _restaurantToCustomerChargeFromBillableKm(double billableKm) {
+    if (billableKm <= 0) return 0;
+    // Short trip: R→C within max km (from API, e.g. 2) → fixed base for that leg only.
+    if (_deliveryShortTripMaxKm > 0 && billableKm <= _deliveryShortTripMaxKm) {
+      return _deliveryShortTripBaseCharge;
     }
-    final beyondKm = km - _deliveryFirstSlabKm;
+    if (billableKm <= _deliveryFirstSlabKm) {
+      final proRata =
+          (billableKm * _deliveryRsPerKmFirstSlab).roundToDouble();
+      final slab =
+          math.max(_deliveryRsPerKmFirstSlab, proRata).toDouble();
+      if (_deliveryShortTripMaxKm > 0) {
+        return math.max(_deliveryShortTripBaseCharge, slab);
+      }
+      return slab;
+    }
+    final beyondKm = billableKm - _deliveryFirstSlabKm;
     final billableBeyondKm = beyondKm.ceil();
-    final raw = _deliveryFirstSlabKm * _deliveryRsPerKmFirstSlab +
+    final block = _deliveryFirstSlabKm * _deliveryRsPerKmFirstSlab +
         billableBeyondKm * _deliveryRsPerKmBeyond;
-    return raw.roundToDouble();
+    return block.roundToDouble();
   }
 
   // ── Core observables ──────────────────────────────────────────────────
@@ -203,6 +233,8 @@ class HomeController extends GetxController {
   DateTime? _lastGetOrderTime;
   static const Duration _minOrderInterval = Duration(seconds: 2);
   String?   _lastFetchedOrderId;
+  /// Last order id for which [calculateOrderChargesInitial] finished successfully.
+  String?   _chargesComputedForOrderId;
 
   // ── Polyline points ───────────────────────────────────────────────────
   Rx<PolylinePoints> polylinePoints =
@@ -264,22 +296,29 @@ class HomeController extends GetxController {
           c['delivery_rs_per_km_first_slab'], _deliveryRsPerKmFirstSlab);
       final deliveryRsPerKmBeyond = toDouble(
           c['delivery_rs_per_km_beyond'], _deliveryRsPerKmBeyond);
+      final shortTripMaxKm =
+          toDouble(c['delivery_short_trip_max_km'], _deliveryShortTripMaxKm);
+      final shortTripBaseCharge = toDouble(
+          c['delivery_short_trip_base_charge'], _deliveryShortTripBaseCharge);
 
       AppLogger.log(
         'Driver charges warmup fetched: '
         'pickup=$pickup '
         'firstSlabKm=$deliveryFirstSlabKm '
         'firstSlabRate=$deliveryRsPerKmFirstSlab '
-        'beyondRate=$deliveryRsPerKmBeyond',
+        'beyondRate=$deliveryRsPerKmBeyond '
+        'shortTrip≤${shortTripMaxKm}km=flat₹$shortTripBaseCharge',
         tag: 'Charges',
       );
 
       if (pickup == 3.0 &&
           deliveryFirstSlabKm == 4.0 &&
           deliveryRsPerKmFirstSlab == 8.0 &&
-          deliveryRsPerKmBeyond == 10.0) {
+          deliveryRsPerKmBeyond == 10.0 &&
+          shortTripMaxKm == 2.0 &&
+          shortTripBaseCharge == 21.0) {
         AppLogger.log(
-          'Driver charges are at fallback defaults (3/4/8/10). '
+          'Driver charges are at fallback defaults (3/4/8/10, short 2km/21). '
           'If this is unexpected, verify driver-sql/charges API payload.',
           tag: 'Charges',
         );
@@ -288,12 +327,16 @@ class HomeController extends GetxController {
       final changed = pickup != _pickupRsPerKm ||
           deliveryFirstSlabKm != _deliveryFirstSlabKm ||
           deliveryRsPerKmFirstSlab != _deliveryRsPerKmFirstSlab ||
-          deliveryRsPerKmBeyond != _deliveryRsPerKmBeyond;
+          deliveryRsPerKmBeyond != _deliveryRsPerKmBeyond ||
+          shortTripMaxKm != _deliveryShortTripMaxKm ||
+          shortTripBaseCharge != _deliveryShortTripBaseCharge;
 
       _pickupRsPerKm = pickup;
       _deliveryFirstSlabKm = deliveryFirstSlabKm;
       _deliveryRsPerKmFirstSlab = deliveryRsPerKmFirstSlab;
       _deliveryRsPerKmBeyond = deliveryRsPerKmBeyond;
+      _deliveryShortTripMaxKm = shortTripMaxKm;
+      _deliveryShortTripBaseCharge = shortTripBaseCharge;
 
       _driverChargesApplied = true;
       _driverChargesAppliedAt = DateTime.now();
@@ -488,6 +531,14 @@ class HomeController extends GetxController {
 
   void _writeDriverMarker(LatLng pos) {
     if (taxiIcon == null) return;
+    final existing = markers.value['Driver'];
+    if (existing != null) {
+      final p = existing.position;
+      if ((p.latitude - pos.latitude).abs() < 1e-7 &&
+          (p.longitude - pos.longitude).abs() < 1e-7) {
+        return;
+      }
+    }
     final updated = Map<String, Marker>.from(markers.value);
     updated['Driver'] = Marker(
       markerId: const MarkerId('Driver'),
@@ -604,12 +655,10 @@ class HomeController extends GetxController {
 
   Future<void> forceRefreshOrders() async {
     if (_isRefreshing) return;
-    try {
-      await refreshHomeScreen();
-    } catch (_) {}
-    try {
-      await fetchTodayDashboard(forceRefresh: true);
-    } catch (_) {}
+    await Future.wait<Object?>([
+      refreshHomeScreen().catchError((_, __) => false),
+      fetchTodayDashboard(forceRefresh: true).catchError((_, __) => null),
+    ]);
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -654,18 +703,22 @@ class HomeController extends GetxController {
       {bool fetchSurgeAndToPay = true}) async {
     if (currentOrder.value.id == null || _isCalculatingCharges) return;
     _isCalculatingCharges = true;
+    var completedOk = false;
+    var hadR2cInputs = false;
     try {
       AppLogger.log(
         'Charges: start order=${currentOrder.value.id} '
-        'pickup=₹${_pickupRsPerKm}/km delivery≤${_deliveryFirstSlabKm}km=₹${_deliveryRsPerKmFirstSlab}/km '
-        'beyond=₹32+ceil(extraKm)×₹${_deliveryRsPerKmBeyond}',
+        'pickup=₹${_pickupRsPerKm}/km '
+        'delivery≤${_deliveryShortTripMaxKm}km=flat₹${_deliveryShortTripBaseCharge} '
+        'then≤${_deliveryFirstSlabKm}km=₹${_deliveryRsPerKmFirstSlab}/km(min₹${_deliveryShortTripBaseCharge}) '
+        'beyond=${_deliveryFirstSlabKm.toInt()}×${_deliveryRsPerKmFirstSlab}+ceil(extra)×${_deliveryRsPerKmBeyond}',
         tag: 'Charges',
       );
       if (currentOrder.value.vendor != null) {
         await _calcDriverToRestaurant();
       }
       if (currentOrder.value.vendor != null &&
-          currentOrder.value.address?.location != null) {
+          _customerDropLatLng(currentOrder.value.address) != null) {
         await _calcRestaurantToCustomer();
       }
       _calcTotalCharge();
@@ -688,11 +741,19 @@ class HomeController extends GetxController {
               totalCalculatedCharge.value + surgeFee.value + tip;
         }
       }
+      hadR2cInputs = currentOrder.value.vendor != null &&
+          _customerDropLatLng(currentOrder.value.address) != null;
+      completedOk = true;
     } catch (e) {
       AppLogger.log('Charge calc error: $e', tag: 'Charges');
     } finally {
       _isCalculatingCharges = false;
       _hasCalculatedBaseCharges = true;
+      // Only mark "done" when R→C inputs were present; otherwise a later vendor
+      // load would be skipped by _syncVendorAndChargesForCurrentOrder (r2c stayed 0).
+      if (completedOk && currentOrder.value.id != null && hadR2cInputs) {
+        _chargesComputedForOrderId = currentOrder.value.id!.toString();
+      }
 
       // If driver charge coefficients arrived while we were calculating,
       // do a quick local recalculation (no surge/to-pay network).
@@ -745,6 +806,66 @@ class HomeController extends GetxController {
     if (lat == 0 && lng == 0) return false;
     if (lat.abs() > 90 || lng.abs() > 180) return false;
     return true;
+  }
+
+  /// When [getCurrentOrder] sees the same id as already loaded, the full fetch is skipped;
+  /// this still loads vendor coords and runs charge math if that was never done (fixes 0.00 UI).
+  Future<void> _syncVendorAndChargesForCurrentOrder() async {
+    final oid = currentOrder.value.id?.toString();
+    if (oid == null || oid.isEmpty) return;
+
+    if (currentOrder.value.vendor == null &&
+        (currentOrder.value.vendorID?.isNotEmpty ?? false)) {
+      await _fetchVendorData(currentOrder.value.vendorID!);
+    }
+
+    final v = currentOrder.value.vendor;
+    final cust = _customerDropLatLng(currentOrder.value.address);
+    final vp = v != null ? _vendorLatLng(v) : null;
+    final hasR2cInputs = vp != null && cust != null;
+
+    // Hot path: already computed and R→C fee applied — skip distance math + network.
+    if (hasR2cInputs &&
+        _chargesComputedForOrderId == oid &&
+        restaurantToCustomerCharge.value > 0) {
+      return;
+    }
+
+    var straightLegKm = 0.0;
+    if (hasR2cInputs) {
+      straightLegKm = Geolocator.distanceBetween(
+            vp.lat,
+            vp.lng,
+            cust.lat,
+            cust.lng,
+          ) /
+          1000;
+    }
+
+    // Leg has real distance but delivery fee is still zero → re-run (stale id, or
+    // first run before vendor/coords; matches UI "Trip distance" > 0 with 3+0 row).
+    final r2cMissing = hasR2cInputs &&
+        straightLegKm > 0.0005 &&
+        restaurantToCustomerCharge.value <= 0;
+
+    final needCharges = hasR2cInputs &&
+        (_chargesComputedForOrderId != oid || r2cMissing);
+
+    if (needCharges) {
+      await calculateOrderChargesInitial();
+      _updateOrderWithCharges();
+      update();
+      currentOrder.refresh();
+    }
+  }
+
+  /// Customer drop-off point when [ShippingAddress.location] was filled by [UserLocation.tryParseCoords].
+  ({double lat, double lng})? _customerDropLatLng(ShippingAddress? a) {
+    if (a == null) return null;
+    final lat = a.location?.latitude;
+    final lng = a.location?.longitude;
+    if (lat == null || lng == null) return null;
+    return (lat: lat, lng: lng);
   }
 
   /// Restaurant point for distance math — same fields the map uses, plus Firestore `g.geopoint`.
@@ -925,49 +1046,65 @@ class HomeController extends GetxController {
   }
 
   Future<void> _calcRestaurantToCustomer() async {
-    final addr = currentOrder.value.address!.location!;
+    final cust = _customerDropLatLng(currentOrder.value.address);
     final vp   = _vendorLatLng(currentOrder.value.vendor!);
-    if (vp == null ||
-        addr.latitude == null ||
-        addr.longitude == null) {
+    if (vp == null || cust == null) {
       restaurantToCustomerDistance.value = 0.0;
       restaurantToCustomerDuration.value = 0.0;
       restaurantToCustomerCharge.value = 0.0;
+      _restaurantToCustomerBillableKm = 0;
       AppLogger.log(
         'Restaurant->Customer coords missing: '
         'vendor=${vp == null ? "null" : "${vp.lat},${vp.lng}"} '
-        'customer(${addr.latitude},${addr.longitude})',
+        'customer=${cust == null ? "null" : "${cust.lat},${cust.lng}"}',
         tag: 'Charges',
       );
       return;
     }
     final routeKm = await _resolveLegDistanceKm(
       origin: LatLng(vp.lat, vp.lng),
-      destination: LatLng(addr.latitude!, addr.longitude!),
+      destination: LatLng(cust.lat, cust.lng),
       legTag: 'Restaurant->Customer',
     );
     restaurantToCustomerDistance.value = routeKm;
     restaurantToCustomerDuration.value = (routeKm / 30) * 60;
+    final billableKm = _billableRestaurantToCustomerKm(routeKm);
+    _restaurantToCustomerBillableKm = billableKm;
     restaurantToCustomerCharge.value =
-        _deliveryChargeFromKm(restaurantToCustomerDistance.value);
-    final dKm = restaurantToCustomerDistance.value;
-    if (dKm <= _deliveryFirstSlabKm) {
+        _restaurantToCustomerChargeFromBillableKm(billableKm);
+    final rawKm = routeKm;
+    if (_deliveryShortTripMaxKm > 0 && billableKm <= _deliveryShortTripMaxKm) {
       AppLogger.log(
-        'Restaurant->Customer: km=${dKm.toStringAsFixed(3)} '
-        'pro‑rata ${dKm.toStringAsFixed(3)}×$_deliveryRsPerKmFirstSlab '
+        'Restaurant->Customer: routeKm=${rawKm.toStringAsFixed(3)} '
+        'billableKm=${billableKm.toStringAsFixed(1)} (nearest whole km) '
+        '≤${_deliveryShortTripMaxKm}km flat ₹${_deliveryShortTripBaseCharge} '
         '= ${restaurantToCustomerCharge.value} '
-        'vendor(${vp.lat},${vp.lng}) customer(${addr.latitude},${addr.longitude})',
+        'vendor(${vp.lat},${vp.lng}) customer(${cust.lat},${cust.lng})',
+        tag: 'Charges',
+      );
+    } else if (billableKm <= _deliveryFirstSlabKm) {
+      final minNote = _deliveryShortTripMaxKm > 0
+          ? '(min ₹${_deliveryShortTripBaseCharge} above ${_deliveryShortTripMaxKm}km) '
+          : '';
+      AppLogger.log(
+        'Restaurant->Customer: routeKm=${rawKm.toStringAsFixed(3)} '
+        'billableKm=${billableKm.toStringAsFixed(1)} '
+        'pro‑rata ${billableKm.toStringAsFixed(1)}×$_deliveryRsPerKmFirstSlab '
+        '$minNote'
+        '= ${restaurantToCustomerCharge.value} '
+        'vendor(${vp.lat},${vp.lng}) customer(${cust.lat},${cust.lng})',
         tag: 'Charges',
       );
     } else {
-      final beyondKm = dKm - _deliveryFirstSlabKm;
+      final beyondKm = billableKm - _deliveryFirstSlabKm;
       final units = beyondKm.ceil();
       AppLogger.log(
-        'Restaurant->Customer: km=${dKm.toStringAsFixed(3)} '
+        'Restaurant->Customer: routeKm=${rawKm.toStringAsFixed(3)} '
+        'billableKm=${billableKm.toStringAsFixed(1)} '
         '4×$_deliveryRsPerKmFirstSlab + ${units}×$_deliveryRsPerKmBeyond '
         '(extra ${beyondKm.toStringAsFixed(3)}km → ceil $units) '
         '= ${restaurantToCustomerCharge.value} '
-        'vendor(${vp.lat},${vp.lng}) customer(${addr.latitude},${addr.longitude})',
+        'vendor(${vp.lat},${vp.lng}) customer(${cust.lat},${cust.lng})',
         tag: 'Charges',
       );
     }
@@ -1041,6 +1178,7 @@ class HomeController extends GetxController {
       'driverToRestaurantDuration'  : driverToRestaurantDuration.value,
       'driverToRestaurantCharge'    : driverToRestaurantCharge.value,
       'restaurantToCustomerDistance': restaurantToCustomerDistance.value,
+      'restaurantToCustomerBillableKm': _restaurantToCustomerBillableKm,
       'restaurantToCustomerDuration': restaurantToCustomerDuration.value,
       'restaurantToCustomerCharge'  : restaurantToCustomerCharge.value,
       'tipsAmount'                  : currentOrder.value.tipAmount,
@@ -1163,7 +1301,10 @@ class HomeController extends GetxController {
     if (status == Constant.orderShipped || status == Constant.driverAccepted) {
       final v = currentOrder.value.vendor;
       if (v == null) return;
-      dest = LatLng(v.latitude ?? 0.0, v.longitude ?? 0.0);
+      dest = LatLng(
+        v.latitudeValue ?? v.latitude ?? v.coordinates?.latitude ?? 0.0,
+        v.longitudeValue ?? v.longitude ?? v.coordinates?.longitude ?? 0.0,
+      );
     } else if (status == Constant.orderInTransit) {
       final loc = currentOrder.value.address?.location;
       if (loc == null) return;
@@ -1223,12 +1364,11 @@ class HomeController extends GetxController {
             position: dest,
             icon: departureIcon!);
       }
-      final addr = currentOrder.value.address?.location;
-      if (addr != null && destinationIcon != null) {
+      final cust = _customerDropLatLng(currentOrder.value.address);
+      if (cust != null && destinationIcon != null) {
         nm['Destination'] = Marker(
             markerId: const MarkerId('Destination'),
-            position:
-            LatLng(addr.latitude ?? 0.0, addr.longitude ?? 0.0),
+            position: LatLng(cust.lat, cust.lng),
             icon: destinationIcon!);
       }
     }
@@ -1387,6 +1527,7 @@ class HomeController extends GetxController {
         _notifiedOrderIds.remove(currentOrder.value.id);
         await FireStoreUtils.updateUser(driverModel.value);
         currentOrder.value = OrderModel();
+        _chargesComputedForOrderId = null;
         await clearMap();
         update();
       }
@@ -1420,6 +1561,7 @@ class HomeController extends GetxController {
 
     await FireStoreUtils.updateUser(driverModel.value);
     currentOrder.value = OrderModel();
+    _chargesComputedForOrderId = null;
     await clearMap();
     _notifyOrderUiChanged(refreshOrder: false);
 
@@ -1562,6 +1704,7 @@ class HomeController extends GetxController {
               (currentOrder.value.driverID?.isEmpty ?? true);
       if (!isPendingNoDriver) {
         currentOrder.value = OrderModel();
+        _chargesComputedForOrderId = null;
         await clearMap();
         await AudioPlayerService.playSound(false);
         return;
@@ -1582,7 +1725,10 @@ class HomeController extends GetxController {
     }
 
     if (firstId == null) return;
-    if (currentOrder.value.id == firstId) return;
+    if (currentOrder.value.id == firstId) {
+      await _syncVendorAndChargesForCurrentOrder();
+      return;
+    }
 
     await _fetchAndDisplayOrder(firstId,
         inProgress: inProgress, requests: requests);
@@ -1642,6 +1788,7 @@ class HomeController extends GetxController {
       await FireStoreUtils.updateUser(driverModel.value);
       if (currentOrder.value.id == orderId) {
         currentOrder.value = OrderModel();
+        _chargesComputedForOrderId = null;
         await clearMap();
         await AudioPlayerService.playSound(false);
       }
@@ -1659,7 +1806,8 @@ class HomeController extends GetxController {
       return;
     }
 
-    currentOrder.value    = fetched;
+    currentOrder.value = fetched;
+    _chargesComputedForOrderId = null;
     _lastFetchedOrderId   = fetched.id;
     _lastKnownStatus      = fetched.status;
     _lastStatusChangeTime = DateTime.now();
@@ -1713,6 +1861,7 @@ class HomeController extends GetxController {
         driverModel.value.orderRequestData?.remove(currentOrder.value.id);
         await FireStoreUtils.updateUser(driverModel.value);
         currentOrder.value = OrderModel();
+        _chargesComputedForOrderId = null;
         await clearMap();
         resetStatusTracking();
         _notifyOrderUiChanged(refreshOrder: false);
@@ -1723,6 +1872,7 @@ class HomeController extends GetxController {
         final changed =
             _lastKnownStatus != null && _lastKnownStatus != refreshed.status;
         currentOrder.value = refreshed;
+        if (forceRefresh) _chargesComputedForOrderId = null;
         if (changed) {
           _lastStatusChangeTime = DateTime.now();
           _lastKnownStatus      = refreshed.status;
@@ -1736,6 +1886,8 @@ class HomeController extends GetxController {
           (currentOrder.value.vendorID?.isNotEmpty ?? false)) {
         await _fetchVendorData(currentOrder.value.vendorID!);
       }
+
+      await _syncVendorAndChargesForCurrentOrder();
 
       changeData();
       _notifyOrderUiChanged(refreshOrder: false);
@@ -1802,7 +1954,6 @@ class HomeController extends GetxController {
         }
         await Future.delayed(const Duration(milliseconds: 500));
         await getCurrentOrder();
-        _notifyOrderUiChanged(refreshOrder: false);
       } else if (currentOrder.value.id != null) {
         final shouldRefresh = _lastStatusChangeTime == null ||
             DateTime.now().difference(_lastStatusChangeTime!) > _statusCooldown;
@@ -1876,8 +2027,11 @@ class HomeController extends GetxController {
     if (_vendorCache.containsKey(vendorId)) {
       final age = DateTime.now().difference(_vendorCacheTime[vendorId]!);
       if (age < _vendorCacheTTL) {
-        currentOrder.value.vendor = _vendorCache[vendorId];
-        update();
+        final cached = _vendorCache[vendorId]!;
+        if (!identical(currentOrder.value.vendor, cached)) {
+          currentOrder.value.vendor = cached;
+          update();
+        }
         return;
       }
       _vendorCache.remove(vendorId);

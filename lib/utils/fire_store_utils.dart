@@ -53,6 +53,21 @@ import 'package:uuid/uuid.dart';
 import 'package:video_compress/video_compress.dart';
 
 class FireStoreUtils {
+  /// Strips invalid UTF-16 surrogate/control chars so [json.decode] won't throw.
+  static String sanitizeHttpJsonBody(String body) {
+    return String.fromCharCodes(
+      body.runes.where(
+        (int rune) =>
+            rune == 0x9 ||
+            rune == 0xA ||
+            rune == 0xD ||
+            (rune >= 0x20 &&
+                rune <= 0x10FFFF &&
+                (rune < 0xD800 || rune > 0xDFFF)),
+      ),
+    );
+  }
+
   static FirebaseFirestore fireStore = FirebaseFirestore.instance;
   // Bust old (24h) charges cache once per app run after upgrade.
   static bool _driverChargesCacheBustedOnce = false;
@@ -127,7 +142,8 @@ class FireStoreUtils {
           timeout: const Duration(seconds: 10),
         );
         if (response.statusCode == 200) {
-          final Map<String, dynamic> data = json.decode(response.body);
+          final cleaned = sanitizeHttpJsonBody(response.body);
+          final Map<String, dynamic> data = json.decode(cleaned);
           if (data['success'] == true && data['data'] != null) {
             final user = UserModel.fromJson(data['data']);
             _profileCache[uuid] = _ProfileCacheEntry(
@@ -498,6 +514,8 @@ class FireStoreUtils {
     const deliveryFirstSlabKmDefault = 4.0;
     const deliveryRsPerKmFirstSlabDefault = 8.0;
     const deliveryRsPerKmBeyondDefault = 10.0;
+    const deliveryShortTripMaxKmDefault = 2.0;
+    const deliveryShortTripBaseChargeDefault = 21.0;
 
     double toDouble(dynamic v, double fallback) {
       if (v == null) return fallback;
@@ -560,12 +578,21 @@ class FireStoreUtils {
         data['delivery_rs_per_km_beyond'],
         deliveryRsPerKmBeyondDefault,
       );
+      final shortTripMaxKm = toDouble(
+        data['delivery_short_trip_max_km'],
+        deliveryShortTripMaxKmDefault,
+      );
+      final shortTripBaseCharge = toDouble(
+        data['delivery_short_trip_base_charge'],
+        deliveryShortTripBaseChargeDefault,
+      );
 
       log(
         'Driver charges loaded '
         '(forceRefresh=$forceRefresh) '
         'pickup=$pickup firstSlabKm=$firstSlabKm '
-        'firstSlabRate=$firstSlabRate beyondRate=$beyondRate',
+        'firstSlabRate=$firstSlabRate beyondRate=$beyondRate '
+        'shortTrip≤${shortTripMaxKm}km=flat₹$shortTripBaseCharge',
       );
 
       return {
@@ -573,6 +600,8 @@ class FireStoreUtils {
         'delivery_first_slab_km': firstSlabKm,
         'delivery_rs_per_km_first_slab': firstSlabRate,
         'delivery_rs_per_km_beyond': beyondRate,
+        'delivery_short_trip_max_km': shortTripMaxKm,
+        'delivery_short_trip_base_charge': shortTripBaseCharge,
       };
     } catch (e) {
       // Don't break the app if charges fetch fails; caller will use defaults.
@@ -582,6 +611,8 @@ class FireStoreUtils {
         'delivery_first_slab_km': deliveryFirstSlabKmDefault,
         'delivery_rs_per_km_first_slab': deliveryRsPerKmFirstSlabDefault,
         'delivery_rs_per_km_beyond': deliveryRsPerKmBeyondDefault,
+        'delivery_short_trip_max_km': deliveryShortTripMaxKmDefault,
+        'delivery_short_trip_base_charge': deliveryShortTripBaseChargeDefault,
       };
     }
   }
@@ -605,18 +636,7 @@ class FireStoreUtils {
         }
         // Some backends may include invalid control characters in the JSON string,
         // which can cause `json.decode` to throw "Invalid argument (string): Contains invalid characters".
-        // Sanitize the body before decoding using runes (code points) to avoid bad surrogate pairs.
-        final cleaned = String.fromCharCodes(
-          response.body.runes.where(
-            (int rune) =>
-                rune == 0x9 || // tab
-                rune == 0xA || // LF
-                rune == 0xD || // CR
-                (rune >= 0x20 &&
-                    rune <= 0x10FFFF &&
-                    (rune < 0xD800 || rune > 0xDFFF)),
-          ),
-        );
+        final cleaned = sanitizeHttpJsonBody(response.body);
         final jsonResponse = json.decode(cleaned);
         log('getSettings - Response decoded, success: ${jsonResponse['success']}');
         if (jsonResponse['success'] == true) {

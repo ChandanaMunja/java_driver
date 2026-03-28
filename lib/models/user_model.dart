@@ -590,27 +590,89 @@ class UserLocation {
 
   UserLocation({this.latitude, this.longitude});
 
+  static double? _scalarToDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v.trim());
+    return null;
+  }
+
   static double? _coordFromJson(Map<String, dynamic> json, List<String> keys) {
     for (final k in keys) {
       final v = json[k];
-      if (v == null) continue;
-      if (v is double) return v;
-      if (v is int) return v.toDouble();
-      if (v is num) return v.toDouble();
-      if (v is String) return double.tryParse(v.trim());
+      final d = _scalarToDouble(v);
+      if (d != null) return d;
     }
     return null;
   }
 
-  UserLocation.fromJson(Map<String, dynamic> json) {
-    latitude = _coordFromJson(json, const ['latitude', 'lat', 'Lat', '_latitude']);
-    longitude = _coordFromJson(json, const [
+  /// Parses lat/lng from Firestore [GeoPoint], nested maps, GeoJSON Point, or [lng, lat] lists.
+  static UserLocation? tryParseCoords(dynamic data) {
+    if (data == null) return null;
+    if (data is GeoPoint) {
+      return UserLocation(latitude: data.latitude, longitude: data.longitude);
+    }
+    if (data is List) {
+      if (data.length < 2) return null;
+      final a = _scalarToDouble(data[0]);
+      final b = _scalarToDouble(data[1]);
+      if (a == null || b == null) return null;
+      // Same convention as route decoding in HomeController: [lng, lat]
+      return UserLocation(latitude: b, longitude: a);
+    }
+    if (data is! Map) return null;
+    final json = Map<String, dynamic>.from(data);
+    var lat = _coordFromJson(json, const ['latitude', 'lat', 'Lat', '_latitude']);
+    var lng = _coordFromJson(json, const [
       'longitude',
       'lng',
       'long',
       'Lon',
       '_longitude',
     ]);
+    if (lat != null && lng != null) {
+      return UserLocation(latitude: lat, longitude: lng);
+    }
+    final geom = json['geometry'];
+    if (geom is Map) {
+      final gm = Map<String, dynamic>.from(geom);
+      final loc = gm['location'];
+      if (loc is Map) {
+        final lm = Map<String, dynamic>.from(loc);
+        lat ??= _coordFromJson(lm, const ['lat', 'latitude']);
+        lng ??= _coordFromJson(lm, const ['lng', 'longitude']);
+      }
+    }
+    if (lat != null && lng != null) {
+      return UserLocation(latitude: lat, longitude: lng);
+    }
+    if (json['type']?.toString() == 'Point' && json['coordinates'] is List) {
+      final c = json['coordinates'] as List;
+      if (c.length >= 2) {
+        final a = _scalarToDouble(c[0]);
+        final b = _scalarToDouble(c[1]);
+        if (a != null && b != null) {
+          return UserLocation(latitude: b, longitude: a);
+        }
+      }
+    }
+    if (json['coordinates'] is Map) {
+      final cm = Map<String, dynamic>.from(json['coordinates'] as Map);
+      lat ??= _coordFromJson(cm, const ['latitude', 'lat', '_latitude']);
+      lng ??= _coordFromJson(cm, const ['longitude', 'lng', '_longitude']);
+    }
+    if (lat != null && lng != null) {
+      return UserLocation(latitude: lat, longitude: lng);
+    }
+    return null;
+  }
+
+  UserLocation.fromJson(Map<String, dynamic> json) {
+    final parsed = tryParseCoords(json);
+    latitude = parsed?.latitude;
+    longitude = parsed?.longitude;
   }
 
   Map<String, dynamic> toJson() {
@@ -661,9 +723,17 @@ class ShippingAddress {
       isDefault = null;
     }
     addressAs = json['addressAs'];
-    location = json['location'] == null
-        ? null
-        : UserLocation.fromJson(json['location']);
+    location = UserLocation.tryParseCoords(json['location']);
+    location ??= UserLocation.tryParseCoords(json['coordinates']);
+    location ??= UserLocation.tryParseCoords(json['geoPoint'] ?? json['geopoint']);
+    if (location == null ||
+        location!.latitude == null ||
+        location!.longitude == null) {
+      final flat = UserLocation.tryParseCoords(json);
+      if (flat?.latitude != null && flat?.longitude != null) {
+        location = flat;
+      }
+    }
   }
 
   Map<String, dynamic> toJson() {

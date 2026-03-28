@@ -995,10 +995,13 @@ class EarningsTile extends StatelessWidget {
                 // Bonus row — only rendered when present
                 if (isBonus) ...[
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
                         child: Text(
                           'Bonus Amount'.tr,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 14,
                             fontFamily: AppThemeData.semiBold,
@@ -1006,12 +1009,17 @@ class EarningsTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      Text(
-                        model.bonusAmount?.toString() ?? '0',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontFamily: AppThemeData.medium,
-                          color: AppThemeData.success400,
+                      Flexible(
+                        child: Text(
+                          model.bonusAmount?.toString() ?? '0',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.end,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontFamily: AppThemeData.medium,
+                            color: AppThemeData.success400,
+                          ),
                         ),
                       ),
                     ],
@@ -1021,12 +1029,16 @@ class EarningsTile extends StatelessWidget {
 
                 // Delivery amount row
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween, // ✅ BEST
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Text(
                         model.bonus != null && model.displayAmount > 0
                             ? 'Delivery Amount (+${Constant.amountShow(amount: model.bonus.toString())} Bonus)'.tr
                             : 'Delivery Amount'.tr,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
                           fontFamily: AppThemeData.semiBold,
@@ -1036,14 +1048,19 @@ class EarningsTile extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Text(
-                      '${isCredit ? '+' : '-'}${Constant.amountShow(amount: model.displayAmount.toString())}',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontFamily: AppThemeData.medium,
-                        color: isCredit
-                            ? AppThemeData.success400
-                            : AppThemeData.danger300,
+                    Flexible(
+                      child: Text(
+                        '${isCredit ? '+' : '-'}${Constant.amountShow(amount: model.displayAmount.toString())}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontFamily: AppThemeData.medium,
+                          color: isCredit
+                              ? AppThemeData.success400
+                              : AppThemeData.danger300,
+                        ),
                       ),
                     ),
                   ],
@@ -1100,6 +1117,7 @@ class WithdrawalTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
                       child: Column(
@@ -1119,6 +1137,8 @@ class WithdrawalTile extends StatelessWidget {
                           ),
                           Text(
                             '(${model.withdrawMethod?.capitalizeString() ?? '-'})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 13,
                               fontFamily: AppThemeData.medium,
@@ -1130,12 +1150,17 @@ class WithdrawalTile extends StatelessWidget {
                         ],
                       ),
                     ),
-                    Text(
-                      '-${Constant.amountShow(amount: model.amount.toString())}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontFamily: AppThemeData.medium,
-                        color: AppThemeData.danger300,
+                    Flexible(
+                      child: Text(
+                        '-${Constant.amountShow(amount: model.amount.toString())}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontFamily: AppThemeData.medium,
+                          color: AppThemeData.danger300,
+                        ),
                       ),
                     ),
                   ],
@@ -1143,25 +1168,34 @@ class WithdrawalTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Row(
                   children: [
-                    Text(
-                      model.paymentStatus.toString(),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontFamily: AppThemeData.semiBold,
-                        color: statusColor,
+                    Expanded(
+                      child: Text(
+                        model.paymentStatus.toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: AppThemeData.semiBold,
+                          color: statusColor,
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    Text(
-                      model.paidDate != null
-                          ? Constant.timestampToDateTime(model.paidDate!)
-                          : '-',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontFamily: AppThemeData.medium,
-                        color: isDark
-                            ? AppThemeData.grey400
-                            : AppThemeData.grey500,
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        model.paidDate != null
+                            ? Constant.timestampToDateTime(model.paidDate!)
+                            : '-',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontFamily: AppThemeData.medium,
+                          color: isDark
+                              ? AppThemeData.grey400
+                              : AppThemeData.grey500,
+                        ),
                       ),
                     ),
                   ],

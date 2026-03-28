@@ -70,15 +70,20 @@ class OrderModel {
 
   OrderModel.fromJson(Map<String, dynamic> json) {
     try {
-    // Handle address coming as Map or JSON string
-    if (json['address'] != null) {
-      if (json['address'] is Map) {
-        address = ShippingAddress.fromJson(Map<String, dynamic>.from(json['address']));
-      } else if (json['address'] is String) {
+    // Handle address coming as Map or JSON string (also shipping_* aliases from some APIs)
+    dynamic rawAddress = json['address'] ??
+        json['shipping_address'] ??
+        json['shippingAddress'];
+    if (rawAddress != null) {
+      if (rawAddress is Map) {
+        address = ShippingAddress.fromJson(
+            Map<String, dynamic>.from(rawAddress));
+      } else if (rawAddress is String) {
         try {
-          final addressJson = jsonDecode(json['address']);
+          final addressJson = jsonDecode(rawAddress);
           if (addressJson is Map) {
-            address = ShippingAddress.fromJson(Map<String, dynamic>.from(addressJson));
+            address = ShippingAddress.fromJson(
+                Map<String, dynamic>.from(addressJson));
           }
         } catch (e) {
           print('Error decoding address JSON string: $e');
