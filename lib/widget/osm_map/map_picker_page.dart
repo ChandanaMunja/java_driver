@@ -8,12 +8,34 @@ import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
-class MapPickerPage extends StatelessWidget {
-  final OSMMapController controller = Get.put(OSMMapController());
-  final TextEditingController searchController = TextEditingController();
-  final mapController = MapController();
+class MapPickerPage extends StatefulWidget {
+  const MapPickerPage({super.key});
 
-  MapPickerPage({super.key});
+  @override
+  State<MapPickerPage> createState() => _MapPickerPageState();
+}
+
+class _MapPickerPageState extends State<MapPickerPage> {
+  late final OSMMapController controller;
+  late final TextEditingController searchController;
+  late final MapController mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = Get.put(OSMMapController());
+    searchController = TextEditingController();
+    mapController = MapController();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    if (Get.isRegistered<OSMMapController>()) {
+      Get.delete<OSMMapController>();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

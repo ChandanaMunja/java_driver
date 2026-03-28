@@ -56,6 +56,9 @@ class FireStoreUtils {
   static FirebaseFirestore fireStore = FirebaseFirestore.instance;
   // Bust old (24h) charges cache once per app run after upgrade.
   static bool _driverChargesCacheBustedOnce = false;
+  static final Map<String, _ProfileCacheEntry> _profileCache = {};
+  static final Map<String, Future<UserModel?>> _profileInFlight = {};
+  static const Duration _profileCacheTtl = Duration(seconds: 20);
 
   static Future<String> getCurrentUid() async{
     return await LoginController.getFirebaseId();
@@ -100,39 +103,55 @@ class FireStoreUtils {
       return false;
     }
   }
-  static Future<UserModel?> getUserProfile(String uuid) async {
-    UserModel? userModel;
-    try {
-      final response = await http.get(
-       Uri.parse('${Constant.baseUrl}users/$uuid'),
-       ).timeout(const Duration(seconds: 10), onTimeout: () {
-        log("getUserProfile timeout");
-        throw TimeoutException('getUserProfile timeout', const Duration(seconds: 10));
-      });
-      print("getUserProfile ${Constant.baseUrl}users/$uuid");
-      print("getUserProfile ${response.body} ");
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        if (data['success'] == true && data['data'] != null) {
-          userModel = UserModel.fromJson(data['data']); // Pass only the 'data' part
-        } else {
-          log("API returned success=false or null data");
-          userModel = null;
-        }
-      } else if (response.statusCode == 404) {
-        userModel = null;
-      } else {
-        log("Failed to get user profile: ${response.statusCode} - ${response.body}");
-        userModel = null;
-      }
-    } on TimeoutException catch (e) {
-      log("getUserProfile timeout: $e");
-      userModel = null;
-    } catch (e) {
-      log("getUserProfile error: $e");
-      userModel = null;
+  static Future<UserModel?> getUserProfile(String uuid, {bool forceRefresh = false}) async {
+    if (uuid.trim().isEmpty) return null;
+
+    final cached = _profileCache[uuid];
+    if (!forceRefresh && cached != null && !cached.isExpired) {
+      return cached.user;
     }
-    return userModel;
+    if (!forceRefresh && _profileInFlight.containsKey(uuid)) {
+      return _profileInFlight[uuid];
+    }
+
+    final future = () async {
+      try {
+        final httpClient = HttpClientService();
+        final response = await httpClient.get(
+          Uri.parse('${Constant.baseUrl}users/$uuid'),
+          headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
+          cacheStrategy: CacheStrategy.driverProfile,
+          customTTL: _profileCacheTtl,
+          useCache: !forceRefresh,
+          forceRefresh: forceRefresh,
+          timeout: const Duration(seconds: 10),
+        );
+        if (response.statusCode == 200) {
+          final Map<String, dynamic> data = json.decode(response.body);
+          if (data['success'] == true && data['data'] != null) {
+            final user = UserModel.fromJson(data['data']);
+            _profileCache[uuid] = _ProfileCacheEntry(
+              user: user,
+              cachedAt: DateTime.now(),
+            );
+            return user;
+          }
+        }
+        if (response.statusCode != 404) {
+          log("Failed to get user profile: ${response.statusCode} - ${response.body}");
+        }
+      } on TimeoutException catch (e) {
+        log("getUserProfile timeout: $e");
+      } catch (e) {
+        log("getUserProfile error: $e");
+      } finally {
+        _profileInFlight.remove(uuid);
+      }
+      return null;
+    }();
+
+    _profileInFlight[uuid] = future;
+    return future;
   }
   static Future<bool?> updateUserWalletHomeScreen({
     required String amount,
@@ -865,19 +884,26 @@ class FireStoreUtils {
   static Future<DriverAmountWalletApiResponse?> getDriverAmountWalletTransactionsPage({
     int page = 1,
     int perPage = 10,
+    bool forceRefresh = false,
   }) async {
     try {
       final driverId = await FireStoreUtils.getCurrentUid();
-      if (driverId == null || driverId.isEmpty) {
+      if (driverId.isEmpty) {
         log("Driver ID is empty");
         return null;
       }
 
-      final response = await http.get(
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse(
           '${Constant.baseUrl}driver-sql/wallet/delivery-records?driver_id=$driverId&page=$page&per_page=$perPage',
         ),
-        headers: {'Content-Type': 'application/json'},
+        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+        cacheStrategy: CacheStrategy.custom,
+        customTTL: const Duration(seconds: 25),
+        useCache: !forceRefresh,
+        forceRefresh: forceRefresh,
+        timeout: const Duration(seconds: 12),
       );
 
       if (response.statusCode != 200) {
@@ -911,11 +937,16 @@ class FireStoreUtils {
   /// withdraw method).
   static Future<Map<String, dynamic>?> getPaymentSettingsData() async {
     try {
-      final response = await http.get(
+      final httpClient = HttpClientService();
+      final response = await httpClient.get(
         Uri.parse('${Constant.baseUrl}settings/payment'),
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
+        cacheStrategy: CacheStrategy.settings,
+        useCache: true,
+        timeout: const Duration(seconds: 15),
       );
 
       if (response.statusCode == 200) {
@@ -2095,4 +2126,17 @@ class FireStoreUtils {
       print('Error removing order from other drivers: $e');
     }
   }
+}
+
+class _ProfileCacheEntry {
+  final UserModel user;
+  final DateTime cachedAt;
+
+  const _ProfileCacheEntry({
+    required this.user,
+    required this.cachedAt,
+  });
+
+  bool get isExpired =>
+      DateTime.now().difference(cachedAt) > FireStoreUtils._profileCacheTtl;
 }

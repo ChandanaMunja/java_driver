@@ -692,7 +692,7 @@ class DeliveryWalletTable extends StatelessWidget {
 
     return Expanded(
       child: DefaultTabController(
-        length: 2,
+        length: 1,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

@@ -68,12 +68,21 @@ class NetworkImageWidget extends StatelessWidget {
       return errorWidget ?? _fallbackPlaceholder(context);
     }
 
+    final targetHeight = height ?? Responsive.height(8, context);
+    final targetWidth = width ?? Responsive.width(15, context);
+    final dpr = MediaQuery.maybeOf(context)?.devicePixelRatio ?? 1.0;
+
     return CachedNetworkImage(
       imageUrl: safeUrl,
       fit: fit ?? BoxFit.fitWidth,
-      height: height ?? Responsive.height(8, context),
-      width: width ?? Responsive.width(15, context),
+      height: targetHeight,
+      width: targetWidth,
       color: color,
+      memCacheHeight: (targetHeight * dpr).round(),
+      memCacheWidth: (targetWidth * dpr).round(),
+      fadeInDuration: const Duration(milliseconds: 120),
+      fadeOutDuration: const Duration(milliseconds: 80),
+      filterQuality: FilterQuality.low,
       progressIndicatorBuilder: (context, url, downloadProgress) => Constant.loader(),
       errorWidget: (context, url, error) =>
           errorWidget ?? _fallbackPlaceholder(context),

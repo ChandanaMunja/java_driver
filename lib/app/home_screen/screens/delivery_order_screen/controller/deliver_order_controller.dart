@@ -7,8 +7,6 @@ import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
-import 'package:jippydriver_driver/models/user_model.dart';
-import 'package:jippydriver_driver/models/wallet_transaction_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
@@ -306,37 +304,22 @@ class DeliverOrderController extends GetxController {
       // This ensures we have the correct accumulated values from the separate APIs
       // Use updateUserWithoutWalletDelivery to avoid sending wallet/delivery amounts
       // which are managed by separate APIs (driver-sql/wallet/update and driver-sql/delivery-amount/update)
-      print("[DeliverOrderController] Fetching latest user data after wallet/delivery updates");
-      UserModel? latestUserData = await FireStoreUtils.getUserProfile(Constant.userModel?.id ?? '');
-      if (latestUserData != null) {
-        // Update only the order lists
-        if (latestUserData.vendorID?.isNotEmpty == true) {
-          print("[DeliverOrderController] Removing order from user lists");
-          latestUserData.orderRequestData?.remove(orderModel.value.id);
-          latestUserData.inProgressOrderID?.remove(orderModel.value.id);
+      print("[DeliverOrderController] Updating user lists without extra profile fetch");
+      final userForUpdate = Constant.userModel;
+      if (userForUpdate != null) {
+        if (userForUpdate.vendorID?.isNotEmpty == true) {
+          userForUpdate.orderRequestData?.remove(orderModel.value.id);
+          userForUpdate.inProgressOrderID?.remove(orderModel.value.id);
         }
-        // IMPORTANT: Use updateUserWithoutWalletDelivery to exclude wallet/delivery amounts
-        // The actual wallet and delivery amount updates are handled by separate APIs:
-        // - driver-sql/wallet/update (called in updateWallateAmount) - handles walletAmount
-        // - driver-sql/delivery-amount/update (called in updateWallateAmount) - handles deliveryAmount
-        // By excluding these fields from users/update, we prevent overwriting the correct accumulated values
-        print("[DeliverOrderController] Updating user without wallet/delivery amounts");
-        await FireStoreUtils.updateUserWithoutWalletDelivery(latestUserData);
-        // Refresh user data to get the correct wallet/delivery amounts from database
-        UserModel? refreshedUser = await FireStoreUtils.getUserProfile(Constant.userModel?.id ?? '');
-        if (refreshedUser != null) {
-          Constant.userModel = refreshedUser;
-          print("[DeliverOrderController] Refreshed user data - walletAmount: ${refreshedUser.walletAmount}, deliveryAmount: ${refreshedUser.deliveryAmount}");
-        }
-      } else {
-        // Fallback: Update user lists in Constant.userModel if API fetch failed
-        if (Constant.userModel?.vendorID?.isNotEmpty == true) {
-          print("[DeliverOrderController] Removing order from user lists (fallback)");
-          Constant.userModel?.orderRequestData?.remove(orderModel.value.id);
-          Constant.userModel?.inProgressOrderID?.remove(orderModel.value.id);
-        }
-        // Use updateUserWithoutWalletDelivery to exclude wallet/delivery amounts
-        await FireStoreUtils.updateUserWithoutWalletDelivery(Constant.userModel!);
+        await FireStoreUtils.updateUserWithoutWalletDelivery(userForUpdate);
+      }
+      final refreshedUser = await FireStoreUtils.getUserProfile(
+        Constant.userModel?.id ?? '',
+        forceRefresh: true,
+      );
+      if (refreshedUser != null) {
+        Constant.userModel = refreshedUser;
+        print("[DeliverOrderController] Refreshed user data - walletAmount: ${refreshedUser.walletAmount}, deliveryAmount: ${refreshedUser.deliveryAmount}");
       }
       print("[DeliverOrderController] Checking if first order");
       await FireStoreUtils.getFirestOrderOrNOt(orderModel.value)

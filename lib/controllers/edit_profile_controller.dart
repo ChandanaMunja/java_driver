@@ -27,39 +27,56 @@ class EditProfileController extends GetxController {
 
   @override
   void onInit() {
-    getData();
     super.onInit();
+    _applyUserData(Constant.userModel);
+    getData();
   }
 
-  getData() async {
+  Future<void> getData() async {
     print("EditProfileController");
-    await FireStoreUtils.getZone().then((value) {
-      if (value != null) {
-        zoneList.value = value;
+    try {
+      final zones = await FireStoreUtils.getZone();
+      if (zones != null) {
+        zoneList.assignAll(zones);
       }
-    });
-    String? userId = await LoginController.getFirebaseId();
-    await FireStoreUtils.getUserProfile(userId)
-        .then((value) {
-      if (value != null) {
-        userModel.value = value;
-        firstNameController.value.text = userModel.value.firstName.toString();
-        lastNameController.value.text = userModel.value.lastName.toString();
-        emailController.value.text = userModel.value.email.toString();
-        phoneNumberController.value.text =
-            userModel.value.phoneNumber.toString();
-        countryCodeController.value.text =
-            userModel.value.countryCode.toString();
-        profileImage.value = userModel.value.profilePictureURL ?? '';
-        for (var element in zoneList) {
-          if (element.id == userModel.value.zoneId) {
-            selectedZone.value = element;
-            print(" getUserProfile userDeliveryCharge ${selectedZone.value.userDeliveryCharge.toString()}");
-          }
-        }
+
+      String userId = await LoginController.getFirebaseId();
+      if (userId.trim().isEmpty) {
+        userId = Constant.userModel?.id?.toString() ?? '';
       }
-    });
-    isLoading.value = false;
+
+      final profile = userId.trim().isEmpty
+          ? null
+          : await FireStoreUtils.getUserProfile(userId, forceRefresh: true);
+      _applyUserData(profile ?? Constant.userModel);
+      _syncSelectedZone();
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void _applyUserData(UserModel? data) {
+    if (data == null) return;
+    userModel.value = data;
+    firstNameController.value.text = data.firstName ?? '';
+    lastNameController.value.text = data.lastName ?? '';
+    emailController.value.text = data.email ?? '';
+    phoneNumberController.value.text = data.phoneNumber ?? '';
+    countryCodeController.value.text = data.countryCode ?? '+91';
+    profileImage.value = data.profilePictureURL ?? '';
+    _syncSelectedZone();
+  }
+
+  void _syncSelectedZone() {
+    if (zoneList.isEmpty) return;
+    final zoneId = userModel.value.zoneId;
+    if (zoneId == null) return;
+    for (final element in zoneList) {
+      if (element.id == zoneId) {
+        selectedZone.value = element;
+        break;
+      }
+    }
   }
 
   saveData() async {
@@ -96,5 +113,15 @@ class EditProfileController extends GetxController {
     } on PlatformException catch (e) {
       ShowToastDialog.showToast("${"failed_to_pick".tr} : \n $e");
     }
+  }
+
+  @override
+  void onClose() {
+    firstNameController.value.dispose();
+    lastNameController.value.dispose();
+    emailController.value.dispose();
+    phoneNumberController.value.dispose();
+    countryCodeController.value.dispose();
+    super.onClose();
   }
 }

@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/foundation.dart';
 
 import 'controllers/edit_profile_controller.dart';
 
@@ -69,35 +70,45 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 // Add this to your main function
 // Add this to your main function
 void main() async {
-  // runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    // CRITICAL: Register background message handler BEFORE Firebase initialization
-    // This MUST be at top level, not conditional
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    
-    // Initialize Firebase
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    // Initialize notifications BEFORE running app
-    await NotificationService().initInfo();
-    // Initialize other services
-    await Preferences.initPref();
-    // Restore cached terms & privacy so they're visible before getSettings runs
-    final cachedTerms = Preferences.getString(Preferences.cachedTermsAndConditions);
-    final cachedPrivacy = Preferences.getString(Preferences.cachedPrivacyPolicy);
-    if (cachedTerms.isNotEmpty) Constant.termsAndConditions = cachedTerms;
-    if (cachedPrivacy.isNotEmpty) Constant.privacyPolicy = cachedPrivacy;
-    await AudioPlayerService.initAudio();
-    // Initialize Play Integrity services
-    print('🚀 Initializing Play Integrity Service...');
-    await PlayIntegrityService.initialize();
+  WidgetsFlutterBinding.ensureInitialized();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await Preferences.initPref();
+
+  // Restore cached terms & privacy so they're visible before getSettings runs
+  final cachedTerms = Preferences.getString(Preferences.cachedTermsAndConditions);
+  final cachedPrivacy = Preferences.getString(Preferences.cachedPrivacyPolicy);
+  if (cachedTerms.isNotEmpty) Constant.termsAndConditions = cachedTerms;
+  if (cachedPrivacy.isNotEmpty) Constant.privacyPolicy = cachedPrivacy;
+
+  runApp(const MyApp());
+
+  // Start non-critical services after first frame for faster perceived startup.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_warmupServices());
+  });
+}
+
+Future<void> _warmupServices() async {
+  await Future.wait([
+    NotificationService().initInfo(),
+    AudioPlayerService.initAudio(),
+    PlayIntegrityService.initialize(),
+  ] as Iterable<Future<dynamic>>);
+
+  if (kDebugMode) {
+    debugPrint('Play Integrity service initialized');
+  }
+
+  if (!Get.isRegistered<PlayIntegrityController>()) {
     Get.put(PlayIntegrityController());
+  }
+  if (!Get.isRegistered<EditProfileController>()) {
     Get.put(EditProfileController(), permanent: true);
-    runApp(const MyApp());
-  // }, (error, stackTrace) {
-  //   log('Error in main: $error');
-  // });
+  }
 }
 
 final RxBool isInPipMode = false.obs; // 👈 global reactive variable
@@ -110,6 +121,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   DarkThemeProvider themeChangeProvider = DarkThemeProvider();
+  bool _audioInitializedAfterPause = false;
   @override
   void initState() {
     super.initState();
@@ -133,13 +145,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
-      AudioPlayerService.initAudio();
+      // Mark for resume-time refresh to avoid frequent re-init during transitions.
+      _audioInitializedAfterPause = false;
     } else if (state == AppLifecycleState.detached) {
       AudioPlayerService.playSound(false);
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_audioInitializedAfterPause) {
+        _audioInitializedAfterPause = true;
+        unawaited(AudioPlayerService.initAudio());
+      }
+      isInPipMode.value = false;
     } else {
       isInPipMode.value = false;
     }
-    getCurrentAppTheme();
   }
   // @override
   // void didChangeAppLifecycleState(AppLifecycleState state) {

@@ -19,8 +19,10 @@ class EditProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
-        init: EditProfileController(),
+    return GetX<EditProfileController>(
+        init: Get.isRegistered<EditProfileController>()
+            ? Get.find<EditProfileController>()
+            : EditProfileController(),
         builder: (controller) {
           return Scaffold(
             appBar: AppBar(
@@ -39,7 +41,9 @@ class EditProfileScreen extends StatelessWidget {
                     fontFamily: AppThemeData.medium),
               ),
             ),
-            body: SingleChildScrollView(
+            body: controller.isLoading.value
+                ? Center(child: Constant.loader())
+                : SingleChildScrollView(
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 20),

@@ -22,6 +22,7 @@ class XenditScreen extends StatefulWidget {
 class _XenditScreenState extends State<XenditScreen> {
   WebViewController controller = WebViewController();
   bool isLoading = true;
+  Timer? _statusPollTimer;
 
   @override
   void initState() {
@@ -32,24 +33,24 @@ class _XenditScreenState extends State<XenditScreen> {
   }
 
   void callTransaction() {
-    Timer? timer;
-    timer = Timer.periodic(const Duration(seconds: 4), (Timer t) async {
+    _statusPollTimer?.cancel();
+    _statusPollTimer = Timer.periodic(const Duration(seconds: 4), (Timer t) async {
       if (!mounted) {
-        timer?.cancel();
+        _statusPollTimer?.cancel();
         return;
       }
       await Future.delayed(const Duration(seconds: 5)).then((v) async {
         final value = await checkStatus(paymentId: widget.transId);
         if (!mounted) {
-          timer?.cancel();
+          _statusPollTimer?.cancel();
           return;
         }
         if (value.status == 'PAID' || value.status == 'SETTLED') {
-          timer?.cancel();
+          _statusPollTimer?.cancel();
 
           Get.back(result: true);
         } else if (value.status == 'FAILED') {
-          timer?.cancel();
+          _statusPollTimer?.cancel();
           Get.back(result: false);
         }
       });
@@ -58,6 +59,7 @@ class _XenditScreenState extends State<XenditScreen> {
 
   @override
   void dispose() {
+    _statusPollTimer?.cancel();
     super.dispose();
   }
 

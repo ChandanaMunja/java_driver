@@ -16,6 +16,7 @@ class RestaurantImageView extends StatefulWidget {
 
 class _RestaurantImageViewState extends State<RestaurantImageView> {
   int currentPage = 0;
+  Timer? _sliderTimer;
 
   PageController pageController = PageController(initialPage: 1);
 
@@ -27,7 +28,8 @@ class _RestaurantImageViewState extends State<RestaurantImageView> {
 
   void animateSlider() {
     if (widget.vendorModel.photos != null && widget.vendorModel.photos!.isNotEmpty) {
-      Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+      _sliderTimer?.cancel();
+      _sliderTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
         if (currentPage < widget.vendorModel.photos!.length) {
           currentPage++;
         } else {
@@ -41,9 +43,18 @@ class _RestaurantImageViewState extends State<RestaurantImageView> {
             curve: Curves.easeIn,
           );
         }
-        setState(() {});
+        if (mounted) {
+          setState(() {});
+        }
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _sliderTimer?.cancel();
+    pageController.dispose();
+    super.dispose();
   }
 
   @override

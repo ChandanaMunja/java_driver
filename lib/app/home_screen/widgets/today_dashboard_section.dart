@@ -1,6 +1,5 @@
 
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
@@ -20,7 +19,7 @@ const double _kBonusAmount      = 120.0;
 // =============================================================================
 //  TodayDashboardSection
 // =============================================================================
-class TodayDashboardSection extends StatelessWidget {
+class TodayDashboardSection extends StatefulWidget {
   final DarkThemeProvider theme;
   final HomeController ctrl;
 
@@ -31,9 +30,18 @@ class TodayDashboardSection extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    ctrl.ensureTodayDashboardLoaded();
+  State<TodayDashboardSection> createState() => _TodayDashboardSectionState();
+}
 
+class _TodayDashboardSectionState extends State<TodayDashboardSection> {
+  @override
+  void initState() {
+    super.initState();
+    widget.ctrl.ensureTodayDashboardLoaded();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -41,7 +49,7 @@ class TodayDashboardSection extends StatelessWidget {
         Text(
           'Today\'s Summary'.tr,
           style: TextStyle(
-            color: theme.getThem() ? AppThemeData.grey50 : AppThemeData.grey900,
+            color: widget.theme.getThem() ? AppThemeData.grey50 : AppThemeData.grey900,
             fontSize: 18,
             fontFamily: AppThemeData.semiBold,
           ),
@@ -50,10 +58,10 @@ class TodayDashboardSection extends StatelessWidget {
 
         // ── Metric cards ──────────────────────────────────────────────────
         Obx(() {
-          final api           = ctrl.todayDashboard.value;
-          final totalOrders   = api?.totalOrdersToday ?? _fallbackOrders(ctrl);
+          final api           = widget.ctrl.todayDashboard.value;
+          final totalOrders   = api?.totalOrdersToday ?? _fallbackOrders(widget.ctrl);
           final totalEarnings =
-              (api?.totalEarningsToday ?? _fallbackEarnings(ctrl)) +
+              (api?.totalEarningsToday ?? _fallbackEarnings(widget.ctrl)) +
                   (totalOrders >= _kBonusOrderTarget ? _kBonusAmount : 0);
 
           return Row(
@@ -86,19 +94,19 @@ class TodayDashboardSection extends StatelessWidget {
 
         // ── Incentive card ─────────────────────────────────────────────────
         Obx(() {
-          final api       = ctrl.todayDashboard.value;
-          final completed = api?.totalOrdersToday ?? _fallbackOrders(ctrl);
+          final api       = widget.ctrl.todayDashboard.value;
+          final completed = api?.totalOrdersToday ?? _fallbackOrders(widget.ctrl);
           return _IncentiveCard(
-            theme: theme,
+            theme: widget.theme,
             completedOrders: completed,
-            ctrl: ctrl,
+            ctrl: widget.ctrl,
           );
         }),
 
         const SizedBox(height: 14),
 
         // ── Status panel ───────────────────────────────────────────────────
-        _StatusPanel(theme: theme, ctrl: ctrl),
+        _StatusPanel(theme: widget.theme, ctrl: widget.ctrl),
 
         const SizedBox(height: 8),
       ],
