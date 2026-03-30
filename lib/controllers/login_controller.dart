@@ -277,6 +277,12 @@ class LoginController extends GetxController {
   static Future<void> logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      final uid = prefs.getString('firebase_id') ?? '';
+      if (uid.isNotEmpty) {
+        await prefs.remove('verif_id_draft_$uid');
+        await prefs.remove('verif_id_draft_aadhaar_$uid');
+        await prefs.remove('verif_id_draft_dl_$uid');
+      }
       // Remove all user-related data
       await prefs.remove('userData');
       await prefs.remove('isLoggedIn');

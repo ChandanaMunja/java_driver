@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 import 'package:country_code_picker/country_code_picker.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:jippydriver_driver/app/splash_screen.dart';
@@ -206,8 +205,22 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             locale: LocalizationService.locale,
             fallbackLocale: LocalizationService.locale,
             translations: LocalizationService(),
-            builder: EasyLoading.init(),
-            // Optimize route transitions for smoother navigation
+            builder: (context, child) {
+              final easyLoadingBuilder = EasyLoading.init();
+
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+
+              return SafeArea(
+                top: false, // ❌ don't apply SafeArea to top
+                child: ColoredBox(
+                  color: isDark ? Colors.black : Colors.white, // ✅ dynamic color
+                  child: easyLoadingBuilder(
+                    context,
+                    child ?? const SizedBox.shrink(),
+                  ),
+                ),
+              );
+            },            // Optimize route transitions for smoother navigation
             transitionDuration: const Duration(milliseconds: 300),
             defaultTransition: Transition.rightToLeft,
             home: GetBuilder<GlobalSettingController>(

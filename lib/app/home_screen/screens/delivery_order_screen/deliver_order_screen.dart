@@ -15,6 +15,60 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 
+const String _kPaymentQrAsset = 'assets/images/paymentqr.jpeg';
+
+void _openPaymentQrFullscreen(BuildContext context) {
+  Navigator.of(context, rootNavigator: true).push<void>(
+    PageRouteBuilder<void>(
+      opaque: true,
+      barrierDismissible: true,
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        return FadeTransition(
+          opacity: animation,
+          child: Scaffold(
+            backgroundColor: Colors.black,
+            body: SafeArea(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Center(
+                    child: InteractiveViewer(
+                      minScale: 0.6,
+                      maxScale: 4,
+                      child: Image.asset(
+                        _kPaymentQrAsset,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'Could not load payment QR'.tr,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  PositionedDirectional(
+                    top: 4,
+                    end: 4,
+                    child: IconButton(
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.white, size: 28),
+                      onPressed: () => Navigator.of(ctx).pop(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 220),
+    ),
+  );
+}
+
 class DeliverOrderScreen extends StatelessWidget {
   const DeliverOrderScreen({super.key});
 
@@ -506,37 +560,91 @@ class DeliverOrderScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  bottomNavigationBar: InkWell(
-                    onTap: controller.isCompletingOrder.value ? null : () async {
-                      if (controller.conformPickup.value == false) {
-                        ShowToastDialog.showToast("Conform Deliver order".tr);
-                      } else {
-                        await controller.completedOrder();
-                      }
-                    },
+                  bottomNavigationBar: Material(
+                    elevation: 8,
+                    color: AppThemeData.driverApp300,
                     child: SafeArea(
-                      child: Container(
-                        color: controller.isCompletingOrder.value
-                            ? AppThemeData.grey400
-                            : AppThemeData.driverApp300,
-                        width: Responsive.width(100, context),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          child: Text(
-                            controller.isCompletingOrder.value
-                                ? "Processing...".tr
-                                : "Make Order Delivered".tr,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: themeChange.getThem()
-                                  ? AppThemeData.grey50
-                                  : AppThemeData.grey50,
-                              fontSize: 16,
-                              fontFamily: AppThemeData.medium,
-                              fontWeight: FontWeight.w400,
+                      top: false,
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // 🔵 Left Button (smaller now)
+                            Expanded(
+                              flex: 2, // 👈 reduce size
+                              child: InkWell(
+                                onTap: controller.isCompletingOrder.value
+                                    ? null
+                                    : () async {
+                                  if (controller.conformPickup.value == false) {
+                                    ShowToastDialog.showToast(
+                                        "Conform Deliver order".tr);
+                                  } else {
+                                    await controller.completedOrder();
+                                  }
+                                },
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  color: controller.isCompletingOrder.value
+                                      ? AppThemeData.grey400
+                                      : AppThemeData.driverApp300,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 16, horizontal: 8),
+                                  child: Text(
+                                    controller.isCompletingOrder.value
+                                        ? "Processing...".tr
+                                        : "Make Order Delivered".tr,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: AppThemeData.grey50,
+                                      fontSize: 16,
+                                      fontFamily: AppThemeData.medium,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
+
+                            Container(
+                              width: 1,
+                              color: Colors.white24,
+                            ),
+
+                            // 🟢 Payment Button (bigger)
+                            Expanded(
+                              flex: 1, // 👈 increase this to 2 if you want equal
+                              child: Material(
+                                color: AppThemeData.driverApp300,
+                                child: InkWell(
+                                  onTap: () => _openPaymentQrFullscreen(context),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 12),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(
+                                          Icons.qr_code_2_rounded,
+                                          color: AppThemeData.grey50,
+                                          size: 28, // 👈 slightly bigger icon
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          'Payment'.tr,
+                                          style: const TextStyle(
+                                            color: AppThemeData.grey50,
+                                            fontSize: 14, // 👈 bigger text
+                                            fontFamily: AppThemeData.medium,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
                       ),
                     ),
                   ),
