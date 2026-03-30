@@ -13,6 +13,8 @@ import 'package:jippydriver_driver/services/localization_service.dart';
 import 'package:jippydriver_driver/services/play_integrity_service.dart';
 import 'package:jippydriver_driver/themes/styles.dart';
 import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
+import 'package:jippydriver_driver/utils/driver_location_sync.dart';
+import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/notification_service.dart' show NotificationService, firebaseMessageBackgroundHandle;
 import 'package:jippydriver_driver/utils/preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -92,11 +94,17 @@ void main() async {
 }
 
 Future<void> _warmupServices() async {
+  Future<void> _asFuture(dynamic actionResult) async {
+    if (actionResult is Future) {
+      await actionResult;
+    }
+  }
+
   await Future.wait([
-    NotificationService().initInfo(),
-    AudioPlayerService.initAudio(),
-    PlayIntegrityService.initialize(),
-  ] as Iterable<Future<dynamic>>);
+    _asFuture(NotificationService().initInfo()),
+    _asFuture(AudioPlayerService.initAudio()),
+    _asFuture(PlayIntegrityService.initialize()),
+  ]);
 
   if (kDebugMode) {
     debugPrint('Play Integrity service initialized');
@@ -107,6 +115,16 @@ Future<void> _warmupServices() async {
   }
   if (!Get.isRegistered<EditProfileController>()) {
     Get.put(EditProfileController(), permanent: true);
+  }
+}
+
+/// When the app returns to foreground, refresh [UserModel.location] from GPS if logged in.
+Future<void> _syncDriverLocationIfLoggedIn() async {
+  try {
+    if (!await FireStoreUtils.isLogin()) return;
+    await DriverLocationSync.syncDeviceLocationIntoUserModel();
+  } catch (e, st) {
+    debugPrint('Resume location sync: $e\n$st');
   }
 }
 
@@ -153,6 +171,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         _audioInitializedAfterPause = true;
         unawaited(AudioPlayerService.initAudio());
       }
+      unawaited(_syncDriverLocationIfLoggedIn());
       isInPipMode.value = false;
     } else {
       isInPipMode.value = false;

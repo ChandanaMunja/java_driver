@@ -1,4 +1,5 @@
 import 'package:jippydriver_driver/constant/constant.dart';
+import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/app/home_screen/screens/pickup_order_screen/controller/pickup_order_controller.dart';
 import 'package:jippydriver_driver/models/cart_product_model.dart';
@@ -526,12 +527,52 @@ class PickupOrderScreen extends StatelessWidget {
                         // Update only status field instead of entire order
                         final orderId = controller.orderModel.value.id ?? '';
                         if (orderId.isNotEmpty) {
-                          await FireStoreUtils.updateOrderStatus(
+                          final ok = await FireStoreUtils.updateOrderStatus(
                             orderId: orderId,
                             status: Constant.orderInTransit,
                           );
-                          // Update local model for UI consistency
-                          controller.orderModel.value.status = Constant.orderInTransit;
+                          // if (ok == true) {
+                          //   // Update local model for UI consistency
+                          //   controller.orderModel.value.status = Constant.orderInTransit;
+                          //
+                          //   // Notify customer after status update succeeds.
+                          //   final order = controller.orderModel.value;
+                          //   String token =
+                          //       order.author?.fcmToken?.toString().trim() ?? '';
+                          //   final customerId = order.authorID?.toString() ??
+                          //       order.author?.id?.toString() ??
+                          //       order.author?.firebaseId?.toString() ??
+                          //       '';
+                          //   if (customerId.isNotEmpty) {
+                          //     // Always fetch fresh token by customerId.
+                          //     final customer =
+                          //         await FireStoreUtils.getUserProfile(customerId);
+                          //     token = customer?.fcmToken?.toString().trim() ?? token;
+                          //   }
+                          //
+                          //   if (token.isNotEmpty) {
+                          //     print('[FCM][Pickup] orderId=$orderId '
+                          //         'tokenPreview=${token.length > 10 ? token.substring(0, 10) + '...' : token}');
+                          //     final sent = await SendNotification.sendFcmMessage(
+                          //       Constant.orderInTransit,
+                          //       token,
+                          //       {
+                          //         'order_id': orderId,
+                          //         'status': Constant.orderInTransit,
+                          //       },
+                          //     );
+                          //     print('[FCM][Pickup] send result: $sent');
+                          //     if (sent != true) {
+                          //       ShowToastDialog.showToast(
+                          //         'Failed to send pickup notification'.tr,
+                          //       );
+                          //     }
+                          //   } else {
+                          //     ShowToastDialog.showToast(
+                          //       'Customer token missing'.tr,
+                          //     );
+                          //   }
+                          // }
                         }
                         ShowToastDialog.closeLoader();
                         Get.back(result: true);

@@ -314,7 +314,7 @@ class _DashboardHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const _OnlineBadge(),
+
             ],
           ),
         ),
@@ -411,35 +411,108 @@ class _Avatar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ONLINE BADGE
-// ─────────────────────────────────────────────────────────────────────────────
-class _OnlineBadge extends StatelessWidget {
-  const _OnlineBadge();
+// // ONLINE BADGE
+// // ─────────────────────────────────────────────────────────────────────────────
+// class _ActiveBadge extends StatelessWidget {
+//   final bool isActive;
+//   const _ActiveBadge({required this.isActive});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final color = isActive ? AppThemeData.primary300 : AppThemeData.danger300;
+//     return AnimatedContainer(
+//       duration: const Duration(milliseconds: 300),
+//       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+//       decoration: BoxDecoration(
+//         color: color.withOpacity(0.14),
+//         borderRadius: BorderRadius.circular(20),
+//       ),
+//       child: Row(
+//         mainAxisSize: MainAxisSize.min,
+//         children: [
+//           _PulseDot(color: color, animate: isActive),
+//           const SizedBox(width: 6),
+//           Text(
+//             isActive ? 'Active'.tr : 'Inactive'.tr,
+//             style: TextStyle(
+//               color: color,
+//               fontSize: 12,
+//               fontFamily: AppThemeData.medium,
+//             ),
+//           ),
+//         ],
+//       ),
+//     );
+//   }
+// }
+
+class _PulseDot extends StatefulWidget {
+  final Color color;
+  final bool animate;
+  const _PulseDot({required this.color, required this.animate});
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _scale = Tween<double>(begin: 0.9, end: 1.2).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    if (widget.animate) {
+      _controller.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _PulseDot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.animate && !_controller.isAnimating) {
+      _controller.repeat(reverse: true);
+    } else if (!widget.animate && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0.0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2ED07A).withOpacity(0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: const Color(0xFF2ED07A).withOpacity(0.3), width: 1),
-      ),
-      child: Row(
-        children: [
-          Container(
-              width: 6,
-              height: 6,
-              decoration: const BoxDecoration(
-                  color: Color(0xFF2ED07A), shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-          const Text('Online',
-              style: TextStyle(
-                  fontFamily: AppThemeData.semiBold,
-                  fontSize: 12,
-                  color: Color(0xFF2ED07A))),
-        ],
+    if (!widget.animate) {
+      return Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    return ScaleTransition(
+      scale: _scale,
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          color: widget.color,
+          shape: BoxShape.circle,
+        ),
       ),
     );
   }

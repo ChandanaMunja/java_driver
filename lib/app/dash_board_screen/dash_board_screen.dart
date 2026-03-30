@@ -59,6 +59,7 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
   // Controller is created ONCE here and reused by DrawerView via Get.find()
   late final DashBoardController _ctrl;
   bool _isForcingInactive = false;
+  bool _isTogglingActive = false;
 
   @override
   void initState() {
@@ -131,18 +132,16 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
           scale: 1.0,
           child: Obx(() {
             final isDocVerified = _ctrl.userModel.value.isDocumentVerify == true;
-            if (!isDocVerified && (_ctrl.userModel.value.isActive ?? false)) {
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _enforceActiveRules();
-              });
-            }
             final isActiveValue = isDocVerified
                 ? (_ctrl.userModel.value.isActive ?? false)
                 : false;
             return CupertinoSwitch(
               value: isActiveValue,
               activeColor: AppThemeData.primary300,
-              onChanged: (val) => _toggleActiveFromAppBar(val),
+              onChanged: (val) async {
+                if (_isTogglingActive) return;
+                await _toggleActiveFromAppBar(val);
+              },
             );
           }),
         ),
@@ -151,58 +150,60 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
   }
 
   Future<void> _toggleActiveFromAppBar(bool value) async {
+    if (_isTogglingActive) return;
     final user = _ctrl.userModel.value;
+    if ((user.isActive ?? false) == value) return;
+    _isTogglingActive = true;
 
-    final isDocVerified = user.isDocumentVerify == true;
-    final docVerificationRequired = !isDocVerified;
+    try {
+      final isDocVerified = user.isDocumentVerify == true;
+      final docVerificationRequired = !isDocVerified;
 
-    /// ❌ BLOCK turning ON if not verified
-    if (docVerificationRequired && value == true) {
-      ShowToastDialog.showToast(
-        'Complete the verification steps to enable availability.'.tr,
-      );
+      /// ❌ BLOCK turning ON if not verified
+      if (docVerificationRequired && value == true) {
+        ShowToastDialog.showToast(
+          'Complete the verification steps to enable availability.'.tr,
+        );
 
-      /// Force UI OFF immediately
-      final forceOff = UserModel.fromJson(user.toJson());
-      forceOff.isActive = false;
-      forceOff.active = false;
+        /// Keep local/UI off but don't send a second backend toggle call.
+        final forceOff = UserModel.fromJson(user.toJson());
+        forceOff.isActive = false;
+        _ctrl.userModel.value = forceOff;
+        _ctrl.userModel.refresh();
+        return;
 
-      _ctrl.userModel.value = forceOff;
-      _ctrl.userModel.refresh();
-      final success = await FireStoreUtils.updateUser(forceOff);
-      if (success) {
-        Constant.userModel = forceOff;
+
       }
 
-      return;
-    }
+      /// ✅ Prepare updated user
+      final updated = UserModel.fromJson(user.toJson());
+      // App bar toggle controls only `isActive`.
+      updated.isActive = value;
 
-    /// ✅ Prepare updated user
-    final updated = UserModel.fromJson(user.toJson());
-    updated.isActive = value;
-    updated.active = value;
+      updated.inProgressOrderID = user.inProgressOrderID;
+      updated.orderRequestData = user.orderRequestData;
 
-    updated.inProgressOrderID = user.inProgressOrderID;
-    updated.orderRequestData = user.orderRequestData;
+      /// Persist toggle state first so any later location-sync update uses
+      /// the latest `isActive` value and doesn't send stale false.
+      final success = await FireStoreUtils.updateUser(updated);
 
-    /// 🔥 OPTIONAL: update location only when going ONLINE
-    if (value) {
-      await _ctrl.updateCurrentLocation();
-    }
+      if (success) {
+        /// ✅ Update local state ONLY after success
+        _ctrl.userModel.value = updated;
+        _ctrl.userModel.refresh();
+        Constant.userModel = updated;
 
-    /// 🔥 CALL API FIRST (important)
-    final success = await FireStoreUtils.updateUser(updated);
-
-    if (success) {
-      /// ✅ Update local state ONLY after success
-      _ctrl.userModel.value = updated;
-      _ctrl.userModel.refresh();
-      Constant.userModel = updated;
-    } else {
-      /// ❌ Revert UI if API fails
-      ShowToastDialog.showToast("Failed to update status");
-
-      _ctrl.userModel.refresh(); // revert visually
+        /// Start location listener only after active state is saved.
+        if (value) {
+          await _ctrl.updateCurrentLocation();
+        }
+      } else {
+        /// ❌ Revert UI if API fails
+        ShowToastDialog.showToast("Failed to update status");
+        _ctrl.userModel.refresh(); // revert visually
+      }
+    } finally {
+      _isTogglingActive = false;
     }
   }
 
@@ -215,7 +216,6 @@ class _DashBoardScreenState extends State<DashBoardScreen> {
       try {
         final forced = UserModel.fromJson(_ctrl.userModel.value.toJson());
         forced.isActive = false;
-        forced.active = false;
         _ctrl.userModel.value = forced;
         final success = await FireStoreUtils.updateUser(forced);
         if (success) {

@@ -296,8 +296,23 @@ class UserModel {
       createdAt = null;
     }
 
-    active = json['active'] == 1 || json['active'] == true;
-    isActive = json['isActive'] == 1 || json['isActive'] == true;
+    bool? _parseNullableBool(dynamic value) {
+      if (value == null) return null;
+      if (value is bool) return value;
+      if (value is num) return value != 0;
+      if (value is String) {
+        final v = value.trim().toLowerCase();
+        if (v == '1' || v == 'true' || v == 'yes') return true;
+        if (v == '0' || v == 'false' || v == 'no') return false;
+      }
+      return null;
+    }
+
+    active = _parseNullableBool(json['active']);
+    isActive = _parseNullableBool(json['isActive']);
+    // Backend may send one of the two keys; mirror to avoid accidental false writes.
+    if (active == null && isActive != null) active = isActive;
+    if (isActive == null && active != null) isActive = active;
     isDocumentVerify = json['isDocumentVerify'] == "1" ||
         json['isDocumentVerify'] == true ||
         json['isDocumentVerify'] == 1;

@@ -209,6 +209,112 @@ class DeliverOrderController extends GetxController {
     }
   }
   final controller = Get.find<HomeController>();
+
+  String _walletUpdatedAmountText() {
+    final cc = orderModel.value.calculatedCharges;
+    final raw = cc?['totalCalculatedCharge'];
+    final fromCalculated = double.tryParse(raw?.toString().trim() ?? '');
+    if (fromCalculated != null) {
+      return fromCalculated.toStringAsFixed(2);
+    }
+    final fallback =
+        double.tryParse(orderModel.value.deliveryCharge?.toString().trim() ?? '') ??
+            0.0;
+    return fallback.toStringAsFixed(2);
+  }
+
+void _showWalletUpdatedPopup() {
+  final amount = _walletUpdatedAmountText();
+
+  Get.dialog(
+    Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: Theme.of(Get.context!).cardColor,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_rounded,
+                color: Colors.green,
+                size: 32,
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Title
+            Text(
+              'Wallet Updated'.tr,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(Get.context!).textTheme.bodyLarge!.color,
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Message
+            RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                text: 'Your wallet has been updated with\n'.tr,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(Get.context!).textTheme.bodyMedium!.color,
+                ),
+                children: [
+                  TextSpan(
+                    text: '₹$amount',
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                onPressed: () {
+                  Get.back();
+                  Get.back(result: orderModel.value.id ?? true);
+                },
+                child: Text(
+                  'OK'.tr,
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+    barrierDismissible: false,
+  );
+}
   Future<void> completedOrder() async {
     // Prevent duplicate calls
     if (isCompletingOrder.value) {
@@ -330,12 +436,32 @@ class DeliverOrderController extends GetxController {
         }
       });
       print("[DeliverOrderController] Sending notification to customer");
-      if (orderModel.value.author?.fcmToken != null) {
-        await SendNotification.sendFcmMessage(
+      final order = orderModel.value;
+      String token = order.author?.fcmToken?.toString().trim() ?? '';
+      final customerId = order.authorID?.toString() ??
+          order.author?.id?.toString() ??
+          order.author?.firebaseId?.toString() ??
+          '';
+      if (customerId.isNotEmpty) {
+        final customer = await FireStoreUtils.getUserProfile(customerId);
+        token = customer?.fcmToken?.toString().trim() ?? token;
+      }
+      if (token.isNotEmpty) {
+        print('[FCM][Delivery] orderId=${order.id} tokenLen=${token.length}');
+        final sent = await SendNotification.sendFcmMessage(
           Constant.driverCompleted,
-          orderModel.value.author?.fcmToken.toString() ??'',
-          {},
+          token,
+          {
+            'order_id': order.id,
+            'status': Constant.orderCompleted,
+          },
         );
+        print('[FCM][Delivery] send result: $sent');
+        if (sent != true) {
+          ShowToastDialog.showToast(
+            'Failed to send delivery notification'.tr,
+          );
+        }
       }
       ShowToastDialog.closeLoader();
       print("[DeliverOrderController] Order completed, closing loader and going back");
@@ -343,8 +469,7 @@ class DeliverOrderController extends GetxController {
       try {
         Get.find<HomeController>().markOrderAsCompleted(orderModel.value.id);
       } catch (_) {}
-      // Pass order ID so HomeScreen can mark it completed even if currentOrder was cleared by race
-      Get.back(result: orderModel.value.id ?? true);
+      _showWalletUpdatedPopup();
     } catch (e) {
       print("[DeliverOrderController] Error in completedOrder: $e");
       ShowToastDialog.closeLoader();

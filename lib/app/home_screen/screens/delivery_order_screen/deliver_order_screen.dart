@@ -109,6 +109,91 @@ class DeliverOrderScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Builder(
+                            builder: (context) {
+                              final calculated =
+                                  controller.orderModel.value.calculatedCharges;
+                              final rawTotal =
+                                  calculated?['totalCalculatedCharge'];
+                              final rawToPay =
+                                  controller.orderModel.value.toPay;
+
+                              final double? parsedToPay = rawToPay != null
+                                  ? double.tryParse(
+                                      rawToPay.toString().trim())
+                                  : null;
+
+                              final double? parsedTotal = rawTotal != null
+                                  ? double.tryParse(
+                                      rawTotal.toString().trim())
+                                  : null;
+
+                              final double? parsedDeliveryCharge = controller
+                                      .orderModel.value.deliveryCharge !=
+                                  null
+                                  ? double.tryParse(controller
+                                      .orderModel.value.deliveryCharge
+                                      .toString()
+                                      .trim())
+                                  : null;
+
+                              final amount = parsedToPay ??
+                                  parsedTotal ??
+                                  parsedDeliveryCharge ??
+                                  0.0;
+
+                              return Container(
+                                decoration: ShapeDecoration(
+                                  color: themeChange.getThem()
+                                      ? AppThemeData.grey900
+                                      : AppThemeData.grey50,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(12),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Amount to Collect'.tr,
+                                            style: TextStyle(
+                                              fontFamily: AppThemeData.semiBold,
+                                              fontSize: 16,
+                                              color: themeChange.getThem()
+                                                  ? AppThemeData.grey300
+                                                  : AppThemeData.grey600,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            '₹${amount.toStringAsFixed(2)}',
+                                            style: TextStyle(
+                                              fontFamily: AppThemeData.medium,
+                                              fontSize: 20,
+                                              color: themeChange.getThem()
+                                                  ? AppThemeData.grey50
+                                                  : AppThemeData.grey900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.money_rounded,
+                                      color: AppThemeData.success400,
+                                      size: 28,
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 10),
                           Container(
                             decoration: ShapeDecoration(
                               color: themeChange.getThem()

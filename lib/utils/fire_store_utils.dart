@@ -78,6 +78,12 @@ class FireStoreUtils {
   static Future<String> getCurrentUid() async{
     return await LoginController.getFirebaseId();
   }
+
+  /// Drops in-memory profile cache so the next [getUserProfile] fetch sees fresh data.
+  static void invalidateUserProfileCache(String uuid) {
+    if (uuid.trim().isEmpty) return;
+    _profileCache.remove(uuid);
+  }
   static Future<bool> isLogin() async {
     bool isLogin = false;
     String? userId =await  LoginController.getFirebaseId();
@@ -617,15 +623,27 @@ class FireStoreUtils {
     }
   }
 
- static Future<void> getSettings() async {
+ static Future<void> getSettings({bool forceRefresh = false}) async {
     try {
+      bool _readBool(dynamic value, {bool defaultValue = false}) {
+        if (value is bool) return value;
+        if (value is num) return value != 0;
+        if (value is String) {
+          final v = value.trim().toLowerCase();
+          if (v == 'true' || v == '1' || v == 'yes') return true;
+          if (v == 'false' || v == '0' || v == 'no') return false;
+        }
+        return defaultValue;
+      }
+
       print('getSettings ${Constant.baseUrl}driver-sql/settings');
       // Use HttpClientService with caching - settings rarely change (24 hours cache)
       final httpClient = HttpClientService();
       final response = await httpClient.get(
         Uri.parse('${Constant.baseUrl}driver-sql/settings'),
         cacheStrategy: CacheStrategy.settings, // 24 hours cache
-        useCache: true,
+        useCache: !forceRefresh,
+        forceRefresh: forceRefresh,
         timeout: const Duration(seconds: 15),
       );
       if (response.statusCode == 200) {
@@ -646,7 +664,8 @@ class FireStoreUtils {
           final globalSettings = data['globalSettings'];
           if (globalSettings != null) {
             Constant.orderRingtoneUrl = globalSettings['order_ringtone_url'] ?? '';
-            Constant.isSelfDeliveryFeature = globalSettings['isSelfDelivery'] ?? false;
+            Constant.isSelfDeliveryFeature =
+                _readBool(globalSettings['isSelfDelivery']);
             Preferences.setString(Preferences.orderRingtone, Constant.orderRingtoneUrl);
             final appDriverColor = globalSettings['app_driver_color'];
             if (appDriverColor != null) {
@@ -702,10 +721,52 @@ class FireStoreUtils {
           }
           
           // Process notification_setting
-          final notificationSetting = data['notification_setting'];
+          final rawNotificationSetting = data['notification_setting'];
+          Map<String, dynamic>? notificationSetting;
+          if (rawNotificationSetting is Map) {
+            notificationSetting =
+                Map<String, dynamic>.from(rawNotificationSetting);
+          } else if (rawNotificationSetting is String &&
+              rawNotificationSetting.trim().isNotEmpty) {
+            try {
+              final decoded = jsonDecode(rawNotificationSetting);
+              if (decoded is Map) {
+                notificationSetting = Map<String, dynamic>.from(decoded);
+              }
+            } catch (_) {}
+          }
           if (notificationSetting != null) {
-            Constant.senderId = notificationSetting["projectId"] ?? '';
-            Constant.jsonNotificationFileURL = notificationSetting["serviceJson"] ?? '';
+            final projectId = notificationSetting['projectId'] ??
+                notificationSetting['project_id'] ??
+                notificationSetting['projectid'] ??
+                '';
+
+            final senderId = notificationSetting['senderId'] ??
+                notificationSetting['sender_id'] ??
+                '';
+
+            final serviceJson = notificationSetting['serviceJson'] ??
+                notificationSetting['service_json'] ??
+                notificationSetting['serviceJsonUrl'] ??
+                notificationSetting['service_json_url'] ??
+                notificationSetting['serviceJsonFile'] ??
+                notificationSetting['service_json_file'] ??
+                '';
+
+            // Keep a non-empty value so notification code can resolve project id later.
+            Constant.senderId = (projectId.toString().trim().isNotEmpty
+                    ? projectId.toString()
+                    : senderId.toString())
+                .trim();
+            Constant.jsonNotificationFileURL = serviceJson.toString().trim();
+
+            if (Constant.senderId.isEmpty ||
+                Constant.jsonNotificationFileURL.isEmpty) {
+              log('getSettings notification_setting missing config. '
+                  'senderIdLen=${Constant.senderId.length} '
+                  'serviceJsonLen=${Constant.jsonNotificationFileURL.length} '
+                  'keys=${notificationSetting.keys.toList()}');
+            }
           }
           final restaurantNearBy = data['RestaurantNearBy'];
           if (restaurantNearBy != null) {
@@ -755,7 +816,8 @@ class FireStoreUtils {
           // Process document_verification_settings
           final docVerification = data['document_verification_settings'];
           if (docVerification != null) {
-            Constant.isDriverVerification = docVerification['isDriverVerification'] ?? false;
+            Constant.isDriverVerification =
+                _readBool(docVerification['isDriverVerification']);
             print("Constant.isDriverVerification ${ docVerification['isDriverVerification']}  ${ Constant.isDriverVerification}");
           }
           // Process DriverNearBy
@@ -764,10 +826,12 @@ class FireStoreUtils {
             Constant.minimumDepositToRideAccept = driverNearBy['minimumDepositToRideAccept']?.toString() ?? '';
             Constant.minimumAmountToWithdrawal = driverNearBy['minimumAmountToWithdrawal']?.toString() ?? '';
             Constant.driverLocationUpdate = driverNearBy['driverLocationUpdate']?.toString() ?? '';
-            Constant.singleOrderReceive = driverNearBy['singleOrderReceive'] ?? false;
+            Constant.singleOrderReceive =
+                _readBool(driverNearBy['singleOrderReceive']);
             Constant.selectedMapType = driverNearBy["selectedMapType"] ?? '';
             Constant.mapType = driverNearBy["mapType"] ?? '';
-            Constant.autoApproveDriver = driverNearBy["auto_approve_driver"] ?? false;
+            Constant.autoApproveDriver =
+                _readBool(driverNearBy["auto_approve_driver"]);
             log("Constant.singleOrderReceive :: ${Constant.singleOrderReceive}");
           }
         } else {

@@ -423,6 +423,7 @@ import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
+import 'package:jippydriver_driver/utils/driver_location_sync.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
 import 'package:jippydriver_driver/utils/version_utils.dart';
@@ -475,6 +476,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
   @override
   void onInit() {
     AppLogger.log('DashBoardController onInit()', tag: 'Dashboard');
+    DriverLocationSync.afterLocationAppliedToUserModel = () => userModel.refresh();
     WidgetsBinding.instance.addObserver(this);
     _checkMandatoryUpdate();
     getUser();          // fetches user then starts location listener
@@ -490,6 +492,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
   @override
   void onClose() {
     AppLogger.log('DashBoardController onClose()', tag: 'Dashboard');
+    DriverLocationSync.afterLocationAppliedToUserModel = null;
     WidgetsBinding.instance.removeObserver(this);
     _stopLocationListener();
     _batchTimer?.cancel();
@@ -504,6 +507,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
 
     if (!wasFg && isFg) {
       AppLogger.log('App foregrounded', tag: 'Dashboard');
+      unawaited(DriverLocationSync.syncDeviceLocationIntoUserModel());
       // Flush any batched background locations immediately
       if (_pendingUpdates.isNotEmpty) _flushBatch();
       // Only re-check update once per session after the initial check

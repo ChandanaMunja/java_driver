@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:jippydriver_driver/constant/constant.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:geolocator/geolocator.dart';
@@ -84,14 +85,15 @@ class Utils {
     }
 
     if (permission == LocationPermission.deniedForever) {
-      // Permissions are denied forever, handle appropriately.
-      return Future.error(
-          'Location permissions are permanently denied, we cannot request permissions.');
+      return null;
     }
 
-    // When we reach here, permissions are granted and we can
-    // continue accessing the position of the device.
-    return await Geolocator.getCurrentPosition();
+    try {
+      return await Geolocator.getCurrentPosition();
+    } catch (e, st) {
+      debugPrint('getCurrentPosition failed: $e\n$st');
+      return null;
+    }
   }
 
   static redirectMap(

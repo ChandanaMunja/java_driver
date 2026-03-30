@@ -11,16 +11,86 @@ import 'package:http/http.dart' as http;
 class SendNotification {
   static final _scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
 
+  static Future<void>? _settingsInFlight;
+  static bool _settingsLoaded = false;
+  static String _fcmProjectId = '';
+  // Temporary fallback while backend/service JSON derivation is unstable.
+  // Backend currently provides `notification_setting.projectId` as empty, but we
+  // do have the correct Firebase project id.
+  static const String _fallbackProjectId = 'jippymart-27c08';
+
+  static Future<void> _ensureNotificationSettings() async {
+    if (_settingsLoaded) return;
+    if (_settingsInFlight != null) return _settingsInFlight!;
+
+    final needs = Constant.senderId.isEmpty ||
+        Constant.jsonNotificationFileURL.isEmpty;
+    if (!needs) {
+      _settingsLoaded = true;
+      return;
+    }
+
+    _settingsInFlight = () async {
+      try {
+        debugPrint('[FCM] Loading notification settings (senderId/json)...');
+        await FireStoreUtils.getSettings(forceRefresh: true);
+      } catch (e) {
+        debugPrint('[FCM] getSettings error: $e');
+      }
+
+      final ok = Constant.senderId.isNotEmpty &&
+          Constant.jsonNotificationFileURL.isNotEmpty;
+      _settingsLoaded = ok;
+
+      if (!ok) {
+        debugPrint('[FCM] Still missing config after getSettings. '
+            'senderIdLen=${Constant.senderId.length} '
+            'serviceJsonLen=${Constant.jsonNotificationFileURL.length}');
+      } else {
+        debugPrint('[FCM] Notification settings loaded.');
+      }
+
+      _settingsInFlight = null;
+    }();
+
+    await _settingsInFlight;
+  }
+
   static Future getCharacters() {
+    if (Constant.jsonNotificationFileURL.isEmpty) {
+      throw ArgumentError('jsonNotificationFileURL is empty');
+    }
     return http.get(Uri.parse(Constant.jsonNotificationFileURL.toString()));
   }
 
   static Future<String> getAccessToken() async {
     Map<String, dynamic> jsonData = {};
 
+    await _ensureNotificationSettings();
     await getCharacters().then((response) {
-      jsonData = json.decode(response.body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Failed to fetch service JSON. '
+            'status=${response.statusCode} body=${response.body}');
+      }
+      final decoded = json.decode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('Invalid service JSON payload type.');
+      }
+      jsonData = decoded;
     });
+
+    final String parsedProjectId =
+        (jsonData['project_id'] ?? '').toString().trim();
+    if (parsedProjectId.isNotEmpty) {
+      _fcmProjectId = parsedProjectId;
+    }
+
+    if ((jsonData['private_key'] ?? '').toString().trim().isEmpty ||
+        (jsonData['client_email'] ?? '').toString().trim().isEmpty ||
+        (jsonData['token_uri'] ?? '').toString().trim().isEmpty) {
+      throw Exception('Service account JSON missing required keys.');
+    }
+
     final serviceAccountCredentials =
         ServiceAccountCredentials.fromJson(jsonData);
 
@@ -29,14 +99,29 @@ class SendNotification {
     return client.credentials.accessToken.data;
   }
 
+  static String _resolveProjectForUrl() {
+    // Prefer project_id derived from service account JSON.
+    if (_fcmProjectId.isNotEmpty && !RegExp(r'^\d+$').hasMatch(_fcmProjectId)) {
+      return _fcmProjectId.trim();
+    }
+    final fallback = Constant.senderId.trim();
+    if (fallback.isNotEmpty && !RegExp(r'^\d+$').hasMatch(fallback)) {
+      return fallback;
+    }
+    debugPrint('[FCM] Using hardcoded fallback project id=$_fallbackProjectId');
+    return _fallbackProjectId;
+  }
+
   static Future<bool> sendFcmMessage(
       String type, String token, Map<String, dynamic>? payload) async {
-    if (token == null || token.isEmpty) {
+    if (token.isEmpty) {
       debugPrint('[FCM] Token is null or empty. Skipping notification.');
       return false;
     }
     try {
+      await _ensureNotificationSettings();
       final String accessToken = await getAccessToken();
+      final String projectId = _resolveProjectForUrl();
       debugPrint("accessToken=======>");
       debugPrint(accessToken);
       NotificationModel? notificationModel =
@@ -44,7 +129,7 @@ class SendNotification {
 
       final response = await http.post(
         Uri.parse(
-            'https://fcm.googleapis.com/v1/projects/${Constant.senderId}/messages:send'),
+            'https://fcm.googleapis.com/v1/projects/$projectId/messages:send'),
         headers: <String, String>{
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
@@ -64,9 +149,14 @@ class SendNotification {
       );
 
       debugPrint("Notification=======>");
-      debugPrint(response.statusCode.toString());
+      debugPrint('FCM statusCode=${response.statusCode}');
       debugPrint(response.body);
-      return true;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+      debugPrint('[FCM] sendFcmMessage failed: ${response.statusCode} '
+          'body=${response.body}');
+      return false;
     } catch (e) {
       debugPrint(e.toString());
       return false;
@@ -78,18 +168,20 @@ class SendNotification {
       required String title,
       required String body,
       required Map<String, dynamic> payload}) async {
-    if (token == null || token.isEmpty) {
+    if (token.isEmpty) {
       debugPrint('[FCM] Token is null or empty. Skipping notification.');
       return false;
     }
     try {
+      await _ensureNotificationSettings();
       final String accessToken = await getAccessToken();
+      final String projectId = _resolveProjectForUrl();
       debugPrint("accessToken=======>");
       debugPrint(accessToken);
 
       final response = await http.post(
         Uri.parse(
-            'https://fcm.googleapis.com/v1/projects/${Constant.senderId}/messages:send'),
+            'https://fcm.googleapis.com/v1/projects/$projectId/messages:send'),
         headers: <String, String>{
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
@@ -108,7 +200,12 @@ class SendNotification {
       debugPrint("Notification=======>");
       debugPrint(response.statusCode.toString());
       debugPrint(response.body);
-      return true;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+      debugPrint('[FCM] sendOneNotification failed: ${response.statusCode} '
+          'body=${response.body}');
+      return false;
     } catch (e) {
       debugPrint(e.toString());
       return false;
@@ -118,10 +215,12 @@ class SendNotification {
   static Future<bool> sendChatFcmMessage(String title, String message,
       String token, Map<String, dynamic>? payload) async {
     try {
+      await _ensureNotificationSettings();
       final String accessToken = await getAccessToken();
+      final String projectId = _resolveProjectForUrl();
       final response = await http.post(
         Uri.parse(
-            'https://fcm.googleapis.com/v1/projects/${Constant.senderId}/messages:send'),
+            'https://fcm.googleapis.com/v1/projects/$projectId/messages:send'),
         headers: <String, String>{
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $accessToken',
@@ -139,7 +238,12 @@ class SendNotification {
       debugPrint("Notification=======>");
       debugPrint(response.statusCode.toString());
       debugPrint(response.body);
-      return true;
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return true;
+      }
+      debugPrint('[FCM] sendChatFcmMessage failed: ${response.statusCode} '
+          'body=${response.body}');
+      return false;
     } catch (e) {
       print(e);
       return false;

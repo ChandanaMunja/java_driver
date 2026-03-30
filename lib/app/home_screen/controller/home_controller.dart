@@ -201,6 +201,8 @@ class HomeController extends GetxController {
 
   // ── Notification dedup ────────────────────────────────────────────────
   final Set<String> _notifiedOrderIds = {};
+  final Map<String, DateTime> _recentlyHandledOrderMutes = {};
+  static const Duration _handledOrderMuteTtl = Duration(seconds: 20);
   final FlutterLocalNotificationsPlugin _localNotifications =
   FlutterLocalNotificationsPlugin();
 
@@ -1481,6 +1483,7 @@ class HomeController extends GetxController {
 
       if (result == true) {
         final orderId = currentOrder.value.id!;
+        _markOrderHandledAndMute(orderId);
         driverModel.value.orderRequestData?.remove(orderId);
         _notifiedOrderIds.remove(orderId);
         driverModel.value.inProgressOrderID ??= [];
@@ -1537,35 +1540,41 @@ class HomeController extends GetxController {
           snackPosition: SnackPosition.BOTTOM);
       AppLogger.log('acceptOrder error: $e', tag: 'Error');
     } finally {
+      await AudioPlayerService.playSound(false);
       _isAcceptingOrder = false;
     }
   }
 
   Future<void> rejectOrder() async {
     await AudioPlayerService.playSound(false);
-    currentOrder.value.rejectedByDrivers ??= [];
-    if (driverModel.value.id != null) {
-      currentOrder.value.rejectedByDrivers!.add(driverModel.value.id);
+    try {
+      currentOrder.value.rejectedByDrivers ??= [];
+      if (driverModel.value.id != null) {
+        currentOrder.value.rejectedByDrivers!.add(driverModel.value.id);
+      }
+      await FireStoreUtils.setOrder(currentOrder.value);
+
+      final id = currentOrder.value.id;
+      if (id != null) _markOrderHandledAndMute(id);
+      driverModel.value.orderRequestData?.remove(id);
+      _notifiedOrderIds.remove(id);
+
+      if (id != null) {
+        final h = HttpClientService();
+        await h.invalidateCache('orders/$id');
+        await h.invalidateCache('users/');
+      }
+
+      await FireStoreUtils.updateUser(driverModel.value);
+      currentOrder.value = OrderModel();
+      _chargesComputedForOrderId = null;
+      await clearMap();
+      _notifyOrderUiChanged(refreshOrder: false);
+
+      if (Constant.singleOrderReceive == false) Get.back();
+    } finally {
+      await AudioPlayerService.playSound(false);
     }
-    await FireStoreUtils.setOrder(currentOrder.value);
-
-    final id = currentOrder.value.id;
-    driverModel.value.orderRequestData?.remove(id);
-    _notifiedOrderIds.remove(id);
-
-    if (id != null) {
-      final h = HttpClientService();
-      await h.invalidateCache('orders/$id');
-      await h.invalidateCache('users/');
-    }
-
-    await FireStoreUtils.updateUser(driverModel.value);
-    currentOrder.value = OrderModel();
-    _chargesComputedForOrderId = null;
-    await clearMap();
-    _notifyOrderUiChanged(refreshOrder: false);
-
-    if (Constant.singleOrderReceive == false) Get.back();
   }
 
   bool get isPickupNavigationState {
@@ -1667,7 +1676,7 @@ class HomeController extends GetxController {
                   .toList() ??
                   [];
               for (final oid in newIds) {
-                if (oid.isNotEmpty) {
+                if (oid.isNotEmpty && !_isOrderMuted(oid)) {
                   await _showOrderNotification(oid);
                   await AudioPlayerService.playSound(true);
                 }
@@ -1947,7 +1956,7 @@ class HomeController extends GetxController {
             curr?.where((id) => prev == null || !prev.contains(id)).toList() ??
                 [];
         for (final oid in newIds) {
-          if (oid.isNotEmpty) {
+          if (oid.isNotEmpty && !_isOrderMuted(oid)) {
             await _showOrderNotification(oid);
             await AudioPlayerService.playSound(true);
           }
@@ -2140,6 +2149,22 @@ class HomeController extends GetxController {
     } catch (e) {
       AppLogger.log('Notification error: $e', tag: 'Notifications');
     }
+  }
+
+  void _markOrderHandledAndMute(String orderId) {
+    if (orderId.isEmpty) return;
+    _recentlyHandledOrderMutes[orderId] = DateTime.now();
+  }
+
+  bool _isOrderMuted(String orderId) {
+    if (orderId.isEmpty) return false;
+    final at = _recentlyHandledOrderMutes[orderId];
+    if (at == null) return false;
+    if (DateTime.now().difference(at) > _handledOrderMuteTtl) {
+      _recentlyHandledOrderMutes.remove(orderId);
+      return false;
+    }
+    return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════

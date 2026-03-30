@@ -84,58 +84,67 @@ class HomeScreenMultipleOrderController extends GetxController {
     }
     await AudioPlayerService.playSound(false);
     ShowToastDialog.showLoader("Please wait".tr);
-    // Try to atomically assign the order
-    final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
-      orderId: currentOrder.id!,
-      driverId: driverModel.value.id!,
-      driverModel: driverModel.value,
-    );
-    ShowToastDialog.closeLoader();
-    // Handle rate limiting (429)
-    if (assignResult == null) {
-      Get.snackbar(
-        "Rate Limited",
-        "Too many requests. Please wait a moment and try again.",
-        snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 3),
+    try {
+      // Try to atomically assign the order
+      final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
+        orderId: currentOrder.id!,
+        driverId: driverModel.value.id!,
+        driverModel: driverModel.value,
       );
-      return; // Don't clear order, allow retry
-    }
-    if (assignResult == true) {
-      // Update driver's order lists
-      driverModel.value.orderRequestData?.remove(currentOrder.id);
-      driverModel.value.inProgressOrderID ??= [];
-      driverModel.value.inProgressOrderID!.add(currentOrder.id!);
-
-      await FireStoreUtils.updateUser(driverModel.value);
-      // Optionally: send notifications
-      if (currentOrder.author?.fcmToken != null) {
-        await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,
-            currentOrder.author!.fcmToken.toString(), {});
+      ShowToastDialog.closeLoader();
+      // Handle rate limiting (429)
+      if (assignResult == null) {
+        Get.snackbar(
+          "Rate Limited",
+          "Too many requests. Please wait a moment and try again.",
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 3),
+        );
+        return; // Don't clear order, allow retry
       }
-      if (currentOrder.vendor?.fcmToken != null) {
-        await SendNotification.sendFcmMessage(Constant.driverAcceptedNotification,
-            currentOrder.vendor!.fcmToken.toString(), {});
-      }
+      if (assignResult == true) {
+        // Update driver's order lists
+        driverModel.value.orderRequestData?.remove(currentOrder.id);
+        driverModel.value.inProgressOrderID ??= [];
+        driverModel.value.inProgressOrderID!.add(currentOrder.id!);
 
-      // Show success message
-      ShowToastDialog.showToast("Order assigned successfully!".tr);
-    } else {
-      // Show failure message
-      ShowToastDialog.showToast("Order already taken by another driver.".tr);
-      // Optionally: remove this order from the available list in UI
+        await FireStoreUtils.updateUser(driverModel.value);
+        if (currentOrder.author?.fcmToken != null) {
+          await SendNotification.sendFcmMessage(
+              Constant.driverAcceptedNotification,
+              currentOrder.author!.fcmToken.toString(), {});
+        }
+        if (currentOrder.vendor?.fcmToken != null) {
+          await SendNotification.sendFcmMessage(
+              Constant.driverAcceptedNotification,
+              currentOrder.vendor!.fcmToken.toString(), {});
+        }
+        ShowToastDialog.showToast("Order assigned successfully!".tr);
+      } else {
+        // Order was already taken: remove from request list and stop ringing.
+        driverModel.value.orderRequestData?.remove(currentOrder.id);
+        newOrder.remove(currentOrder.id);
+        await FireStoreUtils.updateUser(driverModel.value);
+        ShowToastDialog.showToast("Order already taken by another driver.".tr);
+      }
+    } finally {
+      await AudioPlayerService.playSound(false);
     }
   }
 
   rejectOrder(OrderModel currentOrder) async {
     await AudioPlayerService.playSound(false);
-    currentOrder.rejectedByDrivers ??= [];
+    try {
+      currentOrder.rejectedByDrivers ??= [];
+      currentOrder.rejectedByDrivers!.add(driverModel.value.id);
+      currentOrder.status = Constant.driverRejected;
+      await FireStoreUtils.setOrder(currentOrder);
 
-    currentOrder.rejectedByDrivers!.add(driverModel.value.id);
-    currentOrder.status = Constant.driverRejected;
-    await FireStoreUtils.setOrder(currentOrder);
-
-    driverModel.value.orderRequestData!.remove(currentOrder.id);
-    await FireStoreUtils.updateUser(driverModel.value);
+      driverModel.value.orderRequestData?.remove(currentOrder.id);
+      newOrder.remove(currentOrder.id);
+      await FireStoreUtils.updateUser(driverModel.value);
+    } finally {
+      await AudioPlayerService.playSound(false);
+    }
   }
 }
