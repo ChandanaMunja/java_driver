@@ -1,5 +1,6 @@
 
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer';
 import 'dart:typed_data';
@@ -24,7 +25,9 @@ Future<void> firebaseMessageBackgroundHandle(RemoteMessage message) async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
   await Preferences.initPref();
-  await AudioPlayerService.initAudio();
+  // Do NOT call AudioPlayerService here: it runs in this isolate, while the UI
+  // isolate's stop() on Accept/Reject cannot stop that playback (rings "forever").
+  // Alert sound comes from the local notification channel (order_ringtone raw).
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
   const DarwinInitializationSettings iosInitializationSettings = DarwinInitializationSettings();
@@ -50,9 +53,6 @@ Future<void> firebaseMessageBackgroundHandle(RemoteMessage message) async {
     await androidImplementation.createNotificationChannel(backgroundChannel);
     log("✅ Background notification channel created");
   }
-
-  // Play sound for background notification
-  await AudioPlayerService.playSound(true);
 
   // Show local notification with sound (handles both notification and data-only messages)
   await NotificationService().displayBackgroundNotification(message, localNotifications);
@@ -165,8 +165,9 @@ class NotificationService {
                 android: initializationSettingsAndroid,
                 iOS: iosInitializationSettings);
         await flutterLocalNotificationsPlugin.initialize(initializationSettings,
-            onDidReceiveNotificationResponse: (payload) {
-          log("📱 Notification tapped: $payload");
+            onDidReceiveNotificationResponse: (NotificationResponse response) {
+          log("📱 Notification tapped: ${response.payload}");
+          unawaited(AudioPlayerService.playSound(false));
         });
         
         // CRITICAL: Create notification channels before using them
@@ -223,7 +224,7 @@ class NotificationService {
     if (initialMessage != null) {
       log("::::::::::::Initial message received:::::::::::::::::");
       log(initialMessage.notification.toString());
-      // Handle initial message if needed (e.g., navigate to specific screen)
+      unawaited(AudioPlayerService.playSound(false));
     }
 
     // Handle foreground messages (when app is open)
@@ -241,9 +242,9 @@ class NotificationService {
     // Handle messages when app is opened from background via notification tap
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
       log("::::::::::::onMessageOpenedApp:::::::::::::::::");
+      await AudioPlayerService.playSound(false);
       if (message.notification != null) {
         log(message.notification.toString());
-        // Handle navigation if needed
       }
     });
     

@@ -7,6 +7,7 @@ import '../../models/user_model.dart';
 import '../../utils/dark_theme_provider.dart';
 import '../../utils/fire_store_utils.dart';
 import '../../utils/preferences.dart';
+import '../../controllers/edit_profile_controller.dart';
 import '../edit_profile_screen/edit_profile_screen.dart';
 import '../terms_and_condition/terms_and_condition_screen.dart';
 import '../verification_screen/verification_screen.dart';
@@ -78,6 +79,10 @@ class ProfileController extends GetxController {
   /// All other indices set the dashboard tab and pop back.
   void navigate(int index) {
     if (index == 0) {
+      if (Get.isRegistered<EditProfileController>()) {
+        // Controller is permanent; force refresh so first-login data appears.
+        Get.find<EditProfileController>().getData();
+      }
       Get.to(() => const EditProfileScreen());
       return;
     }

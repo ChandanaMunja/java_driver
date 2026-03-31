@@ -8,6 +8,7 @@ import 'package:jippydriver_driver/constant/send_notification.dart';
 import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
+import 'package:jippydriver_driver/services/order_workflow_service.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 import 'package:flutter/material.dart';
@@ -397,72 +398,19 @@ void _showWalletUpdatedPopup() {
         return;
       }
       // Update wallet and delivery amount via separate APIs first
-      await FireStoreUtils.updateWallateAmount(orderModel.value);
-      print("[DeliverOrderController] Setting order in Firestore");
-      await FireStoreUtils.setOrder(orderModel.value);
+      final ok = await OrderWorkflowService.completeDeliveryOrderBackend(
+        order: orderModel.value,
+        driverModel: controller.driverModel.value,
+      );
+
+      if (ok != true) {
+        ShowToastDialog.closeLoader();
+        ShowToastDialog.showToast("Failed to complete order".tr);
+        return;
+      }
+
+      // Bonus popup depends on updated completion stats.
       deliveryAmountBonusAmount();
-      // Remove order from other drivers' orderRequestData
-      await FireStoreUtils.removeOrderFromOtherDrivers(
-        orderId: orderModel.value.id??'',
-        assignedDriverId: orderModel.value.driverID!,
-      );
-      // IMPORTANT: Fetch latest user data from API AFTER wallet/delivery amount updates
-      // This ensures we have the correct accumulated values from the separate APIs
-      // Use updateUserWithoutWalletDelivery to avoid sending wallet/delivery amounts
-      // which are managed by separate APIs (driver-sql/wallet/update and driver-sql/delivery-amount/update)
-      print("[DeliverOrderController] Updating user lists without extra profile fetch");
-      final userForUpdate = Constant.userModel;
-      if (userForUpdate != null) {
-        if (userForUpdate.vendorID?.isNotEmpty == true) {
-          userForUpdate.orderRequestData?.remove(orderModel.value.id);
-          userForUpdate.inProgressOrderID?.remove(orderModel.value.id);
-        }
-        await FireStoreUtils.updateUserWithoutWalletDelivery(userForUpdate);
-      }
-      final refreshedUser = await FireStoreUtils.getUserProfile(
-        Constant.userModel?.id ?? '',
-        forceRefresh: true,
-      );
-      if (refreshedUser != null) {
-        Constant.userModel = refreshedUser;
-        print("[DeliverOrderController] Refreshed user data - walletAmount: ${refreshedUser.walletAmount}, deliveryAmount: ${refreshedUser.deliveryAmount}");
-      }
-      print("[DeliverOrderController] Checking if first order");
-      await FireStoreUtils.getFirestOrderOrNOt(orderModel.value)
-          .then((value) async {
-        if (value == true) {
-          print("[DeliverOrderController] Updating referral amount");
-          await FireStoreUtils.updateReferralAmount(orderModel.value);
-        }
-      });
-      print("[DeliverOrderController] Sending notification to customer");
-      final order = orderModel.value;
-      String token = order.author?.fcmToken?.toString().trim() ?? '';
-      final customerId = order.authorID?.toString() ??
-          order.author?.id?.toString() ??
-          order.author?.firebaseId?.toString() ??
-          '';
-      if (customerId.isNotEmpty) {
-        final customer = await FireStoreUtils.getUserProfile(customerId);
-        token = customer?.fcmToken?.toString().trim() ?? token;
-      }
-      if (token.isNotEmpty) {
-        print('[FCM][Delivery] orderId=${order.id} tokenLen=${token.length}');
-        final sent = await SendNotification.sendFcmMessage(
-          Constant.driverCompleted,
-          token,
-          {
-            'order_id': order.id,
-            'status': Constant.orderCompleted,
-          },
-        );
-        print('[FCM][Delivery] send result: $sent');
-        if (sent != true) {
-          ShowToastDialog.showToast(
-            'Failed to send delivery notification'.tr,
-          );
-        }
-      }
       ShowToastDialog.closeLoader();
       print("[DeliverOrderController] Order completed, closing loader and going back");
       // Mark as completed immediately so API refresh can't re-add it before .then runs

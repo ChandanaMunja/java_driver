@@ -427,6 +427,7 @@ import 'package:jippydriver_driver/utils/driver_location_sync.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:jippydriver_driver/utils/preferences.dart';
 import 'package:jippydriver_driver/utils/version_utils.dart';
+import 'package:jippydriver_driver/utils/perf_telemetry.dart';
 
 class DashBoardController extends GetxController with WidgetsBindingObserver {
 
@@ -449,13 +450,18 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
   StreamSubscription<loc.LocationData>? _locationSubscription;
 
   // Throttle state
-  UserLocation? _lastSentLocation;
-  DateTime?     _lastSentTime;
+  // Watermark used to decide whether we should enqueue a server write.
+  UserLocation? _lastThrottleLocation;
+  DateTime?     _lastThrottleTime;
+
+  // Tracks last successful server write (for debugging/telemetry).
+  UserLocation? _lastWrittenLocation;
+  DateTime?     _lastWrittenTime;
   bool _isAppForeground = true;
   bool _locationListenerActive = false;
 
   // Batch queue (background mode only)
-  final List<UserLocation> _pendingUpdates = [];
+  final List<_LocationWrite> _pendingUpdates = [];
   Timer? _batchTimer;
 
   // Throttle constants
@@ -495,6 +501,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     DriverLocationSync.afterLocationAppliedToUserModel = null;
     WidgetsBinding.instance.removeObserver(this);
     _stopLocationListener();
+    if (_pendingUpdates.isNotEmpty) unawaited(_flushBatch());
     _batchTimer?.cancel();
     super.onClose();
   }
@@ -509,7 +516,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
       AppLogger.log('App foregrounded', tag: 'Dashboard');
       unawaited(DriverLocationSync.syncDeviceLocationIntoUserModel());
       // Flush any batched background locations immediately
-      if (_pendingUpdates.isNotEmpty) _flushBatch();
+      if (_pendingUpdates.isNotEmpty) unawaited(_flushBatch());
       // Only re-check update once per session after the initial check
       if (_updateCheckedThisSession) _checkMandatoryUpdate();
     } else if (wasFg && !isFg) {
@@ -691,14 +698,10 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     // glides smoothly, independently of Firestore write frequency.
     _updateHomeControllerImmediate(newLoc, data.heading);
 
-    // ── Throttled Firestore write ────────────────────────────────────
+    // ── Throttled & coalesced Firestore write ───────────────────────
     if (!_shouldWrite(newLoc)) return;
-
-    if (_isAppForeground) {
-      await _writeToFirestore(newLoc, data.heading);
-    } else {
-      _queueForBatch(newLoc, data.heading);
-    }
+    // Always enqueue (foreground + background) so writes are coalesced.
+    _queueForBatch(newLoc, data.heading);
   }
 
   void _updateHomeControllerImmediate(UserLocation loc, double? heading) {
@@ -737,9 +740,9 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     final now     = DateTime.now();
 
     // First write always allowed
-    if (_lastSentLocation == null || _lastSentTime == null) return true;
+    if (_lastThrottleLocation == null || _lastThrottleTime == null) return true;
 
-    final dist = _distance(_lastSentLocation!, newLoc);
+    final dist = _distance(_lastThrottleLocation!, newLoc);
     if (dist < minDist) {
       AppLogger.log(
         'Write skipped — dist ${dist.toStringAsFixed(1)}m < ${minDist}m',
@@ -748,7 +751,7 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
       return false;
     }
 
-    final elapsed = now.difference(_lastSentTime!);
+    final elapsed = now.difference(_lastThrottleTime!);
     if (elapsed < minTime) {
       AppLogger.log(
         'Write skipped — elapsed ${elapsed.inSeconds}s < ${minTime.inSeconds}s',
@@ -774,19 +777,27 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
 
   Future<void> _writeToFirestore(UserLocation newLoc, double? heading) async {
     try {
-      final userId = await LoginController.getFirebaseId();
-      if (userId == null) return;
+      final currentUser = userModel.value;
+      if (currentUser.isActive != true) return;
 
-      final profile = await FireStoreUtils.getUserProfile(userId);
-      if (profile == null || profile.isActive != true) return;
+      currentUser.location = newLoc;
+      if (heading != null) currentUser.rotation = heading;
+      Constant.userModel = currentUser;
 
-      profile.location = newLoc;
-      if (heading != null) profile.rotation = heading;
+      // Avoid read-before-write by using in-memory user model.
+      final ok = await FireStoreUtils.updateUserWithoutWalletDelivery(currentUser);
+      if (ok) {
+        PerfTelemetry.inc('location_writes');
+      } else {
+        PerfTelemetry.inc('location_write_failures');
+      }
 
-      await FireStoreUtils.updateUser(profile);
+      _lastWrittenLocation = newLoc;
+      _lastWrittenTime     = DateTime.now();
 
-      _lastSentLocation = newLoc;
-      _lastSentTime     = DateTime.now();
+      // Notify reactive listeners that the in-memory user model mutated.
+      userModel.refresh();
+      DriverLocationSync.afterLocationAppliedToUserModel?.call();
 
       AppLogger.log(
         'Firestore write — '
@@ -805,11 +816,16 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
   // ══════════════════════════════════════════════════════════════════════
 
   void _queueForBatch(UserLocation loc, double? heading) {
-    _pendingUpdates.add(loc);
+    // Advance throttle watermark immediately so multiple location events
+    // before the next flush don't enqueue extra writes.
+    _lastThrottleLocation = loc;
+    _lastThrottleTime = DateTime.now();
+
+    _pendingUpdates.add(_LocationWrite(loc: loc, heading: heading));
 
     _batchTimer ??= Timer(_batchDelay, _flushBatch);
 
-    if (_pendingUpdates.length >= _maxBatch) _flushBatch();
+    if (_pendingUpdates.length >= _maxBatch) unawaited(_flushBatch());
   }
 
   Future<void> _flushBatch() async {
@@ -822,6 +838,16 @@ class DashBoardController extends GetxController with WidgetsBindingObserver {
     final latest = _pendingUpdates.last;
     _pendingUpdates.clear();
 
-    await _writeToFirestore(latest, null);
+    await _writeToFirestore(latest.loc, latest.heading);
   }
+}
+
+class _LocationWrite {
+  final UserLocation loc;
+  final double? heading;
+
+  const _LocationWrite({
+    required this.loc,
+    required this.heading,
+  });
 }

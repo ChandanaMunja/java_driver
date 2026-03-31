@@ -150,7 +150,7 @@ class EditProfileScreen extends StatelessWidget {
                         const SizedBox(
                           height: 5,
                         ),
-                        DropdownButtonFormField<ZoneModel>(
+                        DropdownButtonFormField<String>(
                             hint: Text(
                               'Select zone'.tr,
                               style: TextStyle(
@@ -215,12 +215,26 @@ class EditProfileScreen extends StatelessWidget {
                                     width: 1),
                               ),
                             ),
-                            value: controller.selectedZone.value.id == null
-                                ? null
-                                : controller.selectedZone.value,
-                            onChanged: (value) {
-                              controller.selectedZone.value = value!;
-                              controller.update();
+                            value: () {
+                              final selectedId =
+                                  controller.selectedZone.value.id?.toString();
+                              if (selectedId == null || selectedId.isEmpty) {
+                                return null;
+                              }
+                              final hasSelected = controller.zoneList.any(
+                                (z) => z.id?.toString() == selectedId,
+                              );
+                              return hasSelected ? selectedId : null;
+                            }(),
+                            onChanged: (zoneId) {
+                              if (zoneId == null || zoneId.isEmpty) return;
+                              final idx = controller.zoneList.indexWhere(
+                                (z) => z.id?.toString() == zoneId,
+                              );
+                              if (idx >= 0) {
+                                controller.selectedZone.value =
+                                    controller.zoneList[idx];
+                              }
                             },
                             style: TextStyle(
                                 fontSize: 14,
@@ -228,12 +242,20 @@ class EditProfileScreen extends StatelessWidget {
                                     ? AppThemeData.grey50
                                     : AppThemeData.grey900,
                                 fontFamily: AppThemeData.medium),
-                            items: controller.zoneList.map((item) {
-                              return DropdownMenuItem<ZoneModel>(
-                                value: item,
-                                child: Text(item.name.toString()),
-                              );
-                            }).toList()),
+                            items: (() {
+                              final uniqueById = <String, ZoneModel>{};
+                              for (final zone in controller.zoneList) {
+                                final id = zone.id?.toString() ?? '';
+                                if (id.isEmpty) continue;
+                                uniqueById.putIfAbsent(id, () => zone);
+                              }
+                              return uniqueById.entries.map((entry) {
+                                return DropdownMenuItem<String>(
+                                  value: entry.key,
+                                  child: Text(entry.value.name?.toString() ?? ''),
+                                );
+                              }).toList();
+                            })()),
                       ],
                     ),
                   ],

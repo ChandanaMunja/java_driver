@@ -147,50 +147,57 @@ class _ProfileHeaderContent extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              _GradientAvatar(
-                imageUrl:
-                Constant.userModel?.profilePictureURL?.toString() ?? '',
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      Constant.userModel?.fullName() ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark
-                            ? AppThemeData.grey50
-                            : AppThemeData.grey900,
-                        fontSize: 20,
-                        fontFamily: AppThemeData.semiBold,
-                      ),
+              GetX<ProfileController>(
+                builder: (c) {
+                  final user = c.dashCtrl.userModel.value;
+                  return Expanded(
+                    child: Row(
+                      children: [
+                        _GradientAvatar(
+                          imageUrl: user.profilePictureURL?.toString() ?? '',
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                user.fullName(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppThemeData.grey50
+                                      : AppThemeData.grey900,
+                                  fontSize: 20,
+                                  fontFamily: AppThemeData.semiBold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                user.email ?? '',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: isDark
+                                      ? AppThemeData.grey400
+                                      : AppThemeData.grey500,
+                                  fontSize: 13,
+                                  fontFamily: AppThemeData.regular,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              _ActiveBadge(
+                                isActive: user.isActive ?? false,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      Constant.userModel?.email ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isDark
-                            ? AppThemeData.grey400
-                            : AppThemeData.grey500,
-                        fontSize: 13,
-                        fontFamily: AppThemeData.regular,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    GetX<ProfileController>(
-                      builder: (c) => _ActiveBadge(
-                        isActive:
-                            c.dashCtrl.userModel.value.isActive ?? false,
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ],
           ),

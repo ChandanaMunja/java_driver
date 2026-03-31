@@ -13,10 +13,12 @@ import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/models/vendor_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
 import 'package:jippydriver_driver/services/api_cache_service.dart';
+import 'package:jippydriver_driver/services/order_workflow_service.dart';
 import 'package:jippydriver_driver/services/http_client_service.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
+import 'package:jippydriver_driver/utils/perf_telemetry.dart';
 import 'package:jippydriver_driver/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -225,6 +227,7 @@ class HomeController extends GetxController {
 
   // ── Misc guards ───────────────────────────────────────────────────────
   bool      _isAcceptingOrder     = false;
+  bool      _isRejectingOrder    = false;
   bool      _isCalculatingCharges = false;
   bool      _driverChargesWarmupInFlight = false;
   bool      _driverChargesApplied = false;
@@ -358,7 +361,6 @@ class HomeController extends GetxController {
         } else {
           await calculateOrderChargesInitial(fetchSurgeAndToPay: false);
           _updateOrderWithCharges();
-          update();
           currentOrder.refresh();
         }
       }
@@ -609,7 +611,7 @@ class HomeController extends GetxController {
     _noOrderCount = 0;
     _pollInterval = _isAppForeground
         ? const Duration(seconds: 5)
-        : const Duration(seconds: 30);
+        : const Duration(seconds: 20);
     _schedulePoll();
   }
 
@@ -621,6 +623,7 @@ class HomeController extends GetxController {
   Future<void> _onPollTick() async {
     if (_isRefreshing || !_isConnected) return;
     try {
+      PerfTelemetry.inc('poll_requests');
       await refreshHomeScreen();
       final hasOrders =
           (driverModel.value.orderRequestData?.isNotEmpty ?? false) ||
@@ -673,10 +676,10 @@ class HomeController extends GetxController {
   }
 
   void _notifyOrderUiChanged({bool refreshOrder = true}) {
+    PerfTelemetry.inc('home_order_ui_refreshes');
     if (refreshOrder) {
       currentOrder.refresh();
     }
-    update();
   }
 
   void markOrderAsCompleted(String? id) {
@@ -768,7 +771,6 @@ class HomeController extends GetxController {
           try {
             await calculateOrderChargesInitial(fetchSurgeAndToPay: false);
             _updateOrderWithCharges();
-            update();
             currentOrder.refresh();
           } catch (_) {}
         }());
@@ -856,7 +858,6 @@ class HomeController extends GetxController {
     if (needCharges) {
       await calculateOrderChargesInitial();
       _updateOrderWithCharges();
-      update();
       currentOrder.refresh();
     }
   }
@@ -1233,6 +1234,7 @@ class HomeController extends GetxController {
   // ══════════════════════════════════════════════════════════════════════
 
   void changeData() {
+    PerfTelemetry.inc('route_update_triggers');
     _changeDataDebounce?.cancel();
     _changeDataDebounce = Timer(_changeDataDelay, _changeDataInternal);
   }
@@ -1251,7 +1253,10 @@ class HomeController extends GetxController {
         await _getDirections();
       }
     }
-    if (currentOrder.value.status == Constant.driverPending) {
+    // Do not restart ringtone while accept is in flight (debounced route
+    // updates can still see Driver Pending until the backend returns).
+    final pending = currentOrder.value.status == Constant.driverPending;
+    if (pending && !_isAcceptingOrder && !_isRejectingOrder) {
       await AudioPlayerService.playSound(true);
     } else {
       await AudioPlayerService.playSound(false);
@@ -1297,6 +1302,7 @@ class HomeController extends GetxController {
   }
 
   Future<void> _doDirectionFetch(LatLng origin, String cacheKey) async {
+    PerfTelemetry.inc('route_calls');
     final status = currentOrder.value.status ?? '';
     LatLng? dest;
 
@@ -1456,6 +1462,7 @@ class HomeController extends GetxController {
     if (currentOrder.value.status == Constant.driverAccepted &&
         currentOrder.value.driverID == driverModel.value.id) return;
 
+    _changeDataDebounce?.cancel();
     _isAcceptingOrder = true;
     await AudioPlayerService.playSound(false);
     ShowToastDialog.showLoader('Please wait'.tr);
@@ -1468,9 +1475,8 @@ class HomeController extends GetxController {
         return;
       }
 
-      final result = await FireStoreUtils.assignOrderToDriverFCFS(
-        orderId:     currentOrder.value.id!,
-        driverId:    driverModel.value.id!,
+      final result = await OrderWorkflowService.acceptOrderBackend(
+        order: currentOrder.value,
         driverModel: driverModel.value,
       );
 
@@ -1484,20 +1490,9 @@ class HomeController extends GetxController {
       if (result == true) {
         final orderId = currentOrder.value.id!;
         _markOrderHandledAndMute(orderId);
-        driverModel.value.orderRequestData?.remove(orderId);
         _notifiedOrderIds.remove(orderId);
-        driverModel.value.inProgressOrderID ??= [];
-        driverModel.value.inProgressOrderID!.add(orderId);
 
-        await FireStoreUtils.updateUser(driverModel.value);
-
-        final h = HttpClientService();
-        await h.invalidateCache('orders/$orderId');
-        await h.invalidateCache('users/');
-
-        currentOrder.value.status   = Constant.driverAccepted;
-        currentOrder.value.driverID = driverModel.value.id;
-        currentOrder.value.driver   = driverModel.value;
+        // Service already mutated order status/driver + driver lists + cache invalidation.
         _lastKnownStatus            = Constant.driverAccepted;
         _lastStatusChangeTime       = DateTime.now();
 
@@ -1526,9 +1521,7 @@ class HomeController extends GetxController {
         Get.snackbar('Unavailable', 'Order accepted by another driver.',
             snackPosition: SnackPosition.BOTTOM);
         await AudioPlayerService.playSound(false);
-        driverModel.value.orderRequestData?.remove(currentOrder.value.id);
         _notifiedOrderIds.remove(currentOrder.value.id);
-        await FireStoreUtils.updateUser(driverModel.value);
         currentOrder.value = OrderModel();
         _chargesComputedForOrderId = null;
         await clearMap();
@@ -1546,26 +1539,19 @@ class HomeController extends GetxController {
   }
 
   Future<void> rejectOrder() async {
+    _changeDataDebounce?.cancel();
+    _isRejectingOrder = true;
     await AudioPlayerService.playSound(false);
     try {
-      currentOrder.value.rejectedByDrivers ??= [];
-      if (driverModel.value.id != null) {
-        currentOrder.value.rejectedByDrivers!.add(driverModel.value.id);
-      }
-      await FireStoreUtils.setOrder(currentOrder.value);
-
       final id = currentOrder.value.id;
       if (id != null) _markOrderHandledAndMute(id);
-      driverModel.value.orderRequestData?.remove(id);
       _notifiedOrderIds.remove(id);
 
-      if (id != null) {
-        final h = HttpClientService();
-        await h.invalidateCache('orders/$id');
-        await h.invalidateCache('users/');
-      }
+      await OrderWorkflowService.rejectOrderBackend(
+        order: currentOrder.value,
+        driverModel: driverModel.value,
+      );
 
-      await FireStoreUtils.updateUser(driverModel.value);
       currentOrder.value = OrderModel();
       _chargesComputedForOrderId = null;
       await clearMap();
@@ -1574,6 +1560,7 @@ class HomeController extends GetxController {
       if (Constant.singleOrderReceive == false) Get.back();
     } finally {
       await AudioPlayerService.playSound(false);
+      _isRejectingOrder = false;
     }
   }
 
@@ -1684,7 +1671,6 @@ class HomeController extends GetxController {
               await Future.delayed(const Duration(milliseconds: 500));
             }
             await getCurrentOrder();
-            update();
           }
         }
       }

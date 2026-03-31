@@ -141,6 +141,18 @@ class DeliverOrderScreen extends StatelessWidget {
                                   parsedTotal ??
                                   parsedDeliveryCharge ??
                                   0.0;
+                              final paymentMethod = (controller
+                                          .orderModel.value.paymentMethod ??
+                                      '')
+                                  .toLowerCase()
+                                  .trim();
+                              final isOnlinePrepaid =
+                                  paymentMethod.contains('razorpay') ||
+                                      paymentMethod.contains('paytm');
+
+                              if (isOnlinePrepaid) {
+                                return const SizedBox.shrink();
+                              }
 
                               return Container(
                                 decoration: ShapeDecoration(
@@ -242,39 +254,39 @@ class DeliverOrderScreen extends StatelessWidget {
                                     width: 5,
                                   ),
                                   InkWell(
-                                    onTap: () async {
-                                      ShowToastDialog.showLoader(
-                                          "Please wait".tr);
-
-                                      UserModel? customer =
-                                          await FireStoreUtils.getUserProfile(
-                                              controller
-                                                  .orderModel.value.authorID
-                                                  .toString());
-                                      UserModel? driver =
-                                          await FireStoreUtils.getUserProfile(
-                                              controller
-                                                  .orderModel.value.driverID
-                                                  .toString());
-
-                                      ShowToastDialog.closeLoader();
-
-                                      Get.to(const ChatScreen(), arguments: {
-                                        "customerName":
-                                            '${customer!.fullName()}',
-                                        "restaurantName": driver!.fullName(),
-                                        "orderId":
-                                            controller.orderModel.value.id,
-                                        "restaurantId": driver.id,
-                                        "customerId": customer.id,
-                                        "customerProfileImage":
-                                            customer.profilePictureURL ?? "",
-                                        "restaurantProfileImage":
-                                            driver.profilePictureURL ?? "",
-                                        "token": customer.fcmToken,
-                                        "chatType": "Driver",
-                                      });
-                                    },
+                                    // onTap: () async {
+                                    //   ShowToastDialog.showLoader(
+                                    //       "Please wait".tr);
+                                    //
+                                    //   UserModel? customer =
+                                    //       await FireStoreUtils.getUserProfile(
+                                    //           controller
+                                    //               .orderModel.value.authorID
+                                    //               .toString());
+                                    //   UserModel? driver =
+                                    //       await FireStoreUtils.getUserProfile(
+                                    //           controller
+                                    //               .orderModel.value.driverID
+                                    //               .toString());
+                                    //
+                                    //   ShowToastDialog.closeLoader();
+                                    //
+                                    //   Get.to(const ChatScreen(), arguments: {
+                                    //     "customerName":
+                                    //         '${customer!.fullName()}',
+                                    //     "restaurantName": driver!.fullName(),
+                                    //     "orderId":
+                                    //         controller.orderModel.value.id,
+                                    //     "restaurantId": driver.id,
+                                    //     "customerId": customer.id,
+                                    //     "customerProfileImage":
+                                    //         customer.profilePictureURL ?? "",
+                                    //     "restaurantProfileImage":
+                                    //         driver.profilePictureURL ?? "",
+                                    //     "token": customer.fcmToken,
+                                    //     "chatType": "Driver",
+                                    //   });
+                                    // },
                                     child: Container(
                                       width: 42,
                                       height: 42,

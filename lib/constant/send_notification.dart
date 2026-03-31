@@ -14,6 +14,15 @@ class SendNotification {
   static Future<void>? _settingsInFlight;
   static bool _settingsLoaded = false;
   static String _fcmProjectId = '';
+
+  // OAuth access token cache (avoids rebuilding auth client for every send).
+  static String? _cachedAccessToken;
+  static DateTime? _cachedAccessTokenExpiry;
+  static Future<String>? _accessTokenInFlight;
+
+  // Refresh a bit early to avoid "token just expired" race conditions.
+  static const Duration _tokenExpiryBuffer = Duration(seconds: 60);
+
   // Temporary fallback while backend/service JSON derivation is unstable.
   // Backend currently provides `notification_setting.projectId` as empty, but we
   // do have the correct Firebase project id.
@@ -64,39 +73,69 @@ class SendNotification {
   }
 
   static Future<String> getAccessToken() async {
-    Map<String, dynamic> jsonData = {};
+    final now = DateTime.now();
+    final expiry = _cachedAccessTokenExpiry;
+    final token = _cachedAccessToken;
 
-    await _ensureNotificationSettings();
-    await getCharacters().then((response) {
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('Failed to fetch service JSON. '
-            'status=${response.statusCode} body=${response.body}');
-      }
-      final decoded = json.decode(response.body);
-      if (decoded is! Map<String, dynamic>) {
-        throw Exception('Invalid service JSON payload type.');
-      }
-      jsonData = decoded;
-    });
-
-    final String parsedProjectId =
-        (jsonData['project_id'] ?? '').toString().trim();
-    if (parsedProjectId.isNotEmpty) {
-      _fcmProjectId = parsedProjectId;
+    if (token != null &&
+        expiry != null &&
+        now.isBefore(expiry.subtract(_tokenExpiryBuffer))) {
+      return token;
     }
 
-    if ((jsonData['private_key'] ?? '').toString().trim().isEmpty ||
-        (jsonData['client_email'] ?? '').toString().trim().isEmpty ||
-        (jsonData['token_uri'] ?? '').toString().trim().isEmpty) {
-      throw Exception('Service account JSON missing required keys.');
+    // De-dupe concurrent refreshes.
+    if (_accessTokenInFlight != null) {
+      return _accessTokenInFlight!;
     }
 
-    final serviceAccountCredentials =
-        ServiceAccountCredentials.fromJson(jsonData);
+    _accessTokenInFlight = () async {
+      Map<String, dynamic> jsonData = {};
 
-    final client =
-        await clientViaServiceAccount(serviceAccountCredentials, _scopes);
-    return client.credentials.accessToken.data;
+      await _ensureNotificationSettings();
+      await getCharacters().then((response) {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception('Failed to fetch service JSON. '
+              'status=${response.statusCode} body=${response.body}');
+        }
+        final decoded = json.decode(response.body);
+        if (decoded is! Map<String, dynamic>) {
+          throw Exception('Invalid service JSON payload type.');
+        }
+        jsonData = decoded;
+      });
+
+      final String parsedProjectId =
+          (jsonData['project_id'] ?? '').toString().trim();
+      if (parsedProjectId.isNotEmpty) {
+        _fcmProjectId = parsedProjectId;
+      }
+
+      if ((jsonData['private_key'] ?? '').toString().trim().isEmpty ||
+          (jsonData['client_email'] ?? '').toString().trim().isEmpty ||
+          (jsonData['token_uri'] ?? '').toString().trim().isEmpty) {
+        throw Exception('Service account JSON missing required keys.');
+      }
+
+      final serviceAccountCredentials =
+          ServiceAccountCredentials.fromJson(jsonData);
+
+      final client = await clientViaServiceAccount(
+          serviceAccountCredentials, _scopes);
+      try {
+        final accessToken = client.credentials.accessToken;
+        _cachedAccessToken = accessToken.data;
+        _cachedAccessTokenExpiry = accessToken.expiry;
+        return accessToken.data;
+      } finally {
+        client.close();
+      }
+    }();
+
+    try {
+      return await _accessTokenInFlight!;
+    } finally {
+      _accessTokenInFlight = null;
+    }
   }
 
   static String _resolveProjectForUrl() {

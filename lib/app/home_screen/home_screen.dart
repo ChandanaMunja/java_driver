@@ -1137,11 +1137,15 @@ class _ActionButton extends StatelessWidget {
         final h = HttpClientService();
         await h.invalidateCache('orders/$completedId');
       }
-      await FireStoreUtils.updateUser(ctrl.driverModel.value);
+      // Completion backend already updated the driver profile (wallet + order lists).
+      // Re-sync the reactive driver model from Constant to avoid an extra write.
+      if (Constant.userModel != null) {
+        ctrl.driverModel.value = Constant.userModel!;
+        ctrl.driverModel.refresh();
+      }
       ctrl.currentOrder.value = OrderModel();
       await ctrl.clearMap();
       ctrl.resetStatusTracking();
-      ctrl.update();
       if (Constant.singleOrderReceive == false) Get.back();
     }
   }

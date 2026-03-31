@@ -8,6 +8,7 @@ import 'package:jippydriver_driver/controllers/login_controller.dart';
 import 'package:jippydriver_driver/models/order_model.dart';
 import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/services/audio_player_service.dart';
+import 'package:jippydriver_driver/services/order_workflow_service.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 import 'package:get/get.dart';
 
@@ -85,10 +86,8 @@ class HomeScreenMultipleOrderController extends GetxController {
     await AudioPlayerService.playSound(false);
     ShowToastDialog.showLoader("Please wait".tr);
     try {
-      // Try to atomically assign the order
-      final assignResult = await FireStoreUtils.assignOrderToDriverFCFS(
-        orderId: currentOrder.id!,
-        driverId: driverModel.value.id!,
+      final assignResult = await OrderWorkflowService.acceptOrderBackend(
+        order: currentOrder,
         driverModel: driverModel.value,
       );
       ShowToastDialog.closeLoader();
@@ -103,12 +102,6 @@ class HomeScreenMultipleOrderController extends GetxController {
         return; // Don't clear order, allow retry
       }
       if (assignResult == true) {
-        // Update driver's order lists
-        driverModel.value.orderRequestData?.remove(currentOrder.id);
-        driverModel.value.inProgressOrderID ??= [];
-        driverModel.value.inProgressOrderID!.add(currentOrder.id!);
-
-        await FireStoreUtils.updateUser(driverModel.value);
         if (currentOrder.author?.fcmToken != null) {
           await SendNotification.sendFcmMessage(
               Constant.driverAcceptedNotification,
@@ -121,10 +114,7 @@ class HomeScreenMultipleOrderController extends GetxController {
         }
         ShowToastDialog.showToast("Order assigned successfully!".tr);
       } else {
-        // Order was already taken: remove from request list and stop ringing.
-        driverModel.value.orderRequestData?.remove(currentOrder.id);
         newOrder.remove(currentOrder.id);
-        await FireStoreUtils.updateUser(driverModel.value);
         ShowToastDialog.showToast("Order already taken by another driver.".tr);
       }
     } finally {
@@ -135,14 +125,11 @@ class HomeScreenMultipleOrderController extends GetxController {
   rejectOrder(OrderModel currentOrder) async {
     await AudioPlayerService.playSound(false);
     try {
-      currentOrder.rejectedByDrivers ??= [];
-      currentOrder.rejectedByDrivers!.add(driverModel.value.id);
-      currentOrder.status = Constant.driverRejected;
-      await FireStoreUtils.setOrder(currentOrder);
-
-      driverModel.value.orderRequestData?.remove(currentOrder.id);
+      await OrderWorkflowService.rejectOrderBackend(
+        order: currentOrder,
+        driverModel: driverModel.value,
+      );
       newOrder.remove(currentOrder.id);
-      await FireStoreUtils.updateUser(driverModel.value);
     } finally {
       await AudioPlayerService.playSound(false);
     }
