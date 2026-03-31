@@ -249,30 +249,30 @@ class _WalletBalanceCard extends StatelessWidget {
               const SizedBox(height: 20),
 
               // ── Withdraw Button ────────────────────────────────────────────
-              if (!canVerify)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: RoundedButtonFill(
-                      title: 'Withdraw'.tr,
-                      width: 24,
-                      height: 5.5,
-                      color: AppThemeData.grey50,
-                      textColor: AppThemeData.grey900,
-                      borderRadius: 200,
-                      onPress: () {
-                        if (controller.hasValidPaymentMethod) {
-                          _showWithdrawalSheet(context, controller);
-                        } else {
-                          ShowToastDialog.showToast(
-                            'Please enter payment method'.tr,
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                ),
+              // if (!canVerify)
+              //   Padding(
+              //     padding: const EdgeInsets.symmetric(horizontal: 16),
+              //     child: SizedBox(
+              //       width: double.infinity,
+              //       child: RoundedButtonFill(
+              //         title: 'TopUp'.tr,
+              //         width: 24,
+              //         height: 5.5,
+              //         color: AppThemeData.grey50,
+              //         textColor: AppThemeData.grey900,
+              //         borderRadius: 200,
+              //         onPress: () {
+              //           if (controller.hasValidPaymentMethod) {
+              //             _showWithdrawalSheet(context, controller);
+              //           } else {
+              //             ShowToastDialog.showToast(
+              //               'Please enter payment method'.tr,
+              //             );
+              //           }
+              //         },
+              //       ),
+              //     ),
+              //   ),
             ],
           ),
         ),

@@ -13,100 +13,133 @@ import 'package:jippydriver_driver/models/withdraw_method_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 
 class WithdrawMethodSetupController extends GetxController {
-  Rx<TextEditingController> accountNumberFlutterWave = TextEditingController().obs;
-  Rx<TextEditingController> bankCodeFlutterWave = TextEditingController().obs;
-  Rx<TextEditingController> emailPaypal = TextEditingController().obs;
-  Rx<TextEditingController> accountIdRazorPay = TextEditingController().obs;
-  Rx<TextEditingController> accountIdStripe = TextEditingController().obs;
+  // ── Text controllers ─────────────────────────────────────────────────────
+  final accountNumberFlutterWave = TextEditingController().obs;
+  final bankCodeFlutterWave = TextEditingController().obs;
+  final emailPaypal = TextEditingController().obs;
+  final accountIdRazorPay = TextEditingController().obs;
+  final accountIdStripe = TextEditingController().obs;
 
-  Rx<UserBankDetails> userBankDetails = UserBankDetails().obs;
-  Rx<WithdrawMethodModel> withdrawMethodModel = WithdrawMethodModel().obs;
+  // ── State ─────────────────────────────────────────────────────────────────
+  final userBankDetails = UserBankDetails().obs;
+  final withdrawMethodModel = WithdrawMethodModel().obs;
+  final isBankDetailsAdded = false.obs;
+  final isLoading = true.obs;
 
-  RxBool isBankDetailsAdded = false.obs;
-
-  RxBool isLoading = true.obs;
-  Rx<RazorPayModel> razorPayModel = RazorPayModel().obs;
-  Rx<PayPalModel> paypalDataModel = PayPalModel().obs;
-  Rx<StripeModel> stripeSettingData = StripeModel().obs;
-  Rx<FlutterWaveModel> flutterWaveSettingData = FlutterWaveModel().obs;
+  // ── Payment settings ──────────────────────────────────────────────────────
+  final razorPayModel = RazorPayModel().obs;
+  final paypalDataModel = PayPalModel().obs;
+  final stripeSettingData = StripeModel().obs;
+  final flutterWaveSettingData = FlutterWaveModel().obs;
 
   @override
   void onInit() {
-    // TODO: implement onInit
-    getPaymentMethod();
-    getPaymentSettings();
     super.onInit();
+    // Fetch both in parallel for faster loading
+    _initData();
   }
 
-  getPaymentMethod() async {
+  @override
+  void onClose() {
+    accountNumberFlutterWave.value.dispose();
+    bankCodeFlutterWave.value.dispose();
+    emailPaypal.value.dispose();
+    accountIdRazorPay.value.dispose();
+    accountIdStripe.value.dispose();
+    super.onClose();
+  }
+
+  // ── Initialise both calls simultaneously ──────────────────────────────────
+
+  Future<void> _initData() async {
     isLoading.value = true;
+    await Future.wait([
+      _fetchWithdrawMethod(),
+      _fetchPaymentSettings(),
+    ]);
+    isLoading.value = false;
+  }
+
+  // ── Public refresh (called after save) ───────────────────────────────────
+
+  Future<void> getPaymentMethod() async {
+    await _fetchWithdrawMethod();
+  }
+
+  // ── Private helpers ───────────────────────────────────────────────────────
+
+  Future<void> _fetchWithdrawMethod() async {
+    _clearTextControllers();
+    try {
+      final value = await FireStoreUtils.getWithdrawMethod();
+      if (value != null) {
+        withdrawMethodModel.value = value;
+        _populateControllers(value);
+      }
+    } catch (e) {
+      debugPrint('Error fetching withdraw method: $e');
+    }
+  }
+
+  Future<void> _fetchPaymentSettings() async {
+    try {
+      // Populate bank details from cached user model first (instant)
+      final bankDetails = Constant.userModel?.userBankDetails;
+      if (bankDetails != null) {
+        userBankDetails.value = bankDetails;
+        isBankDetailsAdded.value =
+            bankDetails.accountNumber.isNotEmpty == true;
+      }
+
+      final uri = Uri.parse("${Constant.baseUrl}settings/payment");
+      final response =
+      await http.get(uri).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final json =
+        jsonDecode(response.body) as Map<String, dynamic>;
+        if (json['success'] == true && json['data'] != null) {
+          final data = json['data'] as Map<String, dynamic>;
+          razorPayModel.value =
+              RazorPayModel.fromJson(data['razorpaySettings'] ?? {});
+          paypalDataModel.value =
+              PayPalModel.fromJson(data['paypalSettings'] ?? {});
+          stripeSettingData.value =
+              StripeModel.fromJson(data['stripeSettings'] ?? {});
+          flutterWaveSettingData.value =
+              FlutterWaveModel.fromJson(data['flutterWave'] ?? {});
+        }
+      } else {
+        debugPrint(
+            'Payment settings returned ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('Error fetching payment settings: $e');
+    }
+  }
+
+  void _clearTextControllers() {
     accountNumberFlutterWave.value.clear();
     bankCodeFlutterWave.value.clear();
     emailPaypal.value.clear();
     accountIdRazorPay.value.clear();
     accountIdStripe.value.clear();
-
-    await FireStoreUtils.getWithdrawMethod().then(
-      (value) {
-        if (value != null) {
-          withdrawMethodModel.value = value;
-
-          if (withdrawMethodModel.value.flutterWave != null) {
-            accountNumberFlutterWave.value.text = withdrawMethodModel.value.flutterWave!.accountNumber.toString();
-            bankCodeFlutterWave.value.text = withdrawMethodModel.value.flutterWave!.bankCode.toString();
-          }
-
-          if (withdrawMethodModel.value.paypal != null) {
-            emailPaypal.value.text = withdrawMethodModel.value.paypal!.email.toString();
-          }
-
-          if (withdrawMethodModel.value.razorpay != null) {
-            accountIdRazorPay.value.text = withdrawMethodModel.value.razorpay!.accountId.toString();
-          }
-          if (withdrawMethodModel.value.stripe != null) {
-            accountIdStripe.value.text = withdrawMethodModel.value.stripe!.accountId.toString();
-          }
-        }
-      },
-    );
-    isLoading.value = false;
   }
 
-
-  getPaymentSettings() async {
-    try {
-      // 1. Set user bank details if available
-      if (Constant.userModel!.userBankDetails != null) {
-        userBankDetails.value = Constant.userModel!.userBankDetails!;
-        isBankDetailsAdded.value = userBankDetails.value.accountNumber.isNotEmpty;
-      }
-
-      // 2. Make API call
-      final response = await http.get(Uri.parse("${Constant.baseUrl}settings/payment"));
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> jsonResponse = json.decode(response.body);
-
-        if (jsonResponse['success'] == true && jsonResponse['data'] != null) {
-          final data = jsonResponse['data'];
-
-          // Parse each payment method
-          razorPayModel.value = RazorPayModel.fromJson(data['razorpaySettings'] ?? {});
-          paypalDataModel.value = PayPalModel.fromJson(data['paypalSettings'] ?? {});
-          stripeSettingData.value = StripeModel.fromJson(data['stripeSettings'] ?? {});
-          flutterWaveSettingData.value = FlutterWaveModel.fromJson(data['flutterWave'] ?? {});
-
-          // You can also parse other payment methods as needed
-          // e.g. midtransSettings, payStack, xenditSettings, etc.
-        }
-      } else {
-        debugPrint('Failed to load payment settings: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error fetching payment settings: $e');
-    } finally {
-      isLoading.value = false;
+  void _populateControllers(WithdrawMethodModel model) {
+    final fw = model.flutterWave;
+    if (fw != null) {
+      accountNumberFlutterWave.value.text = fw.accountNumber ?? '';
+      bankCodeFlutterWave.value.text = fw.bankCode ?? '';
+    }
+    if (model.paypal != null) {
+      emailPaypal.value.text = model.paypal!.email ?? '';
+    }
+    if (model.razorpay != null) {
+      accountIdRazorPay.value.text = model.razorpay!.accountId ?? '';
+    }
+    if (model.stripe != null) {
+      accountIdStripe.value.text = model.stripe!.accountId ?? '';
     }
   }
-
 }

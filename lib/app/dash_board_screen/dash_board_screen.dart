@@ -1,27 +1,3 @@
-// ============================================================
-//  dash_board_screen_optimized.dart
-//
-//  Problems fixed vs original:
-//  1. GetX(init: DashBoardController()) was called TWICE —
-//     once in DashBoardScreen.build() and again inside DrawerView.
-//     GetX de-dupes by type but still runs builder() twice per
-//     frame, creating unnecessary rebuild chain. Fixed: one
-//     Get.put() in DashBoardScreen, DrawerView uses Get.find().
-//  2. Obx() wrapped the entire Scaffold including the AppBar and
-//     Drawer — every drawerIndex change or userModel change rebuilt
-//     the whole page. Fixed: only the body content switches inside
-//     Obx(); AppBar and Drawer rebuild only on userModel changes.
-//  3. DrawerView had `GetX(init: DashBoardController(), builder:)`
-//     which would create a second controller instance in certain
-//     navigation scenarios. Fixed: DrawerView reads from existing
-//     controller via Get.find().
-//  4. The isActive toggle duplicated code in two branches (with/
-//     without document verification). Extracted to _toggleActive().
-//  5. AppBar was rebuilt on isInPipMode changes even though only
-//     the body needs to change in PiP. Fixed: AppBar is stable,
-//     only body reacts to PiP.
-// ============================================================
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';

@@ -7,66 +7,85 @@ import 'package:jippydriver_driver/models/user_model.dart';
 import 'package:jippydriver_driver/utils/fire_store_utils.dart';
 
 class BankDetailsController extends GetxController {
-  RxBool isLoading = true.obs;
+  // ── Text controllers ─────────────────────────────────────────────────────
+  final bankNameController = TextEditingController().obs;
+  final branchNameController = TextEditingController().obs;
+  final holderNameController = TextEditingController().obs;
+  final accountNoController = TextEditingController().obs;
+  final otherInfoController = TextEditingController().obs;
 
-  Rx<TextEditingController> bankNameController = TextEditingController().obs;
-  Rx<TextEditingController> branchNameController = TextEditingController().obs;
-  Rx<TextEditingController> holderNameController = TextEditingController().obs;
-  Rx<TextEditingController> accountNoController = TextEditingController().obs;
-  Rx<TextEditingController> otherInfoController = TextEditingController().obs;
+  // ── State ─────────────────────────────────────────────────────────────────
+  final isLoading = true.obs;
+  final userModel = UserModel().obs;
 
-  Rx<UserModel> userModel = UserModel().obs;
+  final DashBoardController _dashBoardController =
+  Get.find<DashBoardController>();
 
   @override
   void onInit() {
-    // TODO: implement onInit
-    getCurrentUser();
     super.onInit();
+    _loadCurrentUser();
   }
-  final DashBoardController dashBoardController = Get.find<DashBoardController>();
 
-  saveBank() async {
+  @override
+  void onClose() {
+    bankNameController.value.dispose();
+    branchNameController.value.dispose();
+    holderNameController.value.dispose();
+    accountNoController.value.dispose();
+    otherInfoController.value.dispose();
+    super.onClose();
+  }
+
+  // ── Load user ─────────────────────────────────────────────────────────────
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final userId = await LoginController.getFirebaseId();
+      final value = await FireStoreUtils.getUserProfile(userId);
+      if (value != null) {
+        userModel.value = value;
+        _populateFromBankDetails(value.userBankDetails);
+      }
+    } catch (e) {
+      debugPrint('Error loading user: $e');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  void _populateFromBankDetails(UserBankDetails? details) {
+    if (details == null) return;
+    bankNameController.value.text = details.bankName ?? '';
+    branchNameController.value.text = details.branchName ?? '';
+    holderNameController.value.text = details.holderName ?? '';
+    accountNoController.value.text = details.accountNumber ?? '';
+    otherInfoController.value.text = details.otherDetails ?? '';
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+
+  Future<void> saveBank() async {
     ShowToastDialog.showLoader("Please wait".tr);
-    userModel.value.userBankDetails ??= UserBankDetails();
-    userModel.value.userBankDetails!.accountNumber =
-        accountNoController.value.text;
-    userModel.value.userBankDetails!.bankName = bankNameController.value.text;
-    userModel.value.userBankDetails!.branchName =
-        branchNameController.value.text;
-    userModel.value.userBankDetails!.holderName =
-        holderNameController.value.text;
-    userModel.value.userBankDetails!.otherDetails =
-        otherInfoController.value.text;
-    await FireStoreUtils.updateUser(userModel.value).then(
-      (value) {
-        ShowToastDialog.closeLoader();
-        Get.back();
-      },
-    );
-    dashBoardController.getUser();
-  }
+    try {
+      userModel.value.userBankDetails ??= UserBankDetails();
+      final details = userModel.value.userBankDetails!;
+      details
+        ..accountNumber = accountNoController.value.text.trim()
+        ..bankName = bankNameController.value.text.trim()
+        ..branchName = branchNameController.value.text.trim()
+        ..holderName = holderNameController.value.text.trim()
+        ..otherDetails = otherInfoController.value.text.trim();
 
-  getCurrentUser() async {
-    String? userId = await LoginController.getFirebaseId();
-    await FireStoreUtils.getUserProfile(userId).then(
-      (value) {
-        if (value != null) {
-          userModel.value = value;
-          if (userModel.value.userBankDetails != null) {
-            bankNameController.value.text =
-                userModel.value.userBankDetails!.bankName.toString();
-            branchNameController.value.text =
-                userModel.value.userBankDetails!.branchName.toString();
-            holderNameController.value.text =
-                userModel.value.userBankDetails!.holderName.toString();
-            accountNoController.value.text =
-                userModel.value.userBankDetails!.accountNumber.toString();
-            otherInfoController.value.text =
-                userModel.value.userBankDetails!.otherDetails.toString();
-          }
-        }
-      },
-    );
-    isLoading.value = false;
+      await FireStoreUtils.updateUser(userModel.value);
+      _dashBoardController.getUser();
+      ShowToastDialog.showToast("Bank details saved successfully".tr);
+      Get.back();
+    } catch (e) {
+      debugPrint('Error saving bank: $e');
+      ShowToastDialog.showToast("Failed to save. Please try again.".tr);
+    } finally {
+      ShowToastDialog.closeLoader();
+    }
   }
 }

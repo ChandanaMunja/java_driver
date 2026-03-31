@@ -1,18 +1,11 @@
-import 'package:jippydriver_driver/controllers/withdraw_method_setup_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:jippydriver_driver/app/withdraw_method_setup_screens/bank_details_screen.dart';
-import 'package:jippydriver_driver/constant/constant.dart';
-import 'package:jippydriver_driver/constant/show_toast_dialog.dart';
-import 'package:jippydriver_driver/models/withdraw_method_model.dart';
+import 'package:jippydriver_driver/controllers/withdraw_method_setup_controller.dart';
 import 'package:jippydriver_driver/themes/app_them_data.dart';
-import 'package:jippydriver_driver/themes/round_button_fill.dart';
-import 'package:jippydriver_driver/themes/text_field_widget.dart';
 import 'package:jippydriver_driver/utils/dark_theme_provider.dart';
-import 'package:jippydriver_driver/utils/fire_store_utils.dart';
-import 'package:jippydriver_driver/widget/my_separator.dart';
 
 class WithdrawMethodSetupScreen extends StatelessWidget {
   const WithdrawMethodSetupScreen({super.key});
@@ -20,851 +13,497 @@ class WithdrawMethodSetupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
-        init: WithdrawMethodSetupController(),
-        builder: (controller) {
+    return GetX<WithdrawMethodSetupController>(
+      init: WithdrawMethodSetupController(),
+      builder: (controller) {
+        if (controller.isLoading.value) {
           return Scaffold(
-            backgroundColor: themeChange.getThem()
-                ? AppThemeData.surfaceDark
-                : AppThemeData.surface,
-            body: controller.isLoading.value
-                ? Constant.loader()
-                : Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          Container(
-                            decoration: ShapeDecoration(
-                              color: themeChange.getThem()
-                                  ? AppThemeData.grey900
-                                  : AppThemeData.grey50,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    children: [
-                                      Container(
-                                        height: 52,
-                                        width: 52,
-                                        decoration: ShapeDecoration(
-                                          shape: RoundedRectangleBorder(
-                                            side: BorderSide(
-                                                width: 1,
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey700
-                                                    : AppThemeData.grey200),
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(10),
-                                          child: SvgPicture.asset(
-                                              "assets/icons/ic_building_four.svg"),
-                                        ),
-                                      ),
-                                      const SizedBox(
-                                        width: 10,
-                                      ),
-                                      Expanded(
-                                        child: Text(
-                                          "Bank Transfer".tr,
-                                          style: TextStyle(
-                                              color: themeChange.getThem()
-                                                  ? AppThemeData.grey50
-                                                  : AppThemeData.grey900,
-                                              fontSize: 16,
-                                              fontFamily: AppThemeData.medium),
-                                        ),
-                                      ),
-                                      InkWell(
-                                        onTap: () {
-                                          Get.to(const BankDetailsScreen());
-                                        },
-                                        child: Container(
-                                          decoration: ShapeDecoration(
-                                            shape: RoundedRectangleBorder(
-                                              side: BorderSide(
-                                                  width: 1,
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey800
-                                                      : AppThemeData.grey100),
-                                              borderRadius:
-                                                  BorderRadius.circular(120),
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(8.0),
-                                            child: SvgPicture.asset(
-                                                "assets/icons/ic_edit_coupon.svg"),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 10),
-                                    child: MySeparator(
-                                        color: themeChange.getThem()
-                                            ? AppThemeData.grey700
-                                            : AppThemeData.grey200),
-                                  ),
-                                  controller.isBankDetailsAdded.value == false
-                                      ? Row(
-                                          children: [
-                                            Text(
-                                              "Your Setup is pending".tr,
-                                              style: TextStyle(
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey50
-                                                      : AppThemeData.grey900,
-                                                  fontSize: 16,
-                                                  fontFamily:
-                                                      AppThemeData.medium),
-                                            ),
-                                            const SizedBox(
-                                              width: 10,
-                                            ),
-                                            InkWell(
-                                              onTap: () {
-                                                Get.to(
-                                                    const BankDetailsScreen());
-                                              },
-                                              child: Text(
-                                                "Setup now".tr,
-                                                style: TextStyle(
-                                                    decoration: TextDecoration
-                                                        .underline,
-                                                    decorationColor:
-                                                        AppThemeData
-                                                            .secondary300,
-                                                    color: themeChange.getThem()
-                                                        ? AppThemeData
-                                                            .secondary300
-                                                        : AppThemeData
-                                                            .secondary300,
-                                                    fontSize: 16,
-                                                    fontFamily:
-                                                        AppThemeData.medium),
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      : Row(
-                                          children: [
-                                            Text(
-                                              "Setup was done.".tr,
-                                              style: TextStyle(
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.success400
-                                                      : AppThemeData.success400,
-                                                  fontSize: 16,
-                                                  fontFamily:
-                                                      AppThemeData.medium),
-                                            ),
-                                          ],
-                                        )
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(
-                            height: 10,
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: Container(
-                              decoration: ShapeDecoration(
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey900
-                                    : AppThemeData.grey50,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          height: 52,
-                                          width: 52,
-                                          decoration: ShapeDecoration(
-                                            shape: RoundedRectangleBorder(
-                                              side: BorderSide(
-                                                  width: 1,
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey700
-                                                      : AppThemeData.grey200),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(10),
-                                            child: Image.asset(
-                                                "assets/images/flutterwave.png"),
-                                          ),
-                                        ),
-                                        const SizedBox(
-                                          width: 10,
-                                        ),
-                                        Expanded(
-                                          child: Text(
-                                            "Flutter wave".tr,
-                                            style: TextStyle(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey50
-                                                    : AppThemeData.grey900,
-                                                fontSize: 16,
-                                                fontFamily: AppThemeData.medium),
-                                          ),
-                                        ),
-                                        controller.withdrawMethodModel.value
-                                                    .flutterWave !=
-                                                null
-                                            ? Row(
-                                                children: [
-                                                  InkWell(
-                                                    onTap: () {
-                                                      showDialog(
-                                                        context: context,
-                                                        builder: (BuildContext
-                                                            context) {
-                                                          return flutterWaveDialog(
-                                                              controller,
-                                                              themeChange);
-                                                        },
-                                                      );
-                                                    },
-                                                    child: Container(
-                                                      decoration: ShapeDecoration(
-                                                        shape: RoundedRectangleBorder(
-                                                          side: BorderSide(
-                                                              width: 1,
-                                                              color: themeChange.getThem()
-                                                                  ? AppThemeData.grey800
-                                                                  : AppThemeData.grey100),
-                                                          borderRadius:
-                                                              BorderRadius.circular(120),
-                                                        ),
-                                                      ),
-                                                      child: Padding(
-                                                        padding: const EdgeInsets.all(8.0),
-                                                        child: SvgPicture.asset(
-                                                            "assets/icons/ic_edit_coupon.svg"),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              )
-                                            : const SizedBox(),
-                                      ],
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 10),
-                                      child: MySeparator(
-                                          color: themeChange.getThem()
-                                              ? AppThemeData.grey700
-                                              : AppThemeData.grey200),
-                                    ),
-                                    controller.withdrawMethodModel.value
-                                                .flutterWave ==
-                                            null
-                                        ? Row(
-                                            children: [
-                                              Text(
-                                                "Your Setup is pending".tr,
-                                                style: TextStyle(
-                                                    color: themeChange.getThem()
-                                                        ? AppThemeData.grey50
-                                                        : AppThemeData.grey900,
-                                                    fontSize: 16,
-                                                    fontFamily:
-                                                        AppThemeData.medium),
-                                              ),
-                                              const SizedBox(
-                                                width: 10,
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  showDialog(
-                                                    context: context,
-                                                    builder:
-                                                        (BuildContext context) {
-                                                      return flutterWaveDialog(
-                                                          controller,
-                                                          themeChange);
-                                                    },
-                                                  );
-                                                },
-                                                child: Text(
-                                                  "Setup now".tr,
-                                                  style: TextStyle(
-                                                      decoration: TextDecoration
-                                                          .underline,
-                                                      decorationColor:
-                                                          AppThemeData
-                                                              .secondary300,
-                                                      color: themeChange.getThem()
-                                                          ? AppThemeData
-                                                              .secondary300
-                                                          : AppThemeData
-                                                              .secondary300,
-                                                      fontSize: 16,
-                                                      fontFamily:
-                                                          AppThemeData.medium),
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        : Row(
-                                            children: [
-                                              Text(
-                                                "Setup was done.".tr,
-                                                style: TextStyle(
-                                                    color: themeChange.getThem()
-                                                        ? AppThemeData.success400
-                                                        : AppThemeData.success400,
-                                                    fontSize: 16,
-                                                    fontFamily:
-                                                        AppThemeData.medium),
-                                              ),
-                                            ],
-                                          )
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(
-                            height: 10,
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: Container(
-                              decoration: ShapeDecoration(
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey900
-                                    : AppThemeData.grey50,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          height: 52,
-                                          width: 52,
-                                          decoration: ShapeDecoration(
-                                            shape: RoundedRectangleBorder(
-                                              side: BorderSide(
-                                                  width: 1,
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey700
-                                                      : AppThemeData.grey200),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(10),
-                                            child: Image.asset(
-                                                "assets/images/paypal.png"),
-                                          ),
-                                        ),
-                                        const SizedBox(
-                                          width: 10,
-                                        ),
-                                        Expanded(
-                                          child: Text(
-                                            "PayPal".tr,
-                                            style: TextStyle(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey50
-                                                    : AppThemeData.grey900,
-                                                fontSize: 16,
-                                                fontFamily: AppThemeData.medium),
-                                          ),
-                                        ),
-                                        controller.withdrawMethodModel.value
-                                                    .paypal !=
-                                                null
-                                            ? Row(
-                                                children: [
-                                                  InkWell(
-                                                    onTap: () {
-                                                      showDialog(
-                                                        context: context,
-                                                        builder: (BuildContext
-                                                            context) {
-                                                          return payPalDialog(
-                                                              controller,
-                                                              themeChange);
-                                                        },
-                                                      );
-                                                    },
-                                                    child: Container(
-                                                      decoration: ShapeDecoration(
-                                                        shape: RoundedRectangleBorder(
-                                                          side: BorderSide(
-                                                              width: 1,
-                                                              color: themeChange
-                                                                      .getThem()
-                                                                  ? AppThemeData
-                                                                      .grey800
-                                                                  : AppThemeData
-                                                                      .grey100),
-                                                          borderRadius:
-                                                              BorderRadius
-                                                                  .circular(120),
-                                                        ),
-                                                      ),
-                                                      child: Padding(
-                                                        padding: const EdgeInsets.all(8.0),
-                                                        child: SvgPicture.asset(
-                                                            "assets/icons/ic_edit_coupon.svg"),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              )
-                                            : const SizedBox(),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: Container(
-                              decoration: ShapeDecoration(
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey900
-                                    : AppThemeData.grey50,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          height: 52,
-                                          width: 52,
-                                          decoration: ShapeDecoration(
-                                            shape: RoundedRectangleBorder(
-                                              side: BorderSide(
-                                                  width: 1,
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey700
-                                                      : AppThemeData.grey200),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(10),
-                                            child: Image.asset(
-                                                "assets/images/razorpay.png"),
-                                          ),
-                                        ),
-                                        const SizedBox(
-                                          width: 10,
-                                        ),
-                                        Expanded(
-                                          child: Text(
-                                            "RazorPay".tr,
-                                            style: TextStyle(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey50
-                                                    : AppThemeData.grey900,
-                                                fontSize: 16,
-                                                fontFamily: AppThemeData.medium),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          Visibility(
-                            visible: false,
-                            child: Container(
-                              decoration: ShapeDecoration(
-                                color: themeChange.getThem()
-                                    ? AppThemeData.grey900
-                                    : AppThemeData.grey50,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(10),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          height: 52,
-                                          width: 52,
-                                          decoration: ShapeDecoration(
-                                            shape: RoundedRectangleBorder(
-                                              side: BorderSide(
-                                                  width: 1,
-                                                  color: themeChange.getThem()
-                                                      ? AppThemeData.grey700
-                                                      : AppThemeData.grey200),
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(10),
-                                            child: Image.asset(
-                                                "assets/images/stripe.png"),
-                                          ),
-                                        ),
-                                        const SizedBox(
-                                          width: 10,
-                                        ),
-                                        Expanded(
-                                          child: Text(
-                                            "Stripe".tr,
-                                            style: TextStyle(
-                                                color: themeChange.getThem()
-                                                    ? AppThemeData.grey50
-                                                    : AppThemeData.grey900,
-                                                fontSize: 16,
-                                                fontFamily: AppThemeData.medium),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+            backgroundColor: _bgColor(themeChange),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        return Scaffold(
+          backgroundColor: _bgColor(themeChange),
+          appBar: _buildAppBar(themeChange),
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // _WalletBalanceCard(themeChange: themeChange),
+                // const SizedBox(height: 20),
+                _sectionLabel("Payout Methods", themeChange),
+                const SizedBox(height: 8),
+                _BankTransferCard(
+                  controller: controller,
+                  themeChange: themeChange,
+                  context: context,
+                ),
+                const SizedBox(height: 10),
+                _ComingSoonMethodCard(
+                  label: "PayPal",
+                  iconAsset: "assets/images/paypal.png",
+                  themeChange: themeChange,
+                ),
+                const SizedBox(height: 10),
+                _ComingSoonMethodCard(
+                  label: "Stripe Connect",
+                  iconAsset: "assets/images/stripe.png",
+                  themeChange: themeChange,
+                ),
+                const SizedBox(height: 10),
+                _ComingSoonMethodCard(
+                  label: "FlutterWave",
+                  iconAsset: "assets/images/flutterwave.png",
+                  themeChange: themeChange,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  AppBar _buildAppBar(DarkThemeProvider themeChange) {
+    return AppBar(
+      backgroundColor: _bgColor(themeChange),
+      elevation: 0,
+      centerTitle: false,
+      title: Text(
+        "Payout Setup".tr,
+        style: TextStyle(
+          color: themeChange.getThem()
+              ? AppThemeData.grey50
+              : AppThemeData.grey900,
+          fontSize: 18,
+          fontFamily: AppThemeData.medium,
+        ),
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String label, DarkThemeProvider themeChange) {
+    return Text(
+      label.toUpperCase(),
+      style: TextStyle(
+        color: themeChange.getThem()
+            ? AppThemeData.grey500
+            : AppThemeData.grey400,
+        fontSize: 11,
+        letterSpacing: 0.8,
+        fontFamily: AppThemeData.medium,
+      ),
+    );
+  }
+
+  Color _bgColor(DarkThemeProvider themeChange) =>
+      themeChange.getThem() ? AppThemeData.surfaceDark : AppThemeData.surface;
+}
+
+// ─── Wallet Balance Card ──────────────────────────────────────────────────────
+
+// class _WalletBalanceCard extends StatelessWidget {
+//   final DarkThemeProvider themeChange;
+//   const _WalletBalanceCard({required this.themeChange});
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     return Container(
+//       width: double.infinity,
+//       padding: const EdgeInsets.all(20),
+//       decoration: BoxDecoration(
+//         gradient: const LinearGradient(
+//           colors: [Color(0xFF185FA5), Color(0xFF378ADD)],
+//           begin: Alignment.topLeft,
+//           end: Alignment.bottomRight,
+//         ),
+//         borderRadius: BorderRadius.circular(20),
+//       ),
+//       child: Column(
+//         crossAxisAlignment: CrossAxisAlignment.start,
+//         children: [
+//           Text(
+//             "Available Balance".tr,
+//             style: const TextStyle(
+//               color: Colors.white70,
+//               fontSize: 12,
+//               letterSpacing: 0.5,
+//             ),
+//           ),
+//           const SizedBox(height: 6),
+//           Text(
+//             Constant.amountShow(
+//               amount: ,
+//             ),            style: const TextStyle(color: Colors.white, fontSize: 28),
+//           ),
+//           const SizedBox(height: 12),
+//           Row(
+//             children: [
+//               Container(
+//                 padding:
+//                 const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+//                 decoration: BoxDecoration(
+//                   color: Colors.white.withOpacity(0.18),
+//                   borderRadius: BorderRadius.circular(20),
+//                 ),
+//                 child: Text(
+//                   "Withdraw".tr,
+//                   style: const TextStyle(
+//                     color: Colors.white,
+//                     fontSize: 12,
+//                     fontWeight: FontWeight.w500,
+//                   ),
+//                 ),
+//               ),
+//             ],
+//           )
+//         ],
+//       ),
+//     );
+//   }
+// }
+
+// ─── Bank Transfer Card ───────────────────────────────────────────────────────
+
+class _BankTransferCard extends StatelessWidget {
+  final WithdrawMethodSetupController controller;
+  final DarkThemeProvider themeChange;
+  final BuildContext context;
+
+  const _BankTransferCard({
+    required this.controller,
+    required this.themeChange,
+    required this.context,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDone = controller.isBankDetailsAdded.value;
+    return _MethodCard(
+      themeChange: themeChange,
+      isActive: isDone,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _MethodIcon(
+                themeChange: themeChange,
+                child: SvgPicture.asset(
+                  "assets/icons/ic_building_four.svg",
+                  width: 22,
+                  height: 22,
+                  colorFilter: ColorFilter.mode(
+                    isDone ? AppThemeData.primary300 : AppThemeData.grey500,
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      "Bank Transfer".tr,
+                      style: TextStyle(
+                        color: themeChange.getThem()
+                            ? AppThemeData.grey50
+                            : AppThemeData.grey900,
+                        fontSize: 15,
+                        fontFamily: AppThemeData.medium,
                       ),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "Direct bank deposit".tr,
+                      style: TextStyle(
+                        color: AppThemeData.grey400,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isDone)
+                _StatusBadge(label: "Done", isSuccess: true)
+              else
+                _StatusBadge(label: "Pending", isSuccess: false),
+              const SizedBox(width: 8),
+              _EditButton(
+                themeChange: themeChange,
+                onTap: () => Get.to(const BankDetailsScreen()),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Divider(
+              color: themeChange.getThem()
+                  ? AppThemeData.grey700
+                  : AppThemeData.grey200,
+              height: 1,
+            ),
+          ),
+          Row(
+            children: [
+              if (isDone) ...[
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF639922),
+                    shape: BoxShape.circle,
                   ),
-          );
-        });
-  }
-
-  flutterWaveDialog(WithdrawMethodSetupController controller, themeChange) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(10),
-      clipBehavior: Clip.antiAliasWithSaveLayer,
-      backgroundColor: themeChange.getThem()
-          ? AppThemeData.surfaceDark
-          : AppThemeData.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: SizedBox(
-          width: 500,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFieldWidget(
-                title: 'Account Number'.tr,
-                controller: controller.accountNumberFlutterWave.value,
-                hintText: 'Account Number'.tr,
-              ),
-              TextFieldWidget(
-                title: 'Bank Code'.tr,
-                controller: controller.bankCodeFlutterWave.value,
-                hintText: 'Bank Code'.tr,
-              ),
-              RoundedButtonFill(
-                title: "Save".tr,
-                color: AppThemeData.secondary300,
-                textColor: AppThemeData.grey50,
-                onPress: () async {
-                  if (controller.accountNumberFlutterWave.value.text.isEmpty) {
-                    ShowToastDialog.showToast("Please enter account Number".tr);
-                  } else if (controller
-                      .bankCodeFlutterWave.value.text.isEmpty) {
-                    ShowToastDialog.showToast("Please enter bank code".tr);
-                  } else {
-                    FlutterWave? flutterWave =
-                        controller.withdrawMethodModel.value.flutterWave;
-                    if (flutterWave != null) {
-                      flutterWave.accountNumber =
-                          controller.accountNumberFlutterWave.value.text;
-                      flutterWave.bankCode =
-                          controller.bankCodeFlutterWave.value.text;
-                    } else {
-                      flutterWave = FlutterWave(
-                          accountNumber:
-                              controller.accountNumberFlutterWave.value.text,
-                          bankCode: controller.bankCodeFlutterWave.value.text,
-                          name: "FlutterWave");
-                    }
-                    controller.withdrawMethodModel.value.flutterWave =
-                        flutterWave;
-                    await FireStoreUtils.setWithdrawMethod(
-                            controller.withdrawMethodModel.value)
-                        .then(
-                      (value) async {
-                        ShowToastDialog.showLoader("Please wait..".tr);
-
-                        await controller.getPaymentMethod();
-                        ShowToastDialog.closeLoader();
-                        ShowToastDialog.showToast(
-                            "Payment Method save successfully".tr);
-                        Get.back();
-                      },
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  payPalDialog(WithdrawMethodSetupController controller, themeChange) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(10),
-      clipBehavior: Clip.antiAliasWithSaveLayer,
-      backgroundColor: themeChange.getThem()
-          ? AppThemeData.surfaceDark
-          : AppThemeData.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: SizedBox(
-          width: 500,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFieldWidget(
-                title: 'Paypal Email'.tr,
-                controller: controller.emailPaypal.value,
-                hintText: 'Paypal Email'.tr,
-              ),
-              RoundedButtonFill(
-                title: "Save".tr,
-                color: AppThemeData.secondary300,
-                textColor: AppThemeData.grey50,
-                onPress: () async {
-                  if (controller.emailPaypal.value.text.isEmpty) {
-                    ShowToastDialog.showToast("Please enter Paypal email".tr);
-                  } else {
-                    Paypal? payPal =
-                        controller.withdrawMethodModel.value.paypal;
-                    if (payPal != null) {
-                      payPal.email = controller.emailPaypal.value.text;
-                    } else {
-                      payPal = Paypal(
-                          email: controller.emailPaypal.value.text,
-                          name: "PayPal");
-                    }
-                    controller.withdrawMethodModel.value.paypal = payPal;
-                    await FireStoreUtils.setWithdrawMethod(
-                            controller.withdrawMethodModel.value)
-                        .then(
-                      (value) async {
-                        ShowToastDialog.showLoader("Please wait..".tr);
-
-                        await controller.getPaymentMethod();
-                        ShowToastDialog.closeLoader();
-                        ShowToastDialog.showToast(
-                            "Payment Method save successfully".tr);
-                        Get.back();
-                      },
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  razorPayDialog(WithdrawMethodSetupController controller, themeChange) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(10),
-      clipBehavior: Clip.antiAliasWithSaveLayer,
-      backgroundColor: themeChange.getThem()
-          ? AppThemeData.surfaceDark
-          : AppThemeData.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: SizedBox(
-          width: 500,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFieldWidget(
-                title: 'Razorpay account Id'.tr,
-                controller: controller.accountIdRazorPay.value,
-                hintText: 'Razorpay account Id'.tr,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  "Add your Account ID. For example, acc_GLGeLkU2JUeyDZ".tr,
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "${controller.userBankDetails.value.bankName} · ••••${controller.userBankDetails.value.accountNumber.length > 4 ? controller.userBankDetails.value.accountNumber.substring(controller.userBankDetails.value.accountNumber.length - 4) : controller.userBankDetails.value.accountNumber}",
+                    style: TextStyle(
                       color: themeChange.getThem()
-                          ? AppThemeData.grey500
-                          : AppThemeData.grey400),
+                          ? AppThemeData.grey400
+                          : AppThemeData.grey600,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  "Setup required".tr,
+                  style: TextStyle(
+                    color: themeChange.getThem()
+                        ? AppThemeData.grey400
+                        : AppThemeData.grey600,
+                    fontSize: 13,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => Get.to(const BankDetailsScreen()),
+                  child: Text(
+                    "Set up now".tr,
+                    style: const TextStyle(
+                      color: AppThemeData.primary300,
+                      fontSize: 13,
+                      fontFamily: AppThemeData.medium,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Coming Soon Card ─────────────────────────────────────────────────────────
+
+class _ComingSoonMethodCard extends StatelessWidget {
+  final String label;
+  final String iconAsset;
+  final DarkThemeProvider themeChange;
+
+  const _ComingSoonMethodCard({
+    required this.label,
+    required this.iconAsset,
+    required this.themeChange,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: 0.45,
+      child: _MethodCard(
+        themeChange: themeChange,
+        isActive: false,
+        child: Row(
+          children: [
+            _MethodIcon(
+              themeChange: themeChange,
+              child: Image.asset(iconAsset, width: 22, height: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: themeChange.getThem()
+                          ? AppThemeData.grey50
+                          : AppThemeData.grey900,
+                      fontSize: 15,
+                      fontFamily: AppThemeData.medium,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "Coming soon".tr,
+                    style: TextStyle(
+                      color: AppThemeData.grey400,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: themeChange.getThem()
+                    ? AppThemeData.grey800
+                    : AppThemeData.grey100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                "Not available".tr,
+                style: TextStyle(
+                  color: AppThemeData.grey500,
+                  fontSize: 11,
+                  fontFamily: AppThemeData.medium,
                 ),
               ),
-              const SizedBox(
-                height: 20,
-              ),
-              RoundedButtonFill(
-                title: "Save".tr,
-                color: AppThemeData.secondary300,
-                textColor: AppThemeData.grey50,
-                onPress: () async {
-                  if (controller.accountIdRazorPay.value.text.isEmpty) {
-                    ShowToastDialog.showToast(
-                        "Please enter RazorPay account Id".tr);
-                  } else {
-                    RazorpayModel? razorPay =
-                        controller.withdrawMethodModel.value.razorpay;
-                    if (razorPay != null) {
-                      razorPay.accountId =
-                          controller.accountIdRazorPay.value.text;
-                    } else {
-                      razorPay = RazorpayModel(
-                          accountId: controller.accountIdRazorPay.value.text,
-                          name: "RazorPay");
-                    }
-                    controller.withdrawMethodModel.value.razorpay = razorPay;
-                    await FireStoreUtils.setWithdrawMethod(
-                            controller.withdrawMethodModel.value)
-                        .then(
-                      (value) async {
-                        ShowToastDialog.showLoader("Please wait..".tr);
-
-                        await controller.getPaymentMethod();
-                        ShowToastDialog.closeLoader();
-                        ShowToastDialog.showToast(
-                            "Payment Method save successfully".tr);
-                        Get.back();
-                      },
-                    );
-                  }
-                },
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
+}
 
-  stripeDialog(WithdrawMethodSetupController controller, themeChange) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(10),
-      clipBehavior: Clip.antiAliasWithSaveLayer,
-      backgroundColor: themeChange.getThem()
-          ? AppThemeData.surfaceDark
-          : AppThemeData.surface,
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: SizedBox(
-          width: 500,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFieldWidget(
-                title: 'Stripe Account Id'.tr,
-                controller: controller.accountIdStripe.value,
-                hintText: 'Stripe Account Id'.tr,
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(
-                  "Go to your Stripe account settings > Account details > Copy your account ID on the right-hand side. For example, acc_GLGeLkU2JUeyDZ"
-                      .tr,
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: themeChange.getThem()
-                          ? AppThemeData.grey500
-                          : AppThemeData.grey400),
-                ),
-              ),
-              const SizedBox(
-                height: 20,
-              ),
-              RoundedButtonFill(
-                title: "Save".tr,
-                color: AppThemeData.secondary300,
-                textColor: AppThemeData.grey50,
-                onPress: () async {
-                  if (controller.accountIdStripe.value.text.isEmpty) {
-                    ShowToastDialog.showToast(
-                        "Please enter stripe account Id".tr);
-                  } else {
-                    Stripe? stripe =
-                        controller.withdrawMethodModel.value.stripe;
-                    if (stripe != null) {
-                      stripe.accountId = controller.accountIdStripe.value.text;
-                    } else {
-                      stripe = Stripe(
-                          accountId: controller.accountIdStripe.value.text,
-                          name: "Stripe");
-                    }
-                    controller.withdrawMethodModel.value.stripe = stripe;
-                    await FireStoreUtils.setWithdrawMethod(
-                            controller.withdrawMethodModel.value)
-                        .then(
-                      (value) async {
-                        ShowToastDialog.showLoader("Please wait..".tr);
+// ─── Shared Small Widgets ─────────────────────────────────────────────────────
 
-                        await controller.getPaymentMethod();
-                        ShowToastDialog.closeLoader();
-                        ShowToastDialog.showToast(
-                            "Payment Method save successfully".tr);
-                        Get.back();
-                      },
-                    );
-                  }
-                },
-              ),
-            ],
+class _MethodCard extends StatelessWidget {
+  final DarkThemeProvider themeChange;
+  final Widget child;
+  final bool isActive;
+
+  const _MethodCard({
+    required this.themeChange,
+    required this.child,
+    this.isActive = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: themeChange.getThem()
+            ? AppThemeData.grey900
+            : AppThemeData.grey50,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isActive
+              ? AppThemeData.primary300
+              : themeChange.getThem()
+              ? AppThemeData.grey800
+              : AppThemeData.grey200,
+          width: isActive ? 1.5 : 0.5,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _MethodIcon extends StatelessWidget {
+  final DarkThemeProvider themeChange;
+  final Widget child;
+
+  const _MethodIcon({required this.themeChange, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: themeChange.getThem()
+            ? AppThemeData.grey800
+            : AppThemeData.grey100,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: themeChange.getThem()
+              ? AppThemeData.grey700
+              : AppThemeData.grey200,
+          width: 0.5,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final bool isSuccess;
+
+  const _StatusBadge({required this.label, required this.isSuccess});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: isSuccess
+            ? const Color(0xFFEAF3DE)
+            : const Color(0xFFFAEEDA),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: isSuccess
+              ? const Color(0xFF3B6D11)
+              : const Color(0xFF854F0B),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+class _EditButton extends StatelessWidget {
+  final DarkThemeProvider themeChange;
+  final VoidCallback onTap;
+
+  const _EditButton({required this.themeChange, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(50),
+      child: Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: themeChange.getThem()
+                ? AppThemeData.grey700
+                : AppThemeData.grey200,
+            width: 0.5,
           ),
+          color: themeChange.getThem()
+              ? AppThemeData.grey800
+              : AppThemeData.grey100,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: SvgPicture.asset("assets/icons/ic_edit_coupon.svg"),
         ),
       ),
     );

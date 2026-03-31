@@ -11,6 +11,7 @@ import '../../controllers/edit_profile_controller.dart';
 import '../edit_profile_screen/edit_profile_screen.dart';
 import '../terms_and_condition/terms_and_condition_screen.dart';
 import '../verification_screen/verification_screen.dart';
+import '../withdraw_method_setup_screens/withdraw_method_setup_screen.dart';
 
 class ProfileController extends GetxController {
   // ── Dependencies ────────────────────────────────────────────────────
@@ -99,6 +100,10 @@ class ProfileController extends GetxController {
 
     if (index == 3) {
       Get.to(() => const TermsAndConditionScreen(type: "privacy"));
+      return;
+    }
+    if (index == 4) {
+      Get.to(() => const WithdrawMethodSetupScreen());
       return;
     }
   }
