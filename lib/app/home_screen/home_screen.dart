@@ -112,8 +112,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       init: HomeController(),
       builder: (ctrl) => Scaffold(
         backgroundColor:
-        theme.getThem() ? AppThemeData.grey50 : AppThemeData.grey100,
-        appBar: widget.isAppBarShow == true ? _buildAppBar(theme) : null,
+        theme.getThem() ? AppThemeData.grey900 : AppThemeData.grey100,
+        appBar: widget.isAppBarShow == true ? _buildAppBar(context, theme) : null,
         // ── Bottom drawer (accept/reject or order card) ─────────────────
         bottomSheet: Obx(() {
           final show = _shouldShowDrawer(ctrl);
@@ -132,22 +132,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   // ── AppBar ──────────────────────────────────────────────────────────────
-  PreferredSizeWidget _buildAppBar(DarkThemeProvider theme) => AppBar(
-    backgroundColor:
-    theme.getThem() ? AppThemeData.grey900 : AppThemeData.grey50,
+  PreferredSizeWidget _buildAppBar(BuildContext context, DarkThemeProvider theme) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return AppBar(
+    backgroundColor: colorScheme.surface,
+    foregroundColor: colorScheme.onSurface,
     centerTitle: false,
     iconTheme:
-    const IconThemeData(color: AppThemeData.grey900, size: 20),
+    IconThemeData(color: colorScheme.onSurface, size: 20),
     title: Text(
       'Order'.tr,
       style: TextStyle(
-        color:
-        theme.getThem() ? AppThemeData.grey50 : AppThemeData.grey900,
+        color: colorScheme.onSurface,
         fontSize: 18,
         fontFamily: AppThemeData.medium,
       ),
     ),
   );
+  }
 
   // ═══════════════════════════════════════════════════════════════════════
   //  Body — THE BUG WAS HERE

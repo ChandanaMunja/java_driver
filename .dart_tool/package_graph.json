@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "jippydriver_driver",
-      "version": "2.2.6+15",
+      "version": "2.2.7+17",
       "dependencies": [
         "aadhar_auth_service",
         "android_pip",

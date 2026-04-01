@@ -28,8 +28,8 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.88.23:8000/api/";
-  // static String baseUrl  = "https://web.jippymart.in/api/";
+  // static String baseUrl  = "http://192.168.88.23:8000/api/";
+  static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
