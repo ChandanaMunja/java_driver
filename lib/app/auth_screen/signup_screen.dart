@@ -252,6 +252,8 @@ class _SignupScreenState extends State<SignupScreen>
                       textInputAction: TextInputAction.next,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(10), // 👈 limit to 10 digits
+
                       ],
                       prefix: CountryCodePicker(
                         enabled: controller.type.value != 'mobileNumber',

@@ -756,6 +756,8 @@ class DetailsUploadController extends GetxController {
       final user = await FireStoreUtils.getUserProfile(uid);
       if (user == null) return false;
       user.profilePictureURL = selfie;
+      // Do not send current online state with a profile-photo change — backend expects isActive off (0).
+      user.isActive = false;
       return await FireStoreUtils.updateUser(user);
     } catch (e) {
       debugPrint('_uploadSelfieOnly error: $e');

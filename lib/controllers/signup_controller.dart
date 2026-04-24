@@ -477,7 +477,7 @@ class SignupController extends GetxController {
 
       if (isThirdParty) {
         await _buildUserModel();
-        await FireStoreUtils.updateUser(userModel.value);
+        await _updateUserWithoutIsActive(userModel.value);
         _handlePostSignup();
       } else {
         await _signupWithApi();
@@ -528,12 +528,38 @@ class SignupController extends GetxController {
         id: data['id']?.toString(),
         provider: 'email',
       );
-      await FireStoreUtils.updateUser(userModel.value);
+      await _updateUserWithoutIsActive(userModel.value);
       _handlePostSignup();
     } else {
       ShowToastDialog.showToast(
           responseData['message'] as String? ?? 'Signup failed'.tr);
     }
+  }
+
+  Future<bool> _updateUserWithoutIsActive(UserModel user) async {
+    try {
+      final payload = user.toJson();
+      payload.remove('isActive');
+
+      final response = await http.post(
+        Uri.parse('${Constant.baseUrl}driver-sql/users/update'),
+        headers: const {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(payload),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body) as Map<String, dynamic>;
+        if (responseData['success'] == true) {
+          Constant.userModel = user;
+          return true;
+        }
+      }
+    } catch (e) {
+      log('Failed to update user without isActive: $e');
+    }
+    return false;
   }
 
   void _handlePostSignup() {

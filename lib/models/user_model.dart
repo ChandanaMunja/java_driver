@@ -766,7 +766,7 @@ class ShippingAddress {
   }
 
   String getFullAddress() {
-    return '${address == null || address!.isEmpty ? "" : address} $locality ${landmark == null || landmark!.isEmpty ? "" : landmark.toString()}';
+    return '$locality ${landmark == null || landmark!.isEmpty ? "" : landmark.toString()}';
   }
 }
 

@@ -69,7 +69,10 @@ class OrderWorkflowService {
     return false;
   }
 
-  /// Rejects [order] by [driverModel].
+  /// Rejects [order] for [driverModel] by removing it from this driver's queue only.
+  ///
+  /// Does not update the order document (status / rejectedByDrivers) so the job
+  /// can still be offered to other drivers with no "rejected" status churn.
   static Future<void> rejectOrderBackend({
     required OrderModel order,
     required UserModel driverModel,
@@ -78,13 +81,6 @@ class OrderWorkflowService {
     final driverId = driverModel.id?.toString().trim() ?? '';
     if (orderId.isEmpty || driverId.isEmpty) return;
 
-    order.rejectedByDrivers ??= [];
-    order.rejectedByDrivers!.add(driverId);
-    order.status = Constant.driverRejected;
-
-    await FireStoreUtils.setOrder(order);
-
-    // Remove order from pending driver request list.
     driverModel.orderRequestData?.remove(orderId);
 
     final httpClient = HttpClientService();

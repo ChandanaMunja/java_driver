@@ -228,6 +228,10 @@ class HomeController extends GetxController {
   // ── Misc guards ───────────────────────────────────────────────────────
   bool      _isAcceptingOrder     = false;
   bool      _isRejectingOrder    = false;
+
+  /// True while [acceptOrder] is running — keeps offer UI from disappearing
+  /// if [orderRequestData] clears before [inProgressOrderID] reflects accept.
+  bool get isAcceptingOrder => _isAcceptingOrder;
   bool      _isCalculatingCharges = false;
   bool      _driverChargesWarmupInFlight = false;
   bool      _driverChargesApplied = false;
@@ -1694,6 +1698,7 @@ class HomeController extends GetxController {
     if (currentOrder.value.id != null &&
         !inProgress.contains(currentOrder.value.id) &&
         !requests.contains(currentOrder.value.id)) {
+      if (_isAcceptingOrder) return;
       final isPendingNoDriver =
           currentOrder.value.status == Constant.driverPending &&
               (currentOrder.value.driverID?.isEmpty ?? true);

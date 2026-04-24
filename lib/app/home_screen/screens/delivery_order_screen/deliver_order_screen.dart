@@ -15,57 +15,72 @@ import 'package:get/get.dart';
 import 'package:provider/provider.dart';
 import 'package:jippydriver_driver/utils/app_logger.dart';
 
-const String _kPaymentQrAsset = 'assets/images/paymentqr.jpeg';
+const String _kPaymentQrAsset = 'assets/images/paymentqr.jpg';
 
 void _openPaymentQrFullscreen(BuildContext context) {
-  Navigator.of(context, rootNavigator: true).push<void>(
-    PageRouteBuilder<void>(
-      opaque: true,
-      barrierDismissible: true,
-      pageBuilder: (ctx, animation, secondaryAnimation) {
-        return FadeTransition(
-          opacity: animation,
-          child: Scaffold(
-            backgroundColor: Colors.black,
-            body: SafeArea(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Center(
+  showDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    builder: (ctx) {
+      final size = MediaQuery.of(ctx).size;
+      return Dialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: size.width * 0.80,
+            maxHeight: size.height * 0.45,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
                     child: InteractiveViewer(
-                      minScale: 0.6,
+                      minScale: 0.8,
                       maxScale: 4,
                       child: Image.asset(
                         _kPaymentQrAsset,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text(
-                            'Could not load payment QR'.tr,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(color: Colors.white70),
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'Could not load payment QR'.tr,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                  PositionedDirectional(
-                    top: 4,
-                    end: 4,
-                    child: IconButton(
-                      icon: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 28),
-                      onPressed: () => Navigator.of(ctx).pop(),
+                ),
+                PositionedDirectional(
+                  top: 2,
+                  end: 2,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 24,
                     ),
+                    onPressed: () => Navigator.of(ctx).pop(),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 220),
-    ),
+        ),
+      );
+    },
   );
 }
 

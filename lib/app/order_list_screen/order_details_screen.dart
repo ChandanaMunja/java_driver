@@ -231,24 +231,24 @@ class OrderDetailsScreen extends StatelessWidget {
                                                                 .primary300,
                                                       ),
                                                     ),
-                                                    Text(
-                                                      controller.orderModel
-                                                          .value.address
-                                                          ?.getFullAddress() ?? 'Address not available',
-                                                      textAlign:
-                                                          TextAlign.start,
-                                                      style: TextStyle(
-                                                        fontFamily:
-                                                            AppThemeData.medium,
-                                                        fontSize: 14,
-                                                        color: themeChange
-                                                                .getThem()
-                                                            ? AppThemeData
-                                                                .grey300
-                                                            : AppThemeData
-                                                                .grey600,
-                                                      ),
-                                                    ),
+                                                    // Text(
+                                                    //   controller.orderModel
+                                                    //       .value.address
+                                                    //       ?.getFullAddress() ?? 'Address not available',
+                                                    //   textAlign:
+                                                    //       TextAlign.start,
+                                                    //   style: TextStyle(
+                                                    //     fontFamily:
+                                                    //         AppThemeData.medium,
+                                                    //     fontSize: 14,
+                                                    //     color: themeChange
+                                                    //             .getThem()
+                                                    //         ? AppThemeData
+                                                    //             .grey300
+                                                    //         : AppThemeData
+                                                    //             .grey600,
+                                                    //   ),
+                                                    // ),
                                                   ],
                                                 ),
                                         );

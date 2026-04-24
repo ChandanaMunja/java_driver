@@ -204,10 +204,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final order  = ctrl.currentOrder.value;
     final driver = ctrl.driverModel.value;
 
-    final inReq      = driver.orderRequestData?.contains(order.id) ?? false;
-    final noDriver   = order.driverID == null || order.driverID!.isEmpty;
+    final inReq          =
+        driver.orderRequestData?.contains(order.id) ?? false;
+    final inProgressHere =
+        driver.inProgressOrderID?.contains(order.id) ?? false;
+    final noDriver       =
+        order.driverID == null || order.driverID!.isEmpty;
     final acceptShow = order.id != null &&
+        !inProgressHere &&
         (inReq ||
+            ctrl.isAcceptingOrder ||
             order.status == Constant.driverPending ||
             (order.status == Constant.orderAccepted && noDriver)) &&
         noDriver &&
@@ -215,7 +221,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         (order.vendor != null || (order.vendorID?.isNotEmpty ?? false));
 
     final cardShow = order.id != null &&
-        order.driverID == Constant.userModel?.id &&
+        (order.driverID == Constant.userModel?.id || inProgressHere) &&
         (!inReq || order.status == Constant.driverPending);
 
     return acceptShow || cardShow;
@@ -230,11 +236,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     final order  = ctrl.currentOrder.value;
     final driver = ctrl.driverModel.value;
-    final inReq  = driver.orderRequestData?.contains(order.id) ?? false;
+    final inReq          =
+        driver.orderRequestData?.contains(order.id) ?? false;
+    final inProgressHere =
+        driver.inProgressOrderID?.contains(order.id) ?? false;
     final noDriver = order.driverID == null || order.driverID!.isEmpty;
 
     final showAcceptReject = order.id != null &&
+        !inProgressHere &&
         (inReq ||
+            ctrl.isAcceptingOrder ||
             order.status == Constant.driverPending ||
             (order.status == Constant.orderAccepted && noDriver)) &&
         noDriver &&
@@ -242,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         (order.vendor != null || (order.vendorID?.isNotEmpty ?? false));
 
     final showCard = order.id != null &&
-        order.driverID == Constant.userModel?.id &&
+        (order.driverID == Constant.userModel?.id || inProgressHere) &&
         (!inReq || order.status == Constant.driverPending);
 
     return AnimatedSwitcher(
@@ -835,7 +846,7 @@ class _OrderCardContent extends StatelessWidget {
             }),
 
             const SizedBox(width: 8),
-            _chatBtn(ctx),
+            // _chatBtn(ctx),
           ],
         ),      ),
       itemCount: 2,
