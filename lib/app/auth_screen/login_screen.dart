@@ -120,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 9),
 
                   // ── Subtitle ───────────────────────────────────────────
                   _Animated(
