@@ -27,9 +27,9 @@ class DeliverOrderController extends GetxController {
   @override
   void onInit() {
     AppLogger.log('DeliverOrderController onInit() called', tag: 'Controller');
-    // TODO: implement onInit
-    getArgument();
     super.onInit();
+    // Avoid updating Rx during GetX initState / first build (parent Home GetX).
+    WidgetsBinding.instance.addPostFrameCallback((_) => getArgument());
   }
 
   @override
@@ -42,15 +42,20 @@ class DeliverOrderController extends GetxController {
 
   RxInt totalQuantity = 0.obs;
 
-  getArgument() {
-    dynamic argumentData = Get.arguments;
+  void getArgument() {
+    final argumentData = Get.arguments;
     if (argumentData != null) {
-      orderModel.value = argumentData['orderModel'];
-      totalQuantity.value = 0;
-      for (var element in (orderModel.value.products ?? [])) {
-        final qty = element.quantity;
-        totalQuantity.value +=
-            qty is num ? qty.toInt() : int.tryParse(qty?.toString() ?? '0') ?? 0;
+      final order = argumentData['orderModel'];
+      if (order is OrderModel) {
+        orderModel.value = order;
+        var total = 0;
+        for (final element in order.products ?? []) {
+          final qty = element.quantity;
+          total += qty is num
+              ? qty.toInt()
+              : int.tryParse(qty?.toString() ?? '0') ?? 0;
+        }
+        totalQuantity.value = total;
       }
     }
     isLoading.value = false;
@@ -209,7 +214,27 @@ class DeliverOrderController extends GetxController {
       return null;
     }
   }
-  final controller = Get.find<HomeController>();
+
+  double getOrderAmountToCollect() {
+    final rawToPay = orderModel.value.toPay;
+    final parsedToPay = rawToPay != null
+        ? double.tryParse(rawToPay.toString().trim())
+        : null;
+    if (parsedToPay != null) return parsedToPay;
+
+    final rawTotal = orderModel.value.calculatedCharges?['totalCalculatedCharge'];
+    final parsedTotal = rawTotal != null
+        ? double.tryParse(rawTotal.toString().trim())
+        : null;
+    if (parsedTotal != null) return parsedTotal;
+
+    final parsedDeliveryCharge = orderModel.value.deliveryCharge != null
+        ? double.tryParse(orderModel.value.deliveryCharge.toString().trim())
+        : null;
+    return parsedDeliveryCharge ?? 0.0;
+  }
+
+  HomeController get homeController => Get.find<HomeController>();
 
   String _walletUpdatedAmountText() {
     final cc = orderModel.value.calculatedCharges;
@@ -326,13 +351,13 @@ void _showWalletUpdatedPopup() {
     ShowToastDialog.showLoader("Please wait".tr);
     try {
       // Extract totalCalculatedCharge from calculatedCharges
-      // Try orderModel first (from arguments), then controller.currentOrder, then controller's observable
+      // Try orderModel first (from arguments), then home currentOrder, then its observable
       dynamic chargeValue = orderModel.value.calculatedCharges?['totalCalculatedCharge'] ??
-                           controller.currentOrder.value.calculatedCharges?['totalCalculatedCharge'];
+                           homeController.currentOrder.value.calculatedCharges?['totalCalculatedCharge'];
       num? parsedCharge;
       if (chargeValue == null) {
         // If calculatedCharges doesn't exist, try to use HomeController's totalCalculatedCharge
-        parsedCharge = controller.totalCalculatedCharge.value;
+        parsedCharge = homeController.totalCalculatedCharge.value;
         print("[DeliverOrderController] calculatedCharges not found, using HomeController totalCalculatedCharge: $parsedCharge");
       } else if (chargeValue is num) {
         parsedCharge = chargeValue;
@@ -369,38 +394,19 @@ void _showWalletUpdatedPopup() {
         return;
       }
       print("[DeliverOrderController] Updating wallet amount");
-      try {
-        // Try to fetch toPay from API, but fallback to order model value if available
-        double? toPay = await fetchToPay(orderModel.value.id ?? '0');
-        // If API fetch failed, try to use existing toPay value from order model
-        if (toPay == null && orderModel.value.toPay != null && orderModel.value.toPay!.isNotEmpty) {
-          try {
-            toPay = double.tryParse(orderModel.value.toPay!);
-            print('[DeliverOrderController] Using existing ToPay from order model: $toPay');
-          } catch (e) {
-            print('[DeliverOrderController] Failed to parse existing ToPay: ${orderModel.value.toPay}');
-          }
-        }
-
-        if (toPay == null) {
-          print('[DeliverOrderController][ERROR] ToPay is null in order_Billing for order: ${orderModel.value.id}');
-          print('[DeliverOrderController] Order model toPay value: ${orderModel.value.toPay}');
-          ShowToastDialog.closeLoader();
-          ShowToastDialog.showToast("Order billing info missing. Cannot complete order.");
-          return;
-        }
-        orderModel.value.toPay = toPay.toString();
-        print('[DeliverOrderController] Set ToPay: ${orderModel.value.toPay}');
-      } catch (e) {
-        print('[DeliverOrderController][ERROR] Failed to fetch ToPay from order_Billing: $e');
+      final amountToCollect = getOrderAmountToCollect();
+      if (amountToCollect <= 0.0) {
+        print('[DeliverOrderController][ERROR] Computed amount to collect is invalid: $amountToCollect');
         ShowToastDialog.closeLoader();
-        ShowToastDialog.showToast("Failed to fetch billing info. Cannot complete order.");
+        ShowToastDialog.showToast("Order billing info missing. Cannot complete order.");
         return;
       }
+      orderModel.value.toPay = amountToCollect.toStringAsFixed(2);
+      print('[DeliverOrderController] Set ToPay: ${orderModel.value.toPay}');
       // Update wallet and delivery amount via separate APIs first
       final ok = await OrderWorkflowService.completeDeliveryOrderBackend(
         order: orderModel.value,
-        driverModel: controller.driverModel.value,
+        driverModel: homeController.driverModel.value,
       );
 
       if (ok != true) {

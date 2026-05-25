@@ -22,8 +22,9 @@ class PickupOrderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     AppLogger.log('PickupOrderScreen build() called', tag: 'Screen');
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
+    return GetX<PickupOrderController>(
         init: PickupOrderController(),
+        global: false,
         builder: (controller) {
           return controller.isLoading.value
               ? Constant.loader()
@@ -269,56 +270,35 @@ class PickupOrderScreen extends StatelessWidget {
                                                         Wrap(
                                                           spacing: 6.0,
                                                           runSpacing: 6.0,
-                                                          children:
-                                                              List.generate(
-                                                            product
-                                                                .variantInfo!
-                                                                .variantOptions!
-                                                                .length,
-                                                            (i) {
-                                                              return Container(
-                                                                decoration:
-                                                                    ShapeDecoration(
-                                                                  color: themeChange.getThem()
-                                                                      ? AppThemeData
-                                                                          .grey800
-                                                                      : AppThemeData
-                                                                          .grey100,
-                                                                  shape: RoundedRectangleBorder(
-                                                                      borderRadius:
-                                                                          BorderRadius.circular(
-                                                                              8)),
+                                                          children: [
+                                                            Container(
+                                                              decoration: ShapeDecoration(
+                                                                color: themeChange.getThem()
+                                                                    ? AppThemeData.grey800
+                                                                    : AppThemeData.grey100,
+                                                                shape: RoundedRectangleBorder(
+                                                                  borderRadius: BorderRadius.circular(8),
                                                                 ),
-                                                                child: Padding(
-                                                                  padding: const EdgeInsets
-                                                                      .symmetric(
-                                                                      horizontal:
-                                                                          16,
-                                                                      vertical:
-                                                                          5),
-                                                                  child: Text(
-                                                                    "${product.variantInfo!.variantOptions!.keys.elementAt(i)} : ${product.variantInfo!.variantOptions![product.variantInfo!.variantOptions!.keys.elementAt(i)]}",
-                                                                    textAlign:
-                                                                        TextAlign
-                                                                            .start,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontFamily:
-                                                                          AppThemeData
-                                                                              .medium,
-                                                                      color: themeChange.getThem()
-                                                                          ? AppThemeData
-                                                                              .grey500
-                                                                          : AppThemeData
-                                                                              .grey400,
-                                                                    ),
+                                                              ),
+                                                              child: Padding(
+                                                                padding: const EdgeInsets.symmetric(
+                                                                  horizontal: 16,
+                                                                  vertical: 5,
+                                                                ),
+                                                                child: Text(
+                                                                  "${product.variantInfo!.variantOptions!.values.first}",
+                                                                  textAlign: TextAlign.start,
+                                                                  style: TextStyle(
+                                                                    fontFamily: AppThemeData.medium,
+                                                                    color: themeChange.getThem()
+                                                                        ? AppThemeData.grey500
+                                                                        : AppThemeData.grey400,
                                                                   ),
                                                                 ),
-                                                              );
-                                                            },
-                                                          ).toList(),
-                                                        ),
-                                                      ],
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        )                                                      ],
                                                     ),
                                                   ),
                                             product.extras == null ||
@@ -442,7 +422,44 @@ class PickupOrderScreen extends StatelessWidget {
                                               fontFamily: AppThemeData.medium),
                                         ),
                                       ],
+
                                     ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 10),
+                                    child: MySeparator(
+                                        color: themeChange.getThem()
+                                            ? AppThemeData.grey700
+                                            : AppThemeData.grey200),
+                                  ),
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "Pickup Instructions: ".tr,
+                                        style: TextStyle(
+                                          fontFamily: AppThemeData.medium,
+                                          fontSize: 14,
+                                          color: themeChange.getThem()
+                                              ? AppThemeData.grey400
+                                              : AppThemeData.grey600,
+                                        ),
+                                      ),
+                                      Expanded(
+                                        child: Text(
+                                          "${controller.orderModel.value.notes ?? ''}",
+                                          textAlign: TextAlign.start,
+                                          style: TextStyle(
+                                            fontFamily: AppThemeData.regular,
+                                            color: themeChange.getThem()
+                                                ? AppThemeData.grey50
+                                                : AppThemeData.grey900,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   Padding(
                                     padding: const EdgeInsets.symmetric(

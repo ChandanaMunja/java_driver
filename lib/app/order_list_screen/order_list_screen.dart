@@ -1197,7 +1197,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Constant.statusColor(status: status);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
         borderRadius: BorderRadius.circular(20),
@@ -1209,7 +1209,7 @@ class _StatusChip extends StatelessWidget {
             fontFamily: AppThemeData.semiBold,
             fontSize: 9,
             color: color,
-            letterSpacing: 0.2),
+            letterSpacing: 0.1),
       ),
     );
   }

@@ -165,10 +165,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return _buildVerificationPending(theme);
     }
 
+    final walletBalance = double.tryParse(
+            Constant.userModel!.walletAmount?.toString() ?? '0') ??
+        0.0;
+    final minimumDeposit = double.tryParse(
+            Constant.minimumDepositToRideAccept) ??
+        -1000.0;
     final isLowBalance = Constant.userModel?.vendorID?.isEmpty == true &&
-        double.parse(
-            Constant.userModel!.walletAmount?.toString() ?? '0') <
-            double.parse(Constant.minimumDepositToRideAccept);
+        walletBalance < minimumDeposit;
 
     return RefreshIndicator(
       onRefresh: () => ctrl.forceRefreshOrders(),
@@ -877,22 +881,27 @@ class _OrderCardContent extends StatelessWidget {
         child: SvgPicture.asset('assets/icons/ic_wechat.svg')),
   );
 
-  Widget _paymentSection() => Column(children: [
-    _payRow(
-      'Payment Type'.tr,
-      order.paymentMethod?.toLowerCase() == 'cod'
-          ? 'Cash on delivery'
-          : 'Online',
-    ),
-    if (order.paymentMethod?.toLowerCase() == 'cod') ...[
-      const SizedBox(height: 4),
-      Obx(() => _payRow(
-        'Collect Payment from customer'.tr,
-        Constant.amountShow(
-            amount: ctrl.toPayAmount.value.toString()),
-      )),
+  Widget _paymentSection() => Column(
+    children: [
+      _payRow(
+        'Payment Type'.tr,
+        order.paymentMethod?.toLowerCase() == 'cod'
+            ? 'Cash on delivery'
+            : 'Online',
+      ),
+
+      if (order.paymentMethod?.toLowerCase() == 'cod') ...[
+        const SizedBox(height: 4),
+
+        _payRow(
+          'Collect Payment from customer'.tr,
+          Constant.amountShow(
+            amount: (order.toPay ?? '0').toString(),
+          ),
+        ),
+      ],
     ],
-  ]);
+  );
 
   Widget _payRow(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),

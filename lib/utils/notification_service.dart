@@ -59,9 +59,45 @@ Future<void> firebaseMessageBackgroundHandle(RemoteMessage message) async {
 }
 
 class NotificationService {
+  // Best-effort local de-dupe window to avoid double-display from
+  // overlapping FCM handlers (system + app local notification paths).
+  static final Map<String, DateTime> _recentNotificationKeys = {};
+  static const Duration _dedupeWindow = Duration(seconds: 6);
+
+  static String _buildMessageKey(RemoteMessage message) {
+    final id = message.messageId?.trim() ?? '';
+    if (id.isNotEmpty) return 'id:$id';
+    final title = message.notification?.title ?? message.data['title'] ?? '';
+    final body = message.notification?.body ?? message.data['body'] ?? '';
+    return 'payload:${title.toString().trim()}|${body.toString().trim()}|${jsonEncode(message.data)}';
+  }
+
+  static bool _shouldDisplayLocalNotification(RemoteMessage message) {
+    final now = DateTime.now();
+    _recentNotificationKeys.removeWhere(
+      (_, time) => now.difference(time) > _dedupeWindow,
+    );
+    final key = _buildMessageKey(message);
+    final last = _recentNotificationKeys[key];
+    if (last != null && now.difference(last) <= _dedupeWindow) {
+      log("⏭️ Duplicate notification suppressed: $key");
+      return false;
+    }
+    _recentNotificationKeys[key] = now;
+    return true;
+  }
+
   // Special method for background notifications
   Future<void> displayBackgroundNotification(RemoteMessage message, FlutterLocalNotificationsPlugin? localNotifications) async {
     try {
+      // For notification payloads in background/terminated states, Android/iOS
+      // can already display the push. Only force local display for data-only.
+      if (message.notification != null) {
+        log("ℹ️ Skipping manual background display (notification payload already present).");
+        return;
+      }
+      if (!_shouldDisplayLocalNotification(message)) return;
+
       final plugin = localNotifications ?? flutterLocalNotificationsPlugin;
       
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -271,6 +307,8 @@ class NotificationService {
     log('Message data: ${message.data}');
     log('Message notification: ${message.notification?.title} - ${message.notification?.body}');
     try {
+      if (!_shouldDisplayLocalNotification(message)) return;
+
       const AndroidNotificationChannel channel = AndroidNotificationChannel(
         'order_channel',
         'goRide-customer',

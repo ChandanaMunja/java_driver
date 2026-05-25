@@ -767,8 +767,34 @@ class DetailsUploadController extends GetxController {
 
   Future<void> _uploadAll() async {
     try {
-      final front = await _resolveLocalPath(frontImage.value);
-      final back = await _resolveLocalPath(backImage.value);
+      var front = await _resolveLocalPath(frontImage.value);
+      var back = await _resolveLocalPath(backImage.value);
+
+      // Upload to Firebase Storage if local paths
+      if (front.isNotEmpty && !Constant().hasValidUrl(front)) {
+        final file = File(front);
+        if (await file.exists()) {
+          final uid = await FireStoreUtils.getCurrentUid();
+          final fileName = file.path.split('/').last;
+          front = await Constant.uploadUserImageToFireStorage(
+            file,
+            'documents/$uid',
+            fileName,
+          );
+        }
+      }
+      if (back.isNotEmpty && !Constant().hasValidUrl(back)) {
+        final file = File(back);
+        if (await file.exists()) {
+          final uid = await FireStoreUtils.getCurrentUid();
+          final fileName = file.path.split('/').last;
+          back = await Constant.uploadUserImageToFireStorage(
+            file,
+            'documents/$uid',
+            fileName,
+          );
+        }
+      }
 
       documents.value
         ..frontImage = front
@@ -791,28 +817,25 @@ class DetailsUploadController extends GetxController {
   Future<bool> _uploadDocument(Documents doc) async {
     final uid = await LoginController.getFirebaseId();
     try {
-      final request = http.MultipartRequest(
-        'POST',
+      final response = await http.post(
         Uri.parse('${Constant.baseUrl}documents/driver/upload'),
-      );
-      request.fields.addAll({
-        'user_id': uid,
-        'documentId': doc.documentId ?? '',
-        'type': 'driver',
-        'status': doc.status ?? 'uploaded',
-        'aadhaar_number': aadhaarNumber.value,
-        'driving_license_number': drivingLicenseNumber.value,
-      });
-      await _attachFileIfExists(request, 'front_image', doc.frontImage);
-      await _attachFileIfExists(request, 'back_image', doc.backImage);
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': uid,
+          'documentId': doc.documentId ?? '',
+          'type': 'driver',
+          'status': doc.status ?? 'uploaded',
+          'aadhaar_number': aadhaarNumber.value,
+          'driving_license_number': drivingLicenseNumber.value,
+          'front_image': doc.frontImage ?? '',
+          'back_image': doc.backImage ?? '',
+        }),
+      ).timeout(_uploadTimeout);
 
-      final streamed = await request.send().timeout(_uploadTimeout);
-      final body =
-          await streamed.stream.bytesToString().timeout(_uploadTimeout);
-      debugPrint('Upload [${streamed.statusCode}]: $body');
+      debugPrint('Upload [${response.statusCode}]: ${response.body}');
 
-      if (streamed.statusCode == 200) {
-        return json.decode(body)['success'] == true;
+      if (response.statusCode == 200) {
+        return json.decode(response.body)['success'] == true;
       }
     } on TimeoutException {
       debugPrint('_uploadDocument: timeout');
@@ -820,15 +843,6 @@ class DetailsUploadController extends GetxController {
       debugPrint('_uploadDocument error: $e');
     }
     return false;
-  }
-
-  Future<void> _attachFileIfExists(
-      http.MultipartRequest req, String field, String? path) async {
-    if (path == null || path.isEmpty) return;
-    final file = File(path);
-    if (await file.exists()) {
-      req.files.add(await http.MultipartFile.fromPath(field, file.path));
-    }
   }
 
   Future<String> _resolveLocalPath(String path) async {

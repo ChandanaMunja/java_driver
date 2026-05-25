@@ -28,8 +28,8 @@ import 'package:mailer/smtp_server.dart';
 import 'package:get/get.dart';
 
 class Constant {
-  static String baseUrl  = "http://192.168.88.19:8000/api/";
-  // static String baseUrl  = "https://web.jippymart.in/api/";
+  // static String baseUrl  = "http://192.168.88.25:8000/api/";
+  static String baseUrl  = "https://web.jippymart.in/api/";
   static String userRoleDriver = 'driver';
   static String userRoleCustomer = 'customer';
   static String userRoleVendor = 'vendor';
@@ -175,14 +175,18 @@ class Constant {
 
   /// Check if driver can receive orders based on wallet balance
   static bool canDriverReceiveOrders(double walletAmount) {
-    return walletAmount >= double.parse(minimumDepositToRideAccept);
+    final minimum =
+        double.tryParse(minimumDepositToRideAccept) ?? -1000.0;
+    return walletAmount >= minimum;
   }
 
   /// Get wallet balance status message
   static String getWalletStatusMessage(double walletAmount) {
+    final minimum =
+        double.tryParse(minimumDepositToRideAccept) ?? -1000.0;
     if (walletAmount >= 0) {
       return "Wallet balance is sufficient".tr;
-    } else if (walletAmount >= double.parse(minimumDepositToRideAccept)) {
+    } else if (walletAmount >= minimum) {
       return "Wallet balance is negative but within allowed limit".tr;
     } else {
       return "Wallet balance is below minimum required amount".tr;

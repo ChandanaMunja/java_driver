@@ -56,9 +56,9 @@ class DashboardBottomNavBar extends StatelessWidget {
             label: 'Orders',
           ),
           NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
+            icon: Icon(Icons.wallet),
             selectedIcon: Icon(Icons.bar_chart_rounded),
-            label: 'Wallet',
+            label: 'Cod Wallet',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline_rounded),

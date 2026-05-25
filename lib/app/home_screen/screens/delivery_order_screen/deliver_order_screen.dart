@@ -91,8 +91,9 @@ class DeliverOrderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     AppLogger.log('DeliverOrderScreen build() called', tag: 'Screen');
     final themeChange = Provider.of<DarkThemeProvider>(context);
-    return GetX(
+    return GetX<DeliverOrderController>(
         init: DeliverOrderController(),
+        global: false,
         builder: (controller) {
           return controller.isLoading.value
               ? Constant.loader()
@@ -126,36 +127,7 @@ class DeliverOrderScreen extends StatelessWidget {
                         children: [
                           Builder(
                             builder: (context) {
-                              final calculated =
-                                  controller.orderModel.value.calculatedCharges;
-                              final rawTotal =
-                                  calculated?['totalCalculatedCharge'];
-                              final rawToPay =
-                                  controller.orderModel.value.toPay;
-
-                              final double? parsedToPay = rawToPay != null
-                                  ? double.tryParse(
-                                      rawToPay.toString().trim())
-                                  : null;
-
-                              final double? parsedTotal = rawTotal != null
-                                  ? double.tryParse(
-                                      rawTotal.toString().trim())
-                                  : null;
-
-                              final double? parsedDeliveryCharge = controller
-                                      .orderModel.value.deliveryCharge !=
-                                  null
-                                  ? double.tryParse(controller
-                                      .orderModel.value.deliveryCharge
-                                      .toString()
-                                      .trim())
-                                  : null;
-
-                              final amount = parsedToPay ??
-                                  parsedTotal ??
-                                  parsedDeliveryCharge ??
-                                  0.0;
+                              final amount = controller.getOrderAmountToCollect();
                               final paymentMethod = (controller
                                           .orderModel.value.paymentMethod ??
                                       '')
@@ -163,7 +135,8 @@ class DeliverOrderScreen extends StatelessWidget {
                                   .trim();
                               final isOnlinePrepaid =
                                   paymentMethod.contains('razorpay') ||
-                                      paymentMethod.contains('paytm');
+                                      paymentMethod.contains('wallet') ||
+                              paymentMethod.contains('paytm');
 
                               if (isOnlinePrepaid) {
                                 return const SizedBox.shrink();
@@ -491,55 +464,35 @@ class DeliverOrderScreen extends StatelessWidget {
                                                       Wrap(
                                                         spacing: 6.0,
                                                         runSpacing: 6.0,
-                                                        children: List.generate(
-                                                          product
-                                                              .variantInfo!
-                                                              .variantOptions!
-                                                              .length,
-                                                          (i) {
-                                                            return Container(
-                                                              decoration:
-                                                                  ShapeDecoration(
-                                                                color: themeChange.getThem()
-                                                                    ? AppThemeData
-                                                                        .grey800
-                                                                    : AppThemeData
-                                                                        .grey100,
-                                                                shape: RoundedRectangleBorder(
-                                                                    borderRadius:
-                                                                        BorderRadius.circular(
-                                                                            8)),
+                                                        children: [
+                                                          Container(
+                                                            decoration: ShapeDecoration(
+                                                              color: themeChange.getThem()
+                                                                  ? AppThemeData.grey800
+                                                                  : AppThemeData.grey100,
+                                                              shape: RoundedRectangleBorder(
+                                                                borderRadius: BorderRadius.circular(8),
                                                               ),
-                                                              child: Padding(
-                                                                padding: const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        16,
-                                                                    vertical:
-                                                                        5),
-                                                                child: Text(
-                                                                  "${product.variantInfo!.variantOptions!.keys.elementAt(i)} : ${product.variantInfo!.variantOptions![product.variantInfo!.variantOptions!.keys.elementAt(i)]}",
-                                                                  textAlign:
-                                                                      TextAlign
-                                                                          .start,
-                                                                  style:
-                                                                      TextStyle(
-                                                                    fontFamily:
-                                                                        AppThemeData
-                                                                            .medium,
-                                                                    color: themeChange.getThem()
-                                                                        ? AppThemeData
-                                                                            .grey500
-                                                                        : AppThemeData
-                                                                            .grey400,
-                                                                  ),
+                                                            ),
+                                                            child: Padding(
+                                                              padding: const EdgeInsets.symmetric(
+                                                                horizontal: 16,
+                                                                vertical: 5,
+                                                              ),
+                                                              child: Text(
+                                                                "${product.variantInfo!.variantOptions!.values.first}",
+                                                                textAlign: TextAlign.start,
+                                                                style: TextStyle(
+                                                                  fontFamily: AppThemeData.medium,
+                                                                  color: themeChange.getThem()
+                                                                      ? AppThemeData.grey500
+                                                                      : AppThemeData.grey400,
                                                                 ),
                                                               ),
-                                                            );
-                                                          },
-                                                        ).toList(),
-                                                      ),
-                                                    ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      )                                                    ],
                                                   ),
                                                 ),
                                           product.extras == null ||
